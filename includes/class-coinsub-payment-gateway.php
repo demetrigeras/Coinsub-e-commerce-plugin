@@ -49,6 +49,9 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
         // Save settings
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
         
+        // Add checkout script to frontend
+        add_action('wp_footer', array($this, 'add_checkout_script'));
+        
         // Refresh API client settings when gateway settings are updated
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'refresh_api_client_settings'));
         
@@ -133,6 +136,62 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
                     home_url('/wp-json/coinsub/v1/webhook')
                 ),
             ),
+            'shipping_tax_section' => array(
+                'title' => __('Shipping & Tax Configuration', 'coinsub-commerce'),
+                'type' => 'title',
+                'description' => __('Configure how shipping and taxes are handled in your crypto payments.', 'coinsub-commerce'),
+            ),
+            'include_shipping_in_crypto' => array(
+                'title' => __('Include Shipping in Crypto Payment', 'coinsub-commerce'),
+                'type' => 'checkbox',
+                'label' => __('Include shipping costs in crypto payment', 'coinsub-commerce'),
+                'default' => 'yes',
+                'description' => __('When enabled, customers pay shipping costs in cryptocurrency along with their products. When disabled, shipping will be handled separately.', 'coinsub-commerce'),
+            ),
+            'include_tax_in_crypto' => array(
+                'title' => __('Include Tax in Crypto Payment', 'coinsub-commerce'),
+                'type' => 'checkbox',
+                'label' => __('Include tax costs in crypto payment', 'coinsub-commerce'),
+                'default' => 'yes',
+                'description' => __('When enabled, customers pay tax costs in cryptocurrency along with their products. When disabled, tax will be handled separately.', 'coinsub-commerce'),
+            ),
+            'shipping_payment_method' => array(
+                'title' => __('Shipping Payment Method', 'coinsub-commerce'),
+                'type' => 'select',
+                'description' => __('How will shipping costs be paid when not included in crypto payment?', 'coinsub-commerce'),
+                'default' => 'merchant_covered',
+                'options' => array(
+                    'merchant_covered' => __('Merchant Covers Shipping (Recommended)', 'coinsub-commerce'),
+                    'separate_payment' => __('Separate Payment Required', 'coinsub-commerce'),
+                    'crypto_conversion' => __('Auto-convert Crypto to Fiat', 'coinsub-commerce'),
+                ),
+                'desc_tip' => true,
+            ),
+            'tax_payment_method' => array(
+                'title' => __('Tax Payment Method', 'coinsub-commerce'),
+                'type' => 'select',
+                'description' => __('How will tax costs be paid when not included in crypto payment?', 'coinsub-commerce'),
+                'default' => 'merchant_covered',
+                'options' => array(
+                    'merchant_covered' => __('Merchant Covers Tax (Recommended)', 'coinsub-commerce'),
+                    'separate_payment' => __('Separate Payment Required', 'coinsub-commerce'),
+                    'crypto_conversion' => __('Auto-convert Crypto to Fiat', 'coinsub-commerce'),
+                ),
+                'desc_tip' => true,
+            ),
+            'crypto_conversion_service' => array(
+                'title' => __('Crypto Conversion Service', 'coinsub-commerce'),
+                'type' => 'select',
+                'description' => __('Service to use for automatic crypto-to-fiat conversion (if enabled above)', 'coinsub-commerce'),
+                'default' => 'manual',
+                'options' => array(
+                    'manual' => __('Manual Conversion (You handle conversion)', 'coinsub-commerce'),
+                    'coinbase' => __('Coinbase Commerce', 'coinsub-commerce'),
+                    'bitpay' => __('BitPay', 'coinsub-commerce'),
+                    'custom' => __('Custom API Integration', 'coinsub-commerce'),
+                ),
+                'desc_tip' => true,
+            ),
         );
     }
     
@@ -194,7 +253,10 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
             // Empty cart
             WC()->cart->empty_cart();
             
-            // Return success
+            // Store checkout URL for automatic opening
+            $this->store_checkout_url($purchase_session['url']);
+            
+            // Return success with redirect
             return array(
                 'result' => 'success',
                 'redirect' => $purchase_session['url']
@@ -220,6 +282,8 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
             // Check if product already exists in CoinSub
             $existing_product = $this->api_client->get_product_by_woocommerce_id($product->get_id());
             
+            $coinsub_product_id = null;
+            
             if (is_wp_error($existing_product)) {
                 // Product doesn't exist, create it
                 $product_data = array(
@@ -236,9 +300,19 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
                 );
                 
                 $created_product = $this->api_client->create_product($product_data);
-                if (is_wp_error($created_product)) {
+                if (!is_wp_error($created_product)) {
+                    $coinsub_product_id = $created_product['id'] ?? null;
+                } else {
                     error_log('Failed to create product in CoinSub: ' . $created_product->get_error_message());
                 }
+            } else {
+                // Product exists, get its ID
+                $coinsub_product_id = $existing_product['id'] ?? null;
+            }
+            
+            // Store CoinSub product ID in order meta for later use
+            if ($coinsub_product_id) {
+                $order->update_meta_data('_coinsub_product_' . $product->get_id(), $coinsub_product_id);
             }
         }
     }
@@ -282,21 +356,86 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
      * Prepare purchase session data
      */
     private function prepare_purchase_session_data($order, $coinsub_order) {
+        // Prepare detailed product information
         $items = array();
+        $product_names = array();
+        $product_details = array();
+        $total_items = 0;
+        
         foreach ($order->get_items() as $item) {
-            $items[] = $item->get_name() . ' x' . $item->get_quantity();
+            $product = $item->get_product();
+            if (!$product) continue;
+            
+            $item_name = $item->get_name();
+            $quantity = $item->get_quantity();
+            $total_items += $quantity;
+            
+            $items[] = $item_name . ' x' . $quantity;
+            $product_names[] = $item_name;
+            
+            // Get CoinSub product ID from order meta if available
+            $coinsub_product_id = $order->get_meta('_coinsub_product_' . $product->get_id());
+            
+            $product_details[] = array(
+                'woocommerce_product_id' => $product->get_id(),
+                'coinsub_product_id' => $coinsub_product_id ?: null,
+                'name' => $item_name,
+                'price' => (float) $item->get_total() / $quantity, // Price per unit
+                'quantity' => $quantity,
+                'total' => (float) $item->get_total(),
+                'sku' => $product->get_sku(),
+                'type' => $product->get_type()
+            );
         }
+        
+        // Create order name with product details
+        $order_name = count($product_names) > 1 
+            ? 'WooCommerce Order: ' . implode(' + ', array_slice($product_names, 0, 3)) . (count($product_names) > 3 ? ' + ' . (count($product_names) - 3) . ' more' : '')
+            : 'WooCommerce Order: ' . ($product_names[0] ?? 'Payment');
         
         // Calculate shipping and tax
         $shipping_total = $order->get_shipping_total();
         $tax_total = $order->get_total_tax();
         $subtotal = $order->get_subtotal();
         
+        // Determine what to include in crypto payment based on settings
+        $include_shipping = $this->get_option('include_shipping_in_crypto') === 'yes';
+        $include_tax = $this->get_option('include_tax_in_crypto') === 'yes';
+        
+        // Calculate crypto payment amount
+        $crypto_amount = $subtotal; // Always include product subtotal
+        if ($include_shipping) {
+            $crypto_amount += $shipping_total;
+        }
+        if ($include_tax) {
+            $crypto_amount += $tax_total;
+        }
+        
+        // Prepare payment breakdown for metadata
+        $payment_breakdown = array(
+            'product_subtotal' => $subtotal,
+            'shipping_total' => $shipping_total,
+            'tax_total' => $tax_total,
+            'crypto_payment_amount' => $crypto_amount,
+            'shipping_included_in_crypto' => $include_shipping,
+            'tax_included_in_crypto' => $include_tax,
+        );
+        
+        // Add separate payment requirements if needed
+        if (!$include_shipping && $shipping_total > 0) {
+            $payment_breakdown['shipping_payment_required'] = true;
+            $payment_breakdown['shipping_payment_method'] = $this->get_option('shipping_payment_method');
+        }
+        if (!$include_tax && $tax_total > 0) {
+            $payment_breakdown['tax_payment_required'] = true;
+            $payment_breakdown['tax_payment_method'] = $this->get_option('tax_payment_method');
+        }
+        
         return array(
-            'name' => 'WooCommerce Order Payment',
-            'details' => 'Payment for WooCommerce order #' . $order->get_order_number(),
+            'name' => $order_name,
+            'details' => 'Payment for WooCommerce order #' . $order->get_order_number() . ' with ' . count($product_details) . ' product(s)',
             'currency' => $order->get_currency(),
-            'amount' => (float) $order->get_total(),
+            'amount' => (float) $crypto_amount,
             'recurring' => false,
             'metadata' => array(
                 'woocommerce_order_id' => $order->get_id(),
@@ -308,6 +447,13 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
                 'subtotal' => $subtotal,
                 'shipping_method' => $order->get_shipping_method(),
                 'source' => 'woocommerce_plugin',
+                'payment_breakdown' => $payment_breakdown,
+                'currency' => $order->get_currency(),
+                'individual_products' => $product_names,
+                'product_count' => count($product_details),
+                'products' => $product_details,
+                'total_amount' => (float) $order->get_total(),
+                'total_items' => $total_items,
                 'billing_address' => array(
                     'first_name' => $order->get_billing_first_name(),
                     'last_name' => $order->get_billing_last_name(),
@@ -333,9 +479,51 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
                     'country' => $order->get_shipping_country()
                 )
             ),
-            'success_url' => 'https://webhook-test.com/bce9a8b61c28d115aa796fe270d40e9f/success',
-            'cancel_url' => 'https://webhook-test.com/bce9a8b61c28d115aa796fe270d40e9f/cancel'
+            'success_url' => '',
+            'cancel_url' => ''
         );
+    }
+    
+    /**
+     * Store checkout URL for automatic opening
+     */
+    private function store_checkout_url($checkout_url) {
+        // Store in session for immediate redirect
+        if (!session_id()) {
+            session_start();
+        }
+        $_SESSION['coinsub_checkout_url'] = $checkout_url;
+        
+        // Also store in transient for backup
+        set_transient('coinsub_checkout_' . get_current_user_id(), $checkout_url, 300); // 5 minutes
+    }
+    
+    /**
+     * Add JavaScript for automatic checkout URL opening
+     */
+    public function add_checkout_script() {
+        if (!session_id()) {
+            session_start();
+        }
+        
+        if (isset($_SESSION['coinsub_checkout_url'])) {
+            $checkout_url = $_SESSION['coinsub_checkout_url'];
+            unset($_SESSION['coinsub_checkout_url']); // Clear after use
+            
+            ?>
+            <script type="text/javascript">
+            document.addEventListener('DOMContentLoaded', function() {
+                // Open CoinSub checkout in new tab
+                window.open('<?php echo esc_js($checkout_url); ?>', '_blank');
+                
+                // Also show a message to the user
+                if (typeof wc_add_notice === 'function') {
+                    wc_add_notice('<?php echo esc_js(__('Redirecting to CoinSub checkout...', 'coinsub-commerce')); ?>', 'notice');
+                }
+            });
+            </script>
+            <?php
+        }
     }
     
     /**
