@@ -2,15 +2,18 @@
 /**
  * CoinSub Payment Gateway
  * 
- * Simple cryptocurrency payment gateway for WooCommerce
+ * Extends WooCommerce payment gateway for CoinSub integration
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-class WC_Gateway_CoinSub extends WC_Payment_Gateway {
+class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
     
+    /**
+     * API client instance
+     */
     private $api_client;
     
     /**
@@ -29,23 +32,45 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'refunds', // Manual refunds only via smart contracts
         );
         
-        // Load settings
+        // Declare HPOS compatibility for this gateway
+        add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
+        
+        // Load the settings
         $this->init_form_fields();
         $this->init_settings();
+        
+        // Define user set variables
+        $this->title = $this->get_option('title');
+        $this->description = $this->get_option('description');
+        $this->enabled = $this->get_option('enabled');
+        $this->testmode = 'yes' === $this->get_option('testmode');
         
         // Initialize API client
         $this->api_client = new CoinSub_API_Client();
         
-        // Add hooks
+        // Update API client with current gateway settings
+        $this->api_client->update_settings(
+            $this->get_option('api_base_url'),
+            $this->get_option('merchant_id'),
+            $this->get_option('api_key')
+        );
+        
+        // Save settings
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
-        add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
+        
+        // Add checkout script to frontend
         add_action('wp_footer', array($this, 'add_checkout_script'));
+        
+        // Refresh API client settings when gateway settings are updated
+        add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'refresh_api_client_settings'));
+        
+        // Add custom order status
         add_action('init', array($this, 'add_coinsub_order_status'));
         add_filter('wc_order_statuses', array($this, 'add_coinsub_order_status_to_woocommerce'));
     }
     
     /**
-     * Initialize form fields
+     * Initialize Gateway Settings Form Fields
      */
     public function init_form_fields() {
         $this->form_fields = array(
@@ -128,7 +153,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if (!$order) {
             return array(
                 'result' => 'failure',
-                'messages' => __('Order not found', 'coinsub')
+                'messages' => __('Order not found', 'coinsub-commerce')
             );
         }
         
@@ -172,7 +197,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $order->save();
             
             // Update order status
-            $order->update_status('pending-coinsub', __('Awaiting CoinSub payment', 'coinsub'));
+            $order->update_status('pending-coinsub', __('Awaiting CoinSub payment', 'coinsub-commerce'));
             
             // Empty cart
             WC()->cart->empty_cart();
@@ -180,13 +205,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Store checkout URL for automatic opening
             $this->store_checkout_url($purchase_session['url']);
             
+            // Return success with redirect
             return array(
                 'result' => 'success',
-                'redirect' => $this->get_return_url($order)
+                'redirect' => $purchase_session['url']
             );
             
         } catch (Exception $e) {
-            wc_add_notice(__('Payment error: ', 'coinsub') . $e->getMessage(), 'error');
+            wc_add_notice(__('Payment error: ', 'coinsub-commerce') . $e->getMessage(), 'error');
             return array(
                 'result' => 'failure',
                 'messages' => $e->getMessage()
@@ -195,52 +221,82 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Ensure products exist in CoinSub
+     * Ensure products exist in CoinSub commerce_products table
      */
     private function ensure_products_exist($order) {
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
             if (!$product) continue;
             
-            // Check if we already have a CoinSub product ID for this WooCommerce product
-            $existing_coinsub_id = $order->get_meta('_coinsub_product_' . $product->get_id());
+            // Check if product already exists in CoinSub
+            $existing_product = $this->api_client->get_product_by_woocommerce_id($product->get_id());
             
-            if ($existing_coinsub_id) {
-                continue; // Already exists
+            $coinsub_product_id = null;
+            
+            if (is_wp_error($existing_product)) {
+                // Product doesn't exist, create it
+                $product_data = array(
+                    'name' => $product->get_name(),
+                    'description' => $product->get_description(),
+                    'price' => (float) $product->get_price(),
+                    'currency' => $order->get_currency(),
+                    'image_url' => wp_get_attachment_image_url($product->get_image_id(), 'full'),
+                    'metadata' => array(
+                        'woocommerce_product_id' => $product->get_id(),
+                        'sku' => $product->get_sku(),
+                        'type' => $product->get_type()
+                    )
+                );
+                
+                $created_product = $this->api_client->create_product($product_data);
+                if (!is_wp_error($created_product)) {
+                    $coinsub_product_id = $created_product['id'] ?? null;
+                } else {
+                    error_log('Failed to create product in CoinSub: ' . $created_product->get_error_message());
+                }
+            } else {
+                // Product exists, get its ID
+                $coinsub_product_id = $existing_product['id'] ?? null;
             }
             
-            // Create product in CoinSub
-            $product_data = array(
-                'name' => $product->get_name(),
-                'description' => $product->get_description() ?: $product->get_short_description(),
-                'price' => (float) $product->get_price(),
-                'currency' => get_woocommerce_currency(),
-                'sku' => $product->get_sku(),
-                'metadata' => array(
-                    'woocommerce_product_id' => $product->get_id(),
-                    'product_type' => $product->get_type(),
-                    'source' => 'woocommerce_plugin'
-                )
-            );
-            
-            $coinsub_product = $this->api_client->create_product($product_data);
-            
-            if (!is_wp_error($coinsub_product)) {
-                // Store the CoinSub product ID in order meta for future reference
-                $order->update_meta_data('_coinsub_product_' . $product->get_id(), $coinsub_product['id']);
-                $order->save();
+            // Store CoinSub product ID in order meta for later use
+            if ($coinsub_product_id) {
+                $order->update_meta_data('_coinsub_product_' . $product->get_id(), $coinsub_product_id);
             }
         }
     }
     
     /**
-     * Prepare order data for CoinSub
+     * Prepare order data for CoinSub API
      */
     private function prepare_order_data($order) {
+        $items = array();
+        
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            if (!$product) continue;
+            
+            // Get the CoinSub product ID (we should have created it earlier)
+            $coinsub_product = $this->api_client->get_product_by_woocommerce_id($product->get_id());
+            
+            if (is_wp_error($coinsub_product)) {
+                // Fallback to WooCommerce product ID if CoinSub product not found
+                $product_id = (string) $product->get_id();
+            } else {
+                $product_id = $coinsub_product['id'];
+            }
+            
+            $items[] = array(
+                'product_id' => $product_id,
+                'name' => $item->get_name(),
+                'quantity' => $item->get_quantity(),
+                'price' => (string) $item->get_total()
+            );
+        }
+        
         return array(
-            'merchant_id' => $this->get_option('merchant_id'),
-            'customer_email' => $order->get_billing_email(),
-            'total' => (float) $order->get_total(),
+            'items' => $items,
+            'total' => (string) $order->get_total(),
             'currency' => $order->get_currency()
         );
     }
@@ -249,7 +305,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Prepare purchase session data
      */
     private function prepare_purchase_session_data($order, $coinsub_order) {
-        // Prepare product information
+        // Prepare detailed product information
+        $items = array();
         $product_names = array();
         $product_details = array();
         $total_items = 0;
@@ -262,6 +319,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $quantity = $item->get_quantity();
             $total_items += $quantity;
             
+            $items[] = $item_name . ' x' . $quantity;
             $product_names[] = $item_name;
             
             // Get CoinSub product ID from order meta if available
@@ -284,30 +342,94 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             ? 'WooCommerce Order: ' . implode(' + ', array_slice($product_names, 0, 3)) . (count($product_names) > 3 ? ' + ' . (count($product_names) - 3) . ' more' : '')
             : 'WooCommerce Order: ' . ($product_names[0] ?? 'Payment');
         
-        // Simple: Use total order amount (merchant handles shipping/tax separately)
-        $total_amount = (float) $order->get_total();
+        // Calculate shipping and tax
+        $shipping_total = $order->get_shipping_total();
+        $tax_total = $order->get_total_tax();
+        $subtotal = $order->get_subtotal();
+        
+        // Determine what to include in crypto payment based on settings
+        $include_shipping = $this->get_option('include_shipping_in_crypto') === 'yes';
+        $include_tax = $this->get_option('include_tax_in_crypto') === 'yes';
+        
+        // Calculate crypto payment amount
+        $crypto_amount = $subtotal; // Always include product subtotal
+        if ($include_shipping) {
+            $crypto_amount += $shipping_total;
+        }
+        if ($include_tax) {
+            $crypto_amount += $tax_total;
+        }
+        
+        // Prepare payment breakdown for metadata
+        $payment_breakdown = array(
+            'product_subtotal' => $subtotal,
+            'shipping_total' => $shipping_total,
+            'tax_total' => $tax_total,
+            'crypto_payment_amount' => $crypto_amount,
+            'shipping_included_in_crypto' => $include_shipping,
+            'tax_included_in_crypto' => $include_tax,
+        );
+        
+        // Add separate payment requirements if needed
+        if (!$include_shipping && $shipping_total > 0) {
+            $payment_breakdown['shipping_payment_required'] = true;
+            $payment_breakdown['shipping_payment_method'] = $this->get_option('shipping_payment_method');
+        }
+        if (!$include_tax && $tax_total > 0) {
+            $payment_breakdown['tax_payment_required'] = true;
+            $payment_breakdown['tax_payment_method'] = $this->get_option('tax_payment_method');
+        }
         
         return array(
             'name' => $order_name,
             'details' => 'Payment for WooCommerce order #' . $order->get_order_number() . ' with ' . count($product_details) . ' product(s)',
             'currency' => $order->get_currency(),
-            'amount' => $total_amount,
+            'amount' => (float) $crypto_amount,
             'recurring' => false,
             'metadata' => array(
                 'woocommerce_order_id' => $order->get_id(),
                 'order_number' => $order->get_order_number(),
                 'customer_email' => $order->get_billing_email(),
                 'customer_name' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+                'shipping_total' => $shipping_total,
+                'tax_total' => $tax_total,
+                'subtotal' => $subtotal,
+                'shipping_method' => $order->get_shipping_method(),
                 'source' => 'woocommerce_plugin',
+                'payment_breakdown' => $payment_breakdown,
+                'currency' => $order->get_currency(),
                 'individual_products' => $product_names,
                 'product_count' => count($product_details),
-                'total_items' => $total_items,
                 'products' => $product_details,
-                'currency' => $order->get_currency(),
-                'total_amount' => $total_amount
+                'total_amount' => (float) $order->get_total(),
+                'total_items' => $total_items,
+                'billing_address' => array(
+                    'first_name' => $order->get_billing_first_name(),
+                    'last_name' => $order->get_billing_last_name(),
+                    'company' => $order->get_billing_company(),
+                    'address_1' => $order->get_billing_address_1(),
+                    'address_2' => $order->get_billing_address_2(),
+                    'city' => $order->get_billing_city(),
+                    'state' => $order->get_billing_state(),
+                    'postcode' => $order->get_billing_postcode(),
+                    'country' => $order->get_billing_country(),
+                    'email' => $order->get_billing_email(),
+                    'phone' => $order->get_billing_phone()
+                ),
+                'shipping_address' => array(
+                    'first_name' => $order->get_shipping_first_name(),
+                    'last_name' => $order->get_shipping_last_name(),
+                    'company' => $order->get_shipping_company(),
+                    'address_1' => $order->get_shipping_address_1(),
+                    'address_2' => $order->get_shipping_address_2(),
+                    'city' => $order->get_shipping_city(),
+                    'state' => $order->get_shipping_state(),
+                    'postcode' => $order->get_shipping_postcode(),
+                    'country' => $order->get_shipping_country()
+                )
             ),
-            'success_url' => "",
-            'cancel_url' => ""
+            'success_url' => '',
+            'cancel_url' => ''
         );
     }
     
@@ -315,55 +437,100 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Store checkout URL for automatic opening
      */
     private function store_checkout_url($checkout_url) {
-        // Store in PHP session
+        // Store in session for immediate redirect
         if (!session_id()) {
             session_start();
         }
         $_SESSION['coinsub_checkout_url'] = $checkout_url;
         
-        // Also store in transient as backup
-        set_transient('coinsub_checkout_url_' . get_current_user_id(), $checkout_url, 300); // 5 minutes
+        // Also store in transient for backup
+        set_transient('coinsub_checkout_' . get_current_user_id(), $checkout_url, 300); // 5 minutes
     }
     
     /**
-     * Add checkout script to automatically open CoinSub checkout
+     * Add JavaScript for automatic checkout URL opening
      */
     public function add_checkout_script() {
         if (!session_id()) {
             session_start();
         }
         
-        $checkout_url = isset($_SESSION['coinsub_checkout_url']) ? $_SESSION['coinsub_checkout_url'] : '';
-        
-        if (empty($checkout_url)) {
-            // Try transient as backup
-            $checkout_url = get_transient('coinsub_checkout_url_' . get_current_user_id());
-        }
-        
-        if (!empty($checkout_url)) {
+        if (isset($_SESSION['coinsub_checkout_url'])) {
+            $checkout_url = $_SESSION['coinsub_checkout_url'];
+            unset($_SESSION['coinsub_checkout_url']); // Clear after use
+            
             ?>
             <script type="text/javascript">
-            jQuery(document).ready(function($) {
+            document.addEventListener('DOMContentLoaded', function() {
                 // Open CoinSub checkout in new tab
                 window.open('<?php echo esc_js($checkout_url); ?>', '_blank');
                 
-                // Show notice to user
-                $('body').prepend('<div id="coinsub-checkout-notice" style="position: fixed; top: 20px; right: 20px; background: #0073aa; color: white; padding: 15px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"><strong>CoinSub Payment</strong><br>Please complete your payment in the new tab that opened.</div>');
-                
-                // Remove notice after 10 seconds
-                setTimeout(function() {
-                    $('#coinsub-checkout-notice').fadeOut();
-                }, 10000);
-                
-                // Clear the stored URL
-                <?php
-                unset($_SESSION['coinsub_checkout_url']);
-                delete_transient('coinsub_checkout_url_' . get_current_user_id());
-                ?>
+                // Also show a message to the user
+                if (typeof wc_add_notice === 'function') {
+                    wc_add_notice('<?php echo esc_js(__('Redirecting to CoinSub checkout...', 'coinsub-commerce')); ?>', 'notice');
+                }
             });
             </script>
             <?php
         }
+    }
+    
+    /**
+     * Add custom order status
+     */
+    public function add_coinsub_order_status() {
+        register_post_status('wc-pending-coinsub', array(
+            'label' => _x('Pending CoinSub Payment', 'Order status', 'coinsub-commerce'),
+            'public' => false,
+            'exclude_from_search' => false,
+            'show_in_admin_all_list' => true,
+            'show_in_admin_status_list' => true,
+            'label_count' => _n_noop('Pending CoinSub Payment <span class="count">(%s)</span>', 'Pending CoinSub Payment <span class="count">(%s)</span>', 'coinsub-commerce')
+        ));
+        
+        register_post_status('wc-refund-pending', array(
+            'label' => _x('Refund Pending', 'Order status', 'coinsub-commerce'),
+            'public' => false,
+            'exclude_from_search' => false,
+            'show_in_admin_all_list' => true,
+            'show_in_admin_status_list' => true,
+            'label_count' => _n_noop('Refund Pending <span class="count">(%s)</span>', 'Refund Pending <span class="count">(%s)</span>', 'coinsub-commerce')
+        ));
+    }
+    
+    /**
+     * Add custom order status to WooCommerce
+     */
+    public function add_coinsub_order_status_to_woocommerce($order_statuses) {
+        $order_statuses['wc-pending-coinsub'] = _x('Pending CoinSub Payment', 'Order status', 'coinsub-commerce');
+        $order_statuses['wc-refund-pending'] = _x('Refund Pending', 'Order status', 'coinsub-commerce');
+        return $order_statuses;
+    }
+    
+    /**
+     * Refresh API client settings when gateway settings are updated
+     */
+    public function refresh_api_client_settings() {
+        $this->api_client->update_settings(
+            $this->get_option('api_base_url'),
+            $this->get_option('merchant_id'),
+            $this->get_option('api_key')
+        );
+    }
+    
+    /**
+     * Check if the gateway is available
+     */
+    public function is_available() {
+        if ($this->enabled === 'no') {
+            return false;
+        }
+        
+        if (empty($this->get_option('merchant_id'))) {
+            return false;
+        }
+        
+        return true;
     }
     
     /**
@@ -373,7 +540,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $order = wc_get_order($order_id);
         
         if (!$order) {
-            return new WP_Error('invalid_order', __('Invalid order.', 'coinsub'));
+            return new WP_Error('invalid_order', __('Invalid order.', 'coinsub-commerce'));
         }
         
         // Get customer's wallet address from order meta
@@ -381,13 +548,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         if (empty($customer_wallet)) {
             $refund_note = sprintf(
-                __('REFUND REQUIRES MANUAL PROCESSING: %s. Reason: %s. Customer wallet address not found. Please contact customer for their wallet address and process refund manually.', 'coinsub'),
+                __('REFUND REQUIRES MANUAL PROCESSING: %s. Reason: %s. Customer wallet address not found. Please contact customer for their wallet address and process refund manually.', 'coinsub-commerce'),
                 wc_price($amount),
                 $reason
             );
         } else {
             $refund_note = sprintf(
-                __('REFUND REQUIRES MANUAL PROCESSING: %s. Reason: %s. Customer wallet: %s. Please send crypto from your merchant wallet to customer wallet and update order status.', 'coinsub'),
+                __('REFUND REQUIRES MANUAL PROCESSING: %s. Reason: %s. Customer wallet: %s. Please send crypto from your merchant wallet to customer wallet and update order status.', 'coinsub-commerce'),
                 wc_price($amount),
                 $reason,
                 $customer_wallet
@@ -397,10 +564,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $order->add_order_note($refund_note);
         
         // Update order status to indicate refund is pending manual processing
-        $order->update_status('refund-pending', __('Refund pending - merchant must send crypto back to customer wallet.', 'coinsub'));
+        $order->update_status('refund-pending', __('Refund pending - merchant must send crypto back to customer wallet.', 'coinsub-commerce'));
         
         // Return error to indicate this requires manual processing
-        return new WP_Error('manual_refund_required', __('Refund requires manual crypto transfer. Please send crypto from your merchant wallet to customer wallet.', 'coinsub'));
+        return new WP_Error('manual_refund_required', __('Refund requires manual crypto transfer. Please send crypto from your merchant wallet to customer wallet.', 'coinsub-commerce'));
     }
     
     /**
@@ -425,7 +592,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $order = wc_get_order($order_id);
         
         if ($order) {
-            $order->add_order_note(sprintf(__('Refund processed: Transaction hash %s', 'coinsub'), $transaction_hash));
+            $order->add_order_note(sprintf(__('Refund processed: Transaction hash %s', 'coinsub-commerce'), $transaction_hash));
             $order->update_meta_data('_refund_transaction_hash', $transaction_hash);
             $order->save();
         }
@@ -436,48 +603,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function get_refund_instructions() {
         return array(
-            'title' => __('Manual Refund Process', 'coinsub'),
+            'title' => __('Manual Refund Process', 'coinsub-commerce'),
             'steps' => array(
-                __('1. Customer requests refund', 'coinsub'),
-                __('2. Approve refund in WooCommerce', 'coinsub'),
-                __('3. Open your crypto wallet (MetaMask, etc.)', 'coinsub'),
-                __('4. Send crypto back to customer wallet address', 'coinsub'),
-                __('5. Add transaction hash to order notes', 'coinsub'),
-                __('6. Update order status to "Refunded"', 'coinsub'),
+                __('1. Customer requests refund', 'coinsub-commerce'),
+                __('2. Approve refund in WooCommerce', 'coinsub-commerce'),
+                __('3. Open your crypto wallet (MetaMask, etc.)', 'coinsub-commerce'),
+                __('4. Send crypto back to customer wallet address', 'coinsub-commerce'),
+                __('5. Add transaction hash to order notes', 'coinsub-commerce'),
+                __('6. Update order status to "Refunded"', 'coinsub-commerce'),
             ),
-            'note' => __('Remember: You pay gas fees for the refund transaction', 'coinsub')
+            'note' => __('Remember: You pay gas fees for the refund transaction', 'coinsub-commerce')
         );
-    }
-    
-    /**
-     * Add custom order status
-     */
-    public function add_coinsub_order_status() {
-        register_post_status('wc-pending-coinsub', array(
-            'label' => _x('Pending CoinSub Payment', 'Order status', 'coinsub'),
-            'public' => false,
-            'exclude_from_search' => false,
-            'show_in_admin_all_list' => true,
-            'show_in_admin_status_list' => true,
-            'label_count' => _n_noop('Pending CoinSub Payment <span class="count">(%s)</span>', 'Pending CoinSub Payment <span class="count">(%s)</span>', 'coinsub')
-        ));
-        
-        register_post_status('wc-refund-pending', array(
-            'label' => _x('Refund Pending', 'Order status', 'coinsub'),
-            'public' => false,
-            'exclude_from_search' => false,
-            'show_in_admin_all_list' => true,
-            'show_in_admin_status_list' => true,
-            'label_count' => _n_noop('Refund Pending <span class="count">(%s)</span>', 'Refund Pending <span class="count">(%s)</span>', 'coinsub')
-        ));
-    }
-    
-    /**
-     * Add custom order status to WooCommerce
-     */
-    public function add_coinsub_order_status_to_woocommerce($order_statuses) {
-        $order_statuses['wc-pending-coinsub'] = _x('Pending CoinSub Payment', 'Order status', 'coinsub');
-        $order_statuses['wc-refund-pending'] = _x('Refund Pending', 'Order status', 'coinsub');
-        return $order_statuses;
     }
 }

@@ -133,7 +133,7 @@ class CoinSub_Webhook_Handler {
      * Handle payment completed
      */
     private function handle_payment_completed($order, $data) {
-        $order->update_status('processing', __('Payment completed via CoinSub', 'coinsub-commerce'));
+        $order->update_status('processing', __('Payment completed via CoinSub', 'coinsub'));
         
         // Add order note with transaction details
         $transaction_details = $data['transaction_details'] ?? array();
@@ -142,7 +142,7 @@ class CoinSub_Webhook_Handler {
         
         $order->add_order_note(
             sprintf(
-                __('CoinSub payment completed. Transaction ID: %s, Hash: %s', 'coinsub-commerce'),
+                __('CoinSub payment completed. Transaction ID: %s, Hash: %s', 'coinsub'),
                 $transaction_id,
                 $transaction_hash
             )
@@ -179,13 +179,13 @@ class CoinSub_Webhook_Handler {
      * Handle payment failed
      */
     private function handle_payment_failed($order, $data) {
-        $order->update_status('failed', __('Payment failed via CoinSub', 'coinsub-commerce'));
+        $order->update_status('failed', __('Payment failed via CoinSub', 'coinsub'));
         
         // Add order note
         $failure_reason = $data['failure_reason'] ?? 'Unknown';
         $order->add_order_note(
             sprintf(
-                __('CoinSub payment failed. Reason: %s', 'coinsub-commerce'),
+                __('CoinSub payment failed. Reason: %s', 'coinsub'),
                 $failure_reason
             )
         );
@@ -202,10 +202,10 @@ class CoinSub_Webhook_Handler {
      * Handle payment cancelled
      */
     private function handle_payment_cancelled($order, $data) {
-        $order->update_status('cancelled', __('Payment cancelled via CoinSub', 'coinsub-commerce'));
+        $order->update_status('cancelled', __('Payment cancelled via CoinSub', 'coinsub'));
         
         // Add order note
-        $order->add_order_note(__('CoinSub payment was cancelled by customer', 'coinsub-commerce'));
+        $order->add_order_note(__('CoinSub payment was cancelled by customer', 'coinsub'));
         
         $order->save();
     }
@@ -214,7 +214,7 @@ class CoinSub_Webhook_Handler {
      * Handle transfer completed
      */
     private function handle_transfer_completed($order, $data) {
-        $order->update_status('processing', __('Transfer completed via CoinSub', 'coinsub-commerce'));
+        $order->update_status('processing', __('Transfer completed via CoinSub', 'coinsub'));
         
         // Add order note
         $transfer_id = $data['transfer_id'] ?? 'N/A';
@@ -222,7 +222,7 @@ class CoinSub_Webhook_Handler {
         
         $order->add_order_note(
             sprintf(
-                __('CoinSub transfer completed. Transfer ID: %s, Hash: %s', 'coinsub-commerce'),
+                __('CoinSub transfer completed. Transfer ID: %s, Hash: %s', 'coinsub'),
                 $transfer_id,
                 $hash
             )
@@ -252,10 +252,10 @@ class CoinSub_Webhook_Handler {
      * Handle transfer failed
      */
     private function handle_transfer_failed($order, $data) {
-        $order->update_status('failed', __('Transfer failed via CoinSub', 'coinsub-commerce'));
+        $order->update_status('failed', __('Transfer failed via CoinSub', 'coinsub'));
         
         // Add order note
-        $order->add_order_note(__('CoinSub transfer failed', 'coinsub-commerce'));
+        $order->add_order_note(__('CoinSub transfer failed', 'coinsub'));
         
         $order->save();
     }

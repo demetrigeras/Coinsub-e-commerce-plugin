@@ -1,14 +1,14 @@
 <?php
 /**
- * Plugin Name: CoinSub Commerce
+ * Plugin Name: CoinSub
  * Plugin URI: https://coinsub.io
- * Description: Accept cryptocurrency payments with CoinSub. Supports shipping, tax, and flexible payment configurations.
+ * Description: Accept cryptocurrency payments with CoinSub. Simple crypto payments for WooCommerce.
  * Version: 1.0.0
  * Author: CoinSub
  * Author URI: https://coinsub.io
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: coinsub-commerce
+ * Text Domain: coinsub
  * Domain Path: /languages
  * Requires at least: 5.0
  * Tested up to: 6.4
@@ -38,7 +38,7 @@ if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get
  * WooCommerce missing notice
  */
 function coinsub_woocommerce_missing_notice() {
-    echo '<div class="error"><p><strong>CoinSub Commerce</strong> requires WooCommerce to be installed and active.</p></div>';
+    echo '<div class="error"><p><strong>CoinSub</strong> requires WooCommerce to be installed and active.</p></div>';
 }
 
 /**
@@ -46,7 +46,7 @@ function coinsub_woocommerce_missing_notice() {
  */
 function coinsub_commerce_init() {
     // Load text domain
-    load_plugin_textdomain('coinsub-commerce', false, dirname(plugin_basename(__FILE__)) . '/languages');
+    load_plugin_textdomain('coinsub', false, dirname(plugin_basename(__FILE__)) . '/languages');
     
     // Include required files
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-api-client.php';
@@ -79,7 +79,7 @@ function coinsub_commerce_declare_compatibility() {
  * Add CoinSub payment gateway to WooCommerce
  */
 function coinsub_add_payment_gateway($gateways) {
-    $gateways[] = 'CoinSub_Payment_Gateway';
+    $gateways[] = 'WC_Gateway_CoinSub';
     return $gateways;
 }
 

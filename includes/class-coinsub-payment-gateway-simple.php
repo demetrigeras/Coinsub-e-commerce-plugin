@@ -40,8 +40,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
-        add_action('init', array($this, 'add_coinsub_order_status'));
-        add_filter('wc_order_statuses', array($this, 'add_coinsub_order_status_to_woocommerce'));
     }
     
     /**
@@ -447,37 +445,5 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             ),
             'note' => __('Remember: You pay gas fees for the refund transaction', 'coinsub')
         );
-    }
-    
-    /**
-     * Add custom order status
-     */
-    public function add_coinsub_order_status() {
-        register_post_status('wc-pending-coinsub', array(
-            'label' => _x('Pending CoinSub Payment', 'Order status', 'coinsub'),
-            'public' => false,
-            'exclude_from_search' => false,
-            'show_in_admin_all_list' => true,
-            'show_in_admin_status_list' => true,
-            'label_count' => _n_noop('Pending CoinSub Payment <span class="count">(%s)</span>', 'Pending CoinSub Payment <span class="count">(%s)</span>', 'coinsub')
-        ));
-        
-        register_post_status('wc-refund-pending', array(
-            'label' => _x('Refund Pending', 'Order status', 'coinsub'),
-            'public' => false,
-            'exclude_from_search' => false,
-            'show_in_admin_all_list' => true,
-            'show_in_admin_status_list' => true,
-            'label_count' => _n_noop('Refund Pending <span class="count">(%s)</span>', 'Refund Pending <span class="count">(%s)</span>', 'coinsub')
-        ));
-    }
-    
-    /**
-     * Add custom order status to WooCommerce
-     */
-    public function add_coinsub_order_status_to_woocommerce($order_statuses) {
-        $order_statuses['wc-pending-coinsub'] = _x('Pending CoinSub Payment', 'Order status', 'coinsub');
-        $order_statuses['wc-refund-pending'] = _x('Refund Pending', 'Order status', 'coinsub');
-        return $order_statuses;
     }
 }
