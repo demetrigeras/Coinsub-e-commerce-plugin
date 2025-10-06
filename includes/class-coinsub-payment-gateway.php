@@ -26,6 +26,15 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
         $this->method_title = __('CoinSub', 'coinsub-commerce');
         $this->method_description = __('Accept cryptocurrency payments with CoinSub', 'coinsub-commerce');
         
+        // Declare supported features
+        $this->supports = array(
+            'products',
+            'refunds', // Manual refunds only via smart contracts
+        );
+        
+        // Declare HPOS compatibility for this gateway
+        add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
+        
         // Load the settings
         $this->init_form_fields();
         $this->init_settings();
@@ -195,6 +204,15 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
         );
     }
     
+    /**
+     * Declare HPOS compatibility
+     */
+    public function declare_hpos_compatibility() {
+        if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+            \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', COINSUB_PLUGIN_FILE, true);
+        }
+    }
+
     /**
      * Process the payment and return the result
      */
@@ -538,6 +556,15 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
             'show_in_admin_status_list' => true,
             'label_count' => _n_noop('Pending CoinSub Payment <span class="count">(%s)</span>', 'Pending CoinSub Payment <span class="count">(%s)</span>', 'coinsub-commerce')
         ));
+        
+        register_post_status('wc-refund-pending', array(
+            'label' => _x('Refund Pending', 'Order status', 'coinsub-commerce'),
+            'public' => false,
+            'exclude_from_search' => false,
+            'show_in_admin_all_list' => true,
+            'show_in_admin_status_list' => true,
+            'label_count' => _n_noop('Refund Pending <span class="count">(%s)</span>', 'Refund Pending <span class="count">(%s)</span>', 'coinsub-commerce')
+        ));
     }
     
     /**
@@ -545,6 +572,7 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
      */
     public function add_coinsub_order_status_to_woocommerce($order_statuses) {
         $order_statuses['wc-pending-coinsub'] = _x('Pending CoinSub Payment', 'Order status', 'coinsub-commerce');
+        $order_statuses['wc-refund-pending'] = _x('Refund Pending', 'Order status', 'coinsub-commerce');
         return $order_statuses;
     }
     
@@ -572,5 +600,47 @@ class CoinSub_Payment_Gateway extends WC_Payment_Gateway {
         }
         
         return true;
+    }
+    
+    /**
+     * Process refunds (Manual only - CoinSub uses smart contracts)
+     */
+    public function process_refund($order_id, $amount = null, $reason = '') {
+        $order = wc_get_order($order_id);
+        
+        if (!$order) {
+            return new WP_Error('invalid_order', __('Invalid order.', 'coinsub-commerce'));
+        }
+        
+        // CoinSub uses smart contracts for one-time payments
+        // Refunds must be processed manually by the merchant
+        $refund_note = sprintf(
+            __('Manual Refund Required: %s. Reason: %s. Please process this refund manually through your CoinSub dashboard or smart contract interface.', 'coinsub-commerce'),
+            wc_price($amount),
+            $reason
+        );
+        
+        $order->add_order_note($refund_note);
+        
+        // Update order status to indicate refund is pending manual processing
+        $order->update_status('refund-pending', __('Refund pending manual processing via CoinSub smart contract.', 'coinsub-commerce'));
+        
+        // Return false to indicate this requires manual processing
+        return new WP_Error('manual_refund_required', __('Refund requires manual processing through CoinSub smart contract. Please handle this refund manually.', 'coinsub-commerce'));
+    }
+    
+    /**
+     * Validate the payment form
+     */
+    public function validate_fields() {
+        return true;
+    }
+    
+    /**
+     * Get payment method icon
+     */
+    public function get_icon() {
+        $icon_html = '<img src="' . esc_url(COINSUB_PLUGIN_URL . 'assets/images/coinsub-logo.png') . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; height: auto;" />';
+        return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
     }
 }

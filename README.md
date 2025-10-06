@@ -2,7 +2,41 @@
 
 Accept cryptocurrency payments with CoinSub. This plugin integrates CoinSub's payment gateway with WooCommerce, supporting flexible shipping and tax configurations.
 
-## Features
+## 🚀 Quick Start
+
+### 1. Install Plugins
+- **Main Plugin**: Upload `coinsub-commerce.zip` to WordPress
+- **Shipping Plugin**: Upload `coinsub-shipping-method.zip` to WordPress
+- **Activate both plugins**
+
+### 2. Configure Settings
+- **Go to**: WooCommerce → Settings → Payments → CoinSub
+- **Add your API credentials**:
+  - Merchant ID
+  - API Key
+- **Configure shipping and tax** settings
+
+### 3. Test Your Store
+- **Follow**: `merchant-testing-guide.md`
+- **Set up local WordPress**: `quick-local-setup.md`
+
+## 📦 What's Included
+
+### **Core Plugin Files:**
+- `coinsub-commerce.php` - Main plugin file
+- `coinsub-commerce.zip` - Ready-to-install package
+- `includes/` - Plugin classes and functionality
+
+### **Shipping Plugin:**
+- `coinsub-shipping-method.php` - Shipping method plugin
+- `coinsub-shipping-method.zip` - Ready-to-install package
+
+### **Documentation:**
+- `README.md` - This file
+- `merchant-testing-guide.md` - Complete merchant testing guide
+- `quick-local-setup.md` - Local WordPress setup instructions
+
+## 🔧 Features
 
 - ✅ **Cryptocurrency Payments**: Accept USDC and other stablecoins
 - ✅ **Flexible Shipping & Tax**: Configure what to include in crypto payments
@@ -12,32 +46,29 @@ Accept cryptocurrency payments with CoinSub. This plugin integrates CoinSub's pa
 - ✅ **Auto URL Opening**: Checkout URLs open automatically
 - ✅ **Low-cost Testing**: Optimized for testing with small amounts
 
-## Requirements
+## 📋 Requirements
 
 - WordPress 5.0 or higher
 - WooCommerce 5.0 or higher
 - PHP 7.4 or higher
 
-## Installation
+## 🚀 Installation
 
 ### Method 1: Upload Plugin Files
-
-1. **Download the plugin files** to your computer
+1. **Download the plugin files**
 2. **Upload to WordPress**:
    - Go to WordPress Admin → Plugins → Add New → Upload Plugin
-   - Select the `coinsub-commerce.zip` file
+   - Select the plugin ZIP file
    - Click "Install Now" and then "Activate"
 
 ### Method 2: Manual Installation
-
 1. **Upload files** to `/wp-content/plugins/coinsub-commerce/` directory
 2. **Activate the plugin** through the 'Plugins' menu in WordPress
 3. **Configure settings** in WooCommerce → Settings → Payments → CoinSub
 
-## Configuration
+## ⚙️ Configuration
 
 ### 1. Basic Settings
-
 1. Go to **WooCommerce → Settings → Payments**
 2. Find **CoinSub** and click **Manage**
 3. Configure the following:
@@ -54,7 +85,6 @@ Accept cryptocurrency payments with CoinSub. This plugin integrates CoinSub's pa
 - **Tax Payment Method**: How to handle tax when not in crypto
 
 ### 2. Webhook Setup
-
 1. **Copy the Webhook URL** from the plugin settings
 2. **Configure in CoinSub Dashboard**:
    - Go to your CoinSub merchant dashboard
@@ -62,32 +92,13 @@ Accept cryptocurrency payments with CoinSub. This plugin integrates CoinSub's pa
    - Add the webhook URL: `https://yoursite.com/wp-json/coinsub/v1/webhook`
    - Set event type to "Payment Completed"
 
-### 3. Test Configuration
+### 3. Shipping Setup
+1. Go to **WooCommerce → Settings → Shipping**
+2. **Add shipping zones** (US, Europe, etc.)
+3. **Add CoinSub Shipping method** to each zone
+4. **Set shipping costs** and thresholds
 
-1. **Enable Test Mode** in plugin settings
-2. **Create a test product** with small price (e.g., $0.01)
-3. **Place a test order** and complete payment
-4. **Verify webhook** receives payment notification
-5. **Check order status** updates to "Completed"
-
-## Payment Configurations
-
-### All-in-Crypto (Default)
-- Customer pays everything in cryptocurrency
-- Products + Shipping + Tax all in crypto
-- Simplest for customers
-
-### Hybrid Payment
-- Customer pays products in crypto
-- Shipping/tax handled separately
-- More flexible for merchants
-
-### Merchant-Covered
-- Customer pays products in crypto
-- Merchant covers shipping/tax from crypto revenue
-- Good for customer experience
-
-## Testing
+## 🧪 Testing
 
 ### Test with Small Amounts
 - Use $0.01 for products
@@ -102,7 +113,7 @@ Accept cryptocurrency payments with CoinSub. This plugin integrates CoinSub's pa
 4. Complete payment on CoinSub
 5. Verify order status updates
 
-## Troubleshooting
+## 🚨 Troubleshooting
 
 ### Common Issues
 
@@ -129,13 +140,13 @@ define('WP_DEBUG', true);
 define('WP_DEBUG_LOG', true);
 ```
 
-## Support
+## 📞 Support
 
 - **Documentation**: [CoinSub Documentation](https://docs.coinsub.io)
 - **Support**: [CoinSub Support](https://support.coinsub.io)
 - **GitHub**: [Plugin Repository](https://github.com/coinsub/woocommerce-plugin)
 
-## Changelog
+## 📝 Changelog
 
 ### Version 1.0.0
 - Initial release
@@ -145,10 +156,10 @@ define('WP_DEBUG_LOG', true);
 - Auto URL opening
 - Flexible payment methods
 
-## License
+## 📄 License
 
 This plugin is licensed under the GPL v2 or later.
 
-## Credits
+## 👥 Credits
 
 Developed by CoinSub for the WooCommerce community.
