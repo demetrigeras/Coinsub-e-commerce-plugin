@@ -84,6 +84,23 @@ function coinsub_add_payment_gateway($gateways) {
 }
 
 /**
+ * Initialize the payment gateway
+ */
+function coinsub_init_payment_gateway() {
+    if (class_exists('WC_Gateway_CoinSub')) {
+        new WC_Gateway_CoinSub();
+    }
+}
+
+/**
+ * Add CoinSub gateway to WooCommerce gateways
+ */
+function coinsub_add_gateway_class($methods) {
+    $methods[] = 'WC_Gateway_CoinSub';
+    return $methods;
+}
+
+/**
  * Plugin activation
  */
 function coinsub_commerce_activate() {
@@ -108,7 +125,7 @@ function coinsub_commerce_deactivate() {
 
 // Hook into WordPress
 add_action('plugins_loaded', 'coinsub_commerce_init');
-add_filter('woocommerce_payment_gateways', 'coinsub_add_payment_gateway');
+add_filter('woocommerce_payment_gateways', 'coinsub_add_gateway_class');
 add_action('before_woocommerce_init', 'coinsub_commerce_declare_hpos_compatibility');
 add_action('init', 'coinsub_commerce_declare_compatibility');
 

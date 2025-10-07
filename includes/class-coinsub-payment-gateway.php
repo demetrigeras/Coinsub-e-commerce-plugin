@@ -40,8 +40,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
+        add_action('wp_head', array($this, 'add_payment_button_styles'));
         add_action('init', array($this, 'add_coinsub_order_status'));
         add_filter('wc_order_statuses', array($this, 'add_coinsub_order_status_to_woocommerce'));
+        add_filter('woocommerce_order_button_text', array($this, 'get_order_button_text'));
     }
     
     /**
@@ -419,6 +421,76 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
+     * Customize the payment button text
+     */
+    public function get_order_button_text() {
+        return __('Pay with Crypto', 'coinsub');
+    }
+    
+    /**
+     * Add custom CSS for the payment button
+     */
+    public function add_payment_button_styles() {
+        if (is_checkout()) {
+            ?>
+            <style>
+            .woocommerce-checkout .payment_method_coinsub .payment_box {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: 2px solid #667eea;
+                border-radius: 8px;
+                padding: 20px;
+                margin: 10px 0;
+            }
+            
+            .woocommerce-checkout .payment_method_coinsub .payment_box::before {
+                content: "🚀";
+                font-size: 24px;
+                margin-right: 10px;
+            }
+            
+            .woocommerce-checkout .payment_method_coinsub label {
+                font-weight: bold;
+                font-size: 16px;
+                color: white;
+            }
+            
+            .woocommerce-checkout .payment_method_coinsub .payment_box p {
+                color: white;
+                margin: 10px 0;
+            }
+            
+            #place_order {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                border: none !important;
+                color: white !important;
+                font-weight: bold !important;
+                font-size: 18px !important;
+                padding: 15px 30px !important;
+                border-radius: 8px !important;
+                text-transform: uppercase !important;
+                letter-spacing: 1px !important;
+                box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+                transition: all 0.3s ease !important;
+            }
+            
+            #place_order:hover {
+                transform: translateY(-2px) !important;
+                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6) !important;
+            }
+            
+            .woocommerce-checkout .payment_method_coinsub {
+                background: #f8f9fa;
+                border: 2px solid #e9ecef;
+                border-radius: 8px;
+                margin: 10px 0;
+            }
+            </style>
+            <?php
+        }
+    }
+    
+    /**
      * Add refund transaction hash (for manual refunds)
      */
     public function add_refund_transaction_hash($order_id, $transaction_hash) {
@@ -479,5 +551,28 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $order_statuses['wc-pending-coinsub'] = _x('Pending CoinSub Payment', 'Order status', 'coinsub');
         $order_statuses['wc-refund-pending'] = _x('Refund Pending', 'Order status', 'coinsub');
         return $order_statuses;
+    }
+    
+    /**
+     * Check if the gateway is available
+     */
+    public function is_available() {
+        // Debug: Log availability check
+        error_log('CoinSub Gateway - is_available() called');
+        error_log('CoinSub Gateway - enabled: ' . $this->enabled);
+        error_log('CoinSub Gateway - merchant_id: ' . $this->get_option('merchant_id'));
+        
+        if ($this->enabled === 'no') {
+            error_log('CoinSub Gateway - Not available: disabled');
+            return false;
+        }
+        
+        if (empty($this->get_option('merchant_id'))) {
+            error_log('CoinSub Gateway - Not available: no merchant ID');
+            return false;
+        }
+        
+        error_log('CoinSub Gateway - Available: true');
+        return true;
     }
 }
