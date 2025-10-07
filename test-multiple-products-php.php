@@ -59,7 +59,7 @@ function createMultipleProducts() {
         [
             "name" => "Premium T-Shirt",
             "description" => "High-quality cotton t-shirt",
-            "price" => 0.01,
+            "price" => 0.03,
             "currency" => "USD",
             "metadata" => [
                 "woocommerce_product_id" => "prod_001",
@@ -187,11 +187,18 @@ function createMultiProductPurchaseSession($orderId, $products) {
         ];
     }
     
+    // Calculate breakdown with shipping and taxes
+    $subtotal = $total;
+    $shippingCost = 0.005; // $0.005 USD shipping
+    $taxRate = 0.0825; // 8.25% tax rate
+    $taxAmount = round($subtotal * $taxRate, 4);
+    $grandTotal = $subtotal + $shippingCost + $taxAmount;
+    
     $sessionData = [
         "name" => "WooCommerce Order: " . implode(" + ", $productNames),
-        "details" => "Payment for WooCommerce order with " . count($products) . " products",
+        "details" => "Payment for WooCommerce order with " . count($products) . " products | Shipping: $" . number_format($shippingCost, 4) . " | Tax: $" . number_format($taxAmount, 4),
         "currency" => "USD",
-        "amount" => $total,
+        "amount" => $grandTotal, // Total including products + shipping + tax
         "recurring" => false,
         "success_url" => "",
         "cancel_url" => "",
@@ -202,13 +209,31 @@ function createMultiProductPurchaseSession($orderId, $products) {
             "individual_products" => $productNames,
             "product_count" => count($products),
             "products" => $productDetails,
-            "total_amount" => $total,
+            "order_breakdown" => [
+                "subtotal" => $subtotal,
+                "shipping" => [
+                    "method" => "Standard Shipping",
+                    "cost" => $shippingCost
+                ],
+                "tax" => [
+                    "rate" => ($taxRate * 100) . "%",
+                    "amount" => $taxAmount
+                ],
+                "total" => $grandTotal
+            ],
+            "total_amount" => $grandTotal,
+            "subtotal_amount" => $subtotal,
+            "shipping_cost" => $shippingCost,
+            "tax_amount" => $taxAmount,
             "total_items" => count($products)
         ]
     ];
     
     echo "   Order Name: " . $sessionData['name'] . "\n";
-    echo "   Total Amount: $" . number_format($total, 2) . "\n";
+    echo "   Product Subtotal: $" . number_format($subtotal, 4) . "\n";
+    echo "   Shipping Cost: $" . number_format($shippingCost, 4) . "\n";
+    echo "   Tax Amount: $" . number_format($taxAmount, 4) . "\n";
+    echo "   Grand Total: $" . number_format($grandTotal, 4) . "\n";
     echo "   Product Count: " . count($products) . "\n";
     echo "   Sending data: " . json_encode($sessionData, JSON_PRETTY_PRINT) . "\n";
     
@@ -246,11 +271,18 @@ function createMultiProductPurchaseSession($orderId, $products) {
         
         if ($checkoutResult['status_code'] == 200) {
             echo "   ✅ Multi-product order successfully linked to purchase session\n";
+            
+            // Calculate totals for return
+            global $sessionData;
+            
             return [
                 'purchase_session_id' => $purchaseSessionId,
                 'checkout_url' => $checkoutUrl,
                 'original_id' => $responseData['data']['purchase_session_id'] ?? null,
-                'total' => $total,
+                'subtotal' => $total,
+                'shipping' => 0.005,
+                'tax' => round($total * 0.0825, 4),
+                'total' => $total + 0.005 + round($total * 0.0825, 4),
                 'product_count' => count($products)
             ];
         } else {
@@ -291,7 +323,10 @@ function main() {
     echo "\n" . str_repeat("=", 60) . "\n";
     echo "🎉 Multi-Product Test Completed Successfully!\n";
     echo "📦 Products Created: " . $sessionResult['product_count'] . "\n";
-    echo "💰 Total Amount: $" . number_format($sessionResult['total'], 2) . "\n";
+    echo "💵 Product Subtotal: $" . number_format($sessionResult['subtotal'], 4) . "\n";
+    echo "📦 Shipping Cost: $" . number_format($sessionResult['shipping'], 4) . "\n";
+    echo "💸 Tax Amount: $" . number_format($sessionResult['tax'], 4) . "\n";
+    echo "💰 Grand Total: $" . number_format($sessionResult['total'], 4) . "\n";
     echo "🛒 Order ID: " . $orderId . "\n";
     echo "💳 Purchase Session ID: " . $sessionResult['purchase_session_id'] . "\n";
     echo "🔗 Checkout URL: " . $sessionResult['checkout_url'] . "\n";

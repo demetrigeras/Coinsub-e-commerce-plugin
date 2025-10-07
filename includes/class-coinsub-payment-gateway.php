@@ -174,7 +174,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $order->save();
             
             // Update order status
-            $order->update_status('pending-coinsub', __('Awaiting CoinSub payment', 'coinsub'));
+            $order->update_status('pending-coinsub', __('⏳ Waiting for crypto payment confirmation', 'coinsub'));
             
             // Empty cart
             WC()->cart->empty_cart();
@@ -286,12 +286,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             ? 'WooCommerce Order: ' . implode(' + ', array_slice($product_names, 0, 3)) . (count($product_names) > 3 ? ' + ' . (count($product_names) - 3) . ' more' : '')
             : 'WooCommerce Order: ' . ($product_names[0] ?? 'Payment');
         
-        // Simple: Use total order amount (merchant handles shipping/tax separately)
+        // Get order totals breakdown
+        $subtotal = (float) $order->get_subtotal();
+        $shipping_total = (float) $order->get_shipping_total();
+        $tax_total = (float) $order->get_total_tax();
         $total_amount = (float) $order->get_total();
+        
+        // Build details string with breakdown
+        $details_parts = ['Payment for WooCommerce order #' . $order->get_order_number() . ' with ' . count($product_details) . ' product(s)'];
+        if ($shipping_total > 0) {
+            $details_parts[] = 'Shipping: $' . number_format($shipping_total, 2);
+        }
+        if ($tax_total > 0) {
+            $details_parts[] = 'Tax: $' . number_format($tax_total, 2);
+        }
+        $details_string = implode(' | ', $details_parts);
         
         return array(
             'name' => $order_name,
-            'details' => 'Payment for WooCommerce order #' . $order->get_order_number() . ' with ' . count($product_details) . ' product(s)',
+            'details' => $details_string,
             'currency' => $order->get_currency(),
             'amount' => $total_amount,
             'recurring' => false,
@@ -306,7 +319,45 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'total_items' => $total_items,
                 'products' => $product_details,
                 'currency' => $order->get_currency(),
-                'total_amount' => $total_amount
+                'order_breakdown' => array(
+                    'subtotal' => $subtotal,
+                    'shipping' => array(
+                        'method' => $order->get_shipping_method(),
+                        'cost' => $shipping_total
+                    ),
+                    'tax' => array(
+                        'amount' => $tax_total
+                    ),
+                    'total' => $total_amount
+                ),
+                'subtotal_amount' => $subtotal,
+                'shipping_cost' => $shipping_total,
+                'tax_amount' => $tax_total,
+                'total_amount' => $total_amount,
+                'billing_address' => array(
+                    'first_name' => $order->get_billing_first_name(),
+                    'last_name' => $order->get_billing_last_name(),
+                    'company' => $order->get_billing_company(),
+                    'address_1' => $order->get_billing_address_1(),
+                    'address_2' => $order->get_billing_address_2(),
+                    'city' => $order->get_billing_city(),
+                    'state' => $order->get_billing_state(),
+                    'postcode' => $order->get_billing_postcode(),
+                    'country' => $order->get_billing_country(),
+                    'email' => $order->get_billing_email(),
+                    'phone' => $order->get_billing_phone()
+                ),
+                'shipping_address' => array(
+                    'first_name' => $order->get_shipping_first_name(),
+                    'last_name' => $order->get_shipping_last_name(),
+                    'company' => $order->get_shipping_company(),
+                    'address_1' => $order->get_shipping_address_1(),
+                    'address_2' => $order->get_shipping_address_2(),
+                    'city' => $order->get_shipping_city(),
+                    'state' => $order->get_shipping_state(),
+                    'postcode' => $order->get_shipping_postcode(),
+                    'country' => $order->get_shipping_country()
+                )
             ),
             'success_url' => "",
             'cancel_url' => ""

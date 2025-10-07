@@ -133,7 +133,8 @@ class CoinSub_Webhook_Handler {
      * Handle payment completed
      */
     private function handle_payment_completed($order, $data) {
-        $order->update_status('processing', __('Payment completed via CoinSub', 'coinsub'));
+        // Update order status - payment is complete!
+        $order->update_status('processing', __('Payment Complete', 'coinsub'));
         
         // Add order note with transaction details
         $transaction_details = $data['transaction_details'] ?? array();
@@ -142,8 +143,7 @@ class CoinSub_Webhook_Handler {
         
         $order->add_order_note(
             sprintf(
-                __('CoinSub payment completed. Transaction ID: %s, Hash: %s', 'coinsub'),
-                $transaction_id,
+                __('CoinSub Payment Complete - Transaction Hash: %s', 'coinsub'),
                 $transaction_hash
             )
         );
@@ -173,19 +173,22 @@ class CoinSub_Webhook_Handler {
         
         // Send order completion emails
         WC()->mailer()->emails['WC_Email_Customer_Processing_Order']->trigger($order->get_id());
+        
+        // Log payment confirmation
+        error_log('CoinSub Webhook: PAYMENT COMPLETE for order #' . $order->get_id() . ' | Transaction Hash: ' . ($transaction_hash ?? 'N/A'));
     }
     
     /**
      * Handle payment failed
      */
     private function handle_payment_failed($order, $data) {
-        $order->update_status('failed', __('Payment failed via CoinSub', 'coinsub'));
+        $order->update_status('failed', __('Payment Failed', 'coinsub'));
         
         // Add order note
         $failure_reason = $data['failure_reason'] ?? 'Unknown';
         $order->add_order_note(
             sprintf(
-                __('CoinSub payment failed. Reason: %s', 'coinsub'),
+                __('CoinSub Payment Failed - Reason: %s', 'coinsub'),
                 $failure_reason
             )
         );
@@ -202,10 +205,10 @@ class CoinSub_Webhook_Handler {
      * Handle payment cancelled
      */
     private function handle_payment_cancelled($order, $data) {
-        $order->update_status('cancelled', __('Payment cancelled via CoinSub', 'coinsub'));
+        $order->update_status('cancelled', __('Payment Cancelled', 'coinsub'));
         
         // Add order note
-        $order->add_order_note(__('CoinSub payment was cancelled by customer', 'coinsub'));
+        $order->add_order_note(__('CoinSub Payment Cancelled - Customer cancelled the payment', 'coinsub'));
         
         $order->save();
     }
