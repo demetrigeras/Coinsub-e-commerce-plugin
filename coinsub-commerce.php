@@ -67,15 +67,6 @@ function coinsub_commerce_declare_hpos_compatibility() {
 }
 
 /**
- * Declare HPOS compatibility on init
- */
-function coinsub_commerce_declare_compatibility() {
-    if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
-        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
-    }
-}
-
-/**
  * Add CoinSub payment gateway to WooCommerce
  */
 function coinsub_add_payment_gateway($gateways) {
@@ -127,7 +118,6 @@ function coinsub_commerce_deactivate() {
 add_action('plugins_loaded', 'coinsub_commerce_init');
 add_filter('woocommerce_payment_gateways', 'coinsub_add_gateway_class');
 add_action('before_woocommerce_init', 'coinsub_commerce_declare_hpos_compatibility');
-add_action('init', 'coinsub_commerce_declare_compatibility');
 
 // Activation and deactivation hooks
 register_activation_hook(__FILE__, 'coinsub_commerce_activate');
