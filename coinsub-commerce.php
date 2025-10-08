@@ -54,14 +54,16 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-webhook-handler.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-order-manager.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-logs.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-test.php';
     
     // Initialize components
     new CoinSub_Webhook_Handler();
     new CoinSub_Order_Manager();
     
-    // Initialize admin log viewer (only in admin)
+    // Initialize admin tools (only in admin)
     if (is_admin()) {
         new CoinSub_Admin_Logs();
+        new CoinSub_Admin_Test();
     }
 }
 
