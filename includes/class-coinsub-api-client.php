@@ -128,12 +128,10 @@ class CoinSub_API_Client {
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key,
+            
         );
-        
-        if (!empty($this->api_key)) {
-            $headers['Authorization'] = 'Bearer ' . $this->api_key;
-        }
         
         $response = wp_remote_get($endpoint, array(
             'headers' => $headers,
@@ -171,12 +169,10 @@ class CoinSub_API_Client {
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key,
+            
         );
-        
-        if (!empty($this->api_key)) {
-            $headers['Authorization'] = 'Bearer ' . $this->api_key;
-        }
         
         $response = wp_remote_post($endpoint, array(
             'headers' => $headers,
@@ -210,12 +206,10 @@ class CoinSub_API_Client {
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key,
+           
         );
-        
-        if (!empty($this->api_key)) {
-            $headers['Authorization'] = 'Bearer ' . $this->api_key;
-        }
         
         $response = wp_remote_post($endpoint, array(
             'headers' => $headers,
@@ -247,12 +241,10 @@ class CoinSub_API_Client {
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key,
+           
         );
-        
-        if (!empty($this->api_key)) {
-            $headers['Authorization'] = 'Bearer ' . $this->api_key;
-        }
         
         $response = wp_remote_post($endpoint, array(
             'headers' => $headers,
@@ -282,12 +274,10 @@ class CoinSub_API_Client {
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key,
+            
         );
-        
-        if (!empty($this->api_key)) {
-            $headers['Authorization'] = 'Bearer ' . $this->api_key;
-        }
         
         $response = wp_remote_get($endpoint, array(
             'headers' => $headers,
@@ -316,12 +306,10 @@ class CoinSub_API_Client {
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key,
+            
         );
-        
-        if (!empty($this->api_key)) {
-            $headers['Authorization'] = 'Bearer ' . $this->api_key;
-        }
         
         $response = wp_remote_get($endpoint, array(
             'headers' => $headers,

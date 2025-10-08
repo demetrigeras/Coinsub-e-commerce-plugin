@@ -134,6 +134,28 @@ add_action('plugins_loaded', 'coinsub_commerce_init');
 add_filter('woocommerce_payment_gateways', 'coinsub_add_gateway_class');
 add_action('before_woocommerce_init', 'coinsub_commerce_declare_hpos_compatibility');
 
+// Force gateway availability for debugging
+add_filter('woocommerce_available_payment_gateways', 'coinsub_force_availability', 999);
+
+function coinsub_force_availability($gateways) {
+    $page_context = is_checkout() ? 'CHECKOUT' : (is_admin() ? 'ADMIN' : 'OTHER');
+    error_log('🔧 CoinSub - woocommerce_available_payment_gateways filter called on [' . $page_context . ']');
+    error_log('🔧 CoinSub - All available gateways: ' . implode(', ', array_keys($gateways)));
+    error_log('🔧 CoinSub - Total gateways count: ' . count($gateways));
+    
+    if (isset($gateways['coinsub'])) {
+        error_log('🔧 CoinSub - ✅ Gateway IS in available list! CoinSub should be visible!');
+        error_log('🔧 CoinSub - Gateway object type: ' . get_class($gateways['coinsub']));
+        error_log('🔧 CoinSub - Gateway title: ' . $gateways['coinsub']->title);
+        error_log('🔧 CoinSub - Gateway enabled: ' . $gateways['coinsub']->enabled);
+    } else {
+        error_log('🔧 CoinSub - ❌ Gateway NOT in available list! Being filtered out by WooCommerce!');
+        error_log('🔧 CoinSub - This means is_available() returned false OR gateway not registered');
+    }
+    
+    return $gateways;
+}
+
 // Activation and deactivation hooks
 register_activation_hook(__FILE__, 'coinsub_commerce_activate');
 register_deactivation_hook(__FILE__, 'coinsub_commerce_deactivate');

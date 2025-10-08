@@ -440,26 +440,46 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function payment_fields() {
         error_log('🎨 CoinSub - payment_fields() called! Gateway is being rendered!');
+        error_log('🎨 CoinSub - Description: ' . $this->description);
+        error_log('🎨 CoinSub - Title: ' . $this->title);
         
         // Show description
         if ($this->description) {
             echo '<p>' . wp_kses_post($this->description) . '</p>';
         }
         
-        // Show custom styled content
+        // Show custom styled content with JavaScript debug
         ?>
-        <div class="coinsub-payment-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0;">
+        <script>
+        console.log('🚀 CoinSub payment_fields() rendered!');
+        console.log('CoinSub gateway is displaying on the page');
+        </script>
+        <div class="coinsub-payment-box" id="coinsub-payment-box-visible" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; display: block !important; visibility: visible !important; opacity: 1 !important; border: 2px solid #3b82f6;">
+            <!-- CoinSub Logo -->
+            <div style="margin-bottom: 15px;">
+                <div style="display: inline-block; width: 40px; height: 40px; background: white; border-radius: 50%; position: relative; margin-bottom: 8px;">
+                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; background: #1e3a8a; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                        <span style="color: white; font-weight: bold; font-size: 14px;">⚡</span>
+                    </div>
+                </div>
+                <div style="color: white; font-size: 18px; font-weight: bold; margin-bottom: 5px;">
+                    CoinSub
+                </div>
+            </div>
+            
             <div style="color: white; font-size: 16px; margin-bottom: 10px;">
-                <span style="font-size: 24px;">🚀</span><br>
-                <strong>Pay with Crypto</strong>
+                <strong>Pay with Cryptocurrency</strong>
             </div>
             <p style="color: rgba(255,255,255,0.9); font-size: 14px; margin: 10px 0;">
-                Accept USDC and USDT 
+                Accept USDC and USDT payments
             </p>
-            <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 5px; font-size: 12px; color: white;">
-                💳 Secure blockchain payment • ⚡ Fast confirmation
+            <div style="background: rgba(255,255,255,0.15); padding: 12px; border-radius: 6px; font-size: 12px; color: white; margin-top: 10px;">
+                🔐 Secure blockchain payment • ⚡ Fast confirmation • 💎 Low fees
             </div>
         </div>
+        <script>
+        console.log('CoinSub payment box HTML rendered with ID: coinsub-payment-box-visible');
+        </script>
         <?php
     }
     
@@ -529,13 +549,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if (is_checkout()) {
             ?>
             <style>
+            /* Force display CoinSub payment method */
+            .payment_method_coinsub {
+                display: list-item !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                position: relative !important;
+            }
+            
             .woocommerce-checkout .payment_method_coinsub .payment_box {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
                 color: white;
-                border: 2px solid #667eea;
+                border: 2px solid #3b82f6;
                 border-radius: 8px;
                 padding: 20px;
                 margin: 10px 0;
+                display: block !important;
             }
             
             .woocommerce-checkout .payment_method_coinsub .payment_box::before {
@@ -547,7 +576,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             .woocommerce-checkout .payment_method_coinsub label {
                 font-weight: bold;
                 font-size: 16px;
-                color: white;
             }
             
             .woocommerce-checkout .payment_method_coinsub .payment_box p {
@@ -556,7 +584,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
             
             #place_order {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
                 border: none !important;
                 color: white !important;
                 font-weight: bold !important;
@@ -565,22 +593,80 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 border-radius: 8px !important;
                 text-transform: uppercase !important;
                 letter-spacing: 1px !important;
-                box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+                box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4) !important;
                 transition: all 0.3s ease !important;
             }
             
             #place_order:hover {
                 transform: translateY(-2px) !important;
-                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6) !important;
+                box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6) !important;
             }
             
             .woocommerce-checkout .payment_method_coinsub {
-                background: #f8f9fa;
-                border: 2px solid #e9ecef;
+                background: #f8f9fa !important;
+                border: 2px solid #3b82f6 !important;
                 border-radius: 8px;
                 margin: 10px 0;
+                padding: 15px !important;
+                display: list-item !important;
             }
             </style>
+            <script>
+            console.log('🔍 CoinSub Debug - Styles loaded');
+            jQuery(document).ready(function($) {
+                setTimeout(function() {
+                    console.log('🔍 CoinSub Debug - Checking for payment method...');
+                    
+                    // Find the payment methods container with multiple selectors
+                    var paymentUL = $('ul.payment_methods, ul.wc_payment_methods, .woocommerce-checkout-payment ul');
+                    console.log('Payment methods UL found:', paymentUL.length);
+                    
+                    if (paymentUL.length > 0) {
+                        console.log('Payment UL HTML:', paymentUL.html().substring(0, 500));
+                        
+                        var allMethods = paymentUL.find('li');
+                        console.log('Total payment method items:', allMethods.length);
+                        
+                        allMethods.each(function(index) {
+                            var className = $(this).attr('class') || 'no-class';
+                            var inputVal = $(this).find('input[type=radio]').val();
+                            console.log('Method ' + index + ':', className, 'Input value:', inputVal);
+                        });
+                        
+                        // Check specifically for coinsub
+                        var coinsubMethod = paymentUL.find('li.payment_method_coinsub, li[class*="coinsub"], input[value="coinsub"]');
+                        console.log('CoinSub elements found:', coinsubMethod.length);
+                        
+                        if (coinsubMethod.length > 0) {
+                            console.log('✅ FOUND CoinSub!', coinsubMethod.html());
+                        } else {
+                            console.log('❌ CoinSub NOT in list');
+                        }
+                    } else {
+                        console.log('❌ Could not find payment methods UL container at all!');
+                        console.log('Page HTML sample:', $('body').html().substring(0, 1000));
+                    }
+                    
+                    // Check entire page for "coinsub" string
+                    var pageHTML = $('body').html();
+                    var coinsubMentions = (pageHTML.match(/coinsub/gi) || []).length;
+                    console.log('Times "coinsub" appears in page HTML:', coinsubMentions);
+                }, 1000);
+                
+                // Also check on AJAX complete
+                $(document.body).on('updated_checkout', function() {
+                    console.log('🔄 Checkout updated (AJAX) - rechecking...');
+                    setTimeout(function() {
+                        var paymentUL = $('ul.payment_methods, ul.wc_payment_methods');
+                        var coinsubMethod = paymentUL.find('li.payment_method_coinsub');
+                        console.log('CoinSub after AJAX:', coinsubMethod.length > 0 ? 'YES ✅' : 'NO ❌');
+                        if (coinsubMethod.length === 0) {
+                            console.log('Available after AJAX:', paymentUL.find('li').length);
+                        }
+                    }, 500);
+                });
+            });
+            </script>
             <?php
         }
     }
@@ -668,30 +754,50 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
         error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
         
-        // Check cart
-        if (WC()->cart) {
-            error_log('CoinSub - Cart total: ' . WC()->cart->get_total(''));
+        // Check cart (only on frontend)
+        if (!is_admin() && WC()->cart) {
+            error_log('CoinSub - Cart total: $' . WC()->cart->get_total('edit'));
             error_log('CoinSub - Cart has items: ' . (WC()->cart->get_cart_contents_count() > 0 ? 'YES' : 'NO'));
             error_log('CoinSub - Cart currency: ' . get_woocommerce_currency());
-            error_log('CoinSub - Cart needs shipping: ' . (WC()->cart->needs_shipping() ? 'YES' : 'NO'));
-            error_log('CoinSub - Chosen shipping methods: ' . json_encode(WC()->session->get('chosen_shipping_methods')));
+            
+            if (WC()->cart->needs_shipping()) {
+                error_log('CoinSub - Cart needs shipping: YES');
+                
+                // Check if shipping is chosen
+                $chosen_shipping = WC()->session ? WC()->session->get('chosen_shipping_methods') : array();
+                error_log('CoinSub - Chosen shipping methods: ' . json_encode($chosen_shipping));
+                
+                // Check if customer has entered shipping info
+                $customer = WC()->customer;
+                if ($customer) {
+                    error_log('CoinSub - Customer country: ' . $customer->get_shipping_country());
+                    error_log('CoinSub - Customer postcode: ' . $customer->get_shipping_postcode());
+                }
+            } else {
+                error_log('CoinSub - Cart needs shipping: NO');
+            }
         }
         
         // Check if this is actually the checkout page context
         if (is_checkout() && !is_wc_endpoint_url('order-pay')) {
-            error_log('CoinSub - Context: Regular checkout page');
+            error_log('CoinSub - Context: Regular checkout page ✅');
         } elseif (is_wc_endpoint_url('order-pay')) {
             error_log('CoinSub - Context: Order pay page');
         }
         
-        // Always return true for now to force display
+        // Basic validation - always check these first
         if ($this->get_option('enabled') !== 'yes') {
-            error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings');
+            error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings ❌');
             return false;
         }
         
         if (empty($this->get_option('merchant_id'))) {
-            error_log('CoinSub - UNAVAILABLE: No merchant ID configured');
+            error_log('CoinSub - UNAVAILABLE: No merchant ID configured ❌');
+            return false;
+        }
+        
+        if (empty($this->get_option('api_key'))) {
+            error_log('CoinSub - UNAVAILABLE: No API key configured ❌');
             return false;
         }
         
@@ -700,11 +806,20 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('CoinSub - Parent is_available(): ' . ($parent_available ? 'TRUE' : 'FALSE'));
         
         if (!$parent_available) {
-            error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering)');
+            error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering) ❌');
+            error_log('CoinSub - Common reasons: cart empty, order total 0, shipping required but not selected, terms & conditions page not set');
+            
+            // Check specifically for terms & conditions issue
+            $terms_page_id = wc_get_page_id('terms');
+            if (empty($terms_page_id)) {
+                error_log('CoinSub - DIAGNOSIS: Terms & Conditions page is not set! This often blocks payment gateways.');
+                error_log('CoinSub - SOLUTION: Set a Terms & Conditions page in WooCommerce > Settings > Advanced');
+            }
+            
             return false;
         }
         
-        error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅');
+        error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅✅✅');
         return true;
     }
 }
