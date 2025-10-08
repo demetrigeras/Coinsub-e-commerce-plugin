@@ -125,42 +125,56 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Process the payment and return the result
      */
     public function process_payment($order_id) {
+        error_log('🚀 CoinSub - process_payment() called for order #' . $order_id);
+        
         $order = wc_get_order($order_id);
         
         if (!$order) {
+            error_log('❌ CoinSub - Order not found: ' . $order_id);
             return array(
                 'result' => 'failure',
                 'messages' => __('Order not found', 'coinsub')
             );
         }
         
+        error_log('✅ CoinSub - Order found. Starting payment process...');
+        
         try {
+            error_log('📦 CoinSub - Step 1: Creating products in CoinSub...');
             // First, ensure products exist in CoinSub commerce_products table
             $this->ensure_products_exist($order);
+            error_log('✅ CoinSub - Products created/verified');
             
             // Prepare order data for CoinSub commerce_orders table
+            error_log('🛒 CoinSub - Step 2: Creating order in CoinSub...');
             $order_data = $this->prepare_order_data($order);
             
             // Create order in CoinSub commerce_orders table
             $coinsub_order = $this->api_client->create_order($order_data);
+            error_log('✅ CoinSub - Order created: ' . ($coinsub_order['id'] ?? 'unknown'));
             
             if (is_wp_error($coinsub_order)) {
                 throw new Exception($coinsub_order->get_error_message());
             }
             
             // Create purchase session with order details
+            error_log('💳 CoinSub - Step 3: Creating purchase session...');
             $purchase_session_data = $this->prepare_purchase_session_data($order, $coinsub_order);
+            error_log('CoinSub - Session data: ' . json_encode(['amount' => $purchase_session_data['amount'], 'currency' => $purchase_session_data['currency']]));
             $purchase_session = $this->api_client->create_purchase_session($purchase_session_data);
+            error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
             
             if (is_wp_error($purchase_session)) {
                 throw new Exception($purchase_session->get_error_message());
             }
             
             // Checkout the order (link to purchase session)
+            error_log('🔗 CoinSub - Step 4: Linking order to session...');
             $checkout_result = $this->api_client->checkout_order(
                 $coinsub_order['id'],
                 $purchase_session['purchase_session_id']
             );
+            error_log('✅ CoinSub - Order linked to session!');
             
             if (is_wp_error($checkout_result)) {
                 throw new Exception($checkout_result->get_error_message());
@@ -180,7 +194,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             WC()->cart->empty_cart();
             
             // Store checkout URL for automatic opening
-            $this->store_checkout_url($purchase_session['url']);
+            $this->store_checkout_url($purchase_session['checkout_url']);
+            
+            error_log('🎉 CoinSub - Payment process complete! Redirecting to: ' . $purchase_session['checkout_url']);
             
             return array(
                 'result' => 'success',
@@ -188,6 +204,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             );
             
         } catch (Exception $e) {
+            error_log('❌ CoinSub - Payment error: ' . $e->getMessage());
             wc_add_notice(__('Payment error: ', 'coinsub') . $e->getMessage(), 'error');
             return array(
                 'result' => 'failure',
@@ -368,32 +385,27 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Store checkout URL for automatic opening
      */
     private function store_checkout_url($checkout_url) {
-        // Store in PHP session
-        if (!session_id()) {
-            session_start();
-        }
-        $_SESSION['coinsub_checkout_url'] = $checkout_url;
+        // Use WordPress transient instead of PHP session (more reliable)
+        $user_id = get_current_user_id();
+        $session_id = $user_id ? $user_id : session_id();
         
-        // Also store in transient as backup
-        set_transient('coinsub_checkout_url_' . get_current_user_id(), $checkout_url, 300); // 5 minutes
+        set_transient('coinsub_checkout_url_' . $session_id, $checkout_url, 300); // 5 minutes
     }
     
     /**
      * Add checkout script to automatically open CoinSub checkout
      */
     public function add_checkout_script() {
-        if (!session_id()) {
-            session_start();
-        }
+        // Get checkout URL from transient
+        $user_id = get_current_user_id();
+        $session_id = $user_id ? $user_id : session_id();
         
-        $checkout_url = isset($_SESSION['coinsub_checkout_url']) ? $_SESSION['coinsub_checkout_url'] : '';
-        
-        if (empty($checkout_url)) {
-            // Try transient as backup
-            $checkout_url = get_transient('coinsub_checkout_url_' . get_current_user_id());
-        }
+        $checkout_url = get_transient('coinsub_checkout_url_' . $session_id);
         
         if (!empty($checkout_url)) {
+            // Delete transient immediately to prevent duplicate redirects
+            delete_transient('coinsub_checkout_url_' . $session_id);
+            
             ?>
             <script type="text/javascript">
             jQuery(document).ready(function($) {
@@ -407,12 +419,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 setTimeout(function() {
                     $('#coinsub-checkout-notice').fadeOut();
                 }, 10000);
-                
-                // Clear the stored URL
-                <?php
-                unset($_SESSION['coinsub_checkout_url']);
-                delete_transient('coinsub_checkout_url_' . get_current_user_id());
-                ?>
             });
             </script>
             <?php
@@ -609,21 +615,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function is_available() {
         // Debug: Log availability check
-        error_log('CoinSub Gateway - is_available() called');
-        error_log('CoinSub Gateway - enabled: ' . $this->enabled);
-        error_log('CoinSub Gateway - merchant_id: ' . $this->get_option('merchant_id'));
+        error_log('=== CoinSub Gateway - Availability Check ===');
+        error_log('CoinSub - Enabled setting: ' . $this->get_option('enabled'));
+        error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
+        error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
         
-        if ($this->enabled === 'no') {
-            error_log('CoinSub Gateway - Not available: disabled');
+        if ($this->get_option('enabled') !== 'yes') {
+            error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings');
             return false;
         }
         
         if (empty($this->get_option('merchant_id'))) {
-            error_log('CoinSub Gateway - Not available: no merchant ID');
+            error_log('CoinSub - UNAVAILABLE: No merchant ID configured');
             return false;
         }
         
-        error_log('CoinSub Gateway - Available: true');
+        error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅');
         return true;
     }
 }

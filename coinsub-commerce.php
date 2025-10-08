@@ -52,9 +52,17 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-api-client.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-payment-gateway.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-webhook-handler.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-order-manager.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-logs.php';
     
-    // Initialize webhook handler
+    // Initialize components
     new CoinSub_Webhook_Handler();
+    new CoinSub_Order_Manager();
+    
+    // Initialize admin log viewer (only in admin)
+    if (is_admin()) {
+        new CoinSub_Admin_Logs();
+    }
 }
 
 /**
@@ -87,7 +95,10 @@ function coinsub_init_payment_gateway() {
  * Add CoinSub gateway to WooCommerce gateways
  */
 function coinsub_add_gateway_class($methods) {
+    error_log('🔧 CoinSub - Registering payment gateway class');
+    error_log('🔧 CoinSub - WC_Gateway_CoinSub class exists: ' . (class_exists('WC_Gateway_CoinSub') ? 'YES' : 'NO'));
     $methods[] = 'WC_Gateway_CoinSub';
+    error_log('🔧 CoinSub - Gateway added to methods array. Total gateways: ' . count($methods));
     return $methods;
 }
 
