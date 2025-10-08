@@ -97,8 +97,10 @@ function coinsub_init_payment_gateway() {
 function coinsub_add_gateway_class($methods) {
     error_log('🔧 CoinSub - Registering payment gateway class');
     error_log('🔧 CoinSub - WC_Gateway_CoinSub class exists: ' . (class_exists('WC_Gateway_CoinSub') ? 'YES' : 'NO'));
+    error_log('🔧 CoinSub - Existing gateways: ' . implode(', ', $methods));
     $methods[] = 'WC_Gateway_CoinSub';
     error_log('🔧 CoinSub - Gateway added to methods array. Total gateways: ' . count($methods));
+    error_log('🔧 CoinSub - Updated gateways: ' . implode(', ', $methods));
     return $methods;
 }
 

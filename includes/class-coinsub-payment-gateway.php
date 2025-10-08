@@ -17,21 +17,37 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Constructor
      */
     public function __construct() {
+        error_log('🏗️ CoinSub - Gateway constructor called');
+        
         $this->id = 'coinsub';
         $this->icon = COINSUB_PLUGIN_URL . 'assets/images/coinsub-logo.png';
-        $this->has_fields = false;
+        $this->has_fields = true; // Enable custom payment box
         $this->method_title = __('CoinSub', 'coinsub');
         $this->method_description = __('Accept cryptocurrency payments with CoinSub', 'coinsub');
         
         // Declare supported features
         $this->supports = array(
-            'products',
-            'refunds', // Manual refunds only via smart contracts
+            'products'
         );
+        
+        error_log('🏗️ CoinSub - Supports: ' . json_encode($this->supports));
         
         // Load settings
         $this->init_form_fields();
         $this->init_settings();
+        
+        // Get settings for debugging
+        $this->title = $this->get_option('title', 'CoinSub');
+        $this->description = $this->get_option('description', 'Pay with cryptocurrency');
+        $this->enabled = $this->get_option('enabled', 'yes');
+        
+        error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
+        error_log('🏗️ CoinSub - Constructor - Title: ' . $this->title);
+        error_log('🏗️ CoinSub - Constructor - Description: ' . $this->description);
+        error_log('🏗️ CoinSub - Constructor - Enabled: ' . $this->enabled);
+        error_log('🏗️ CoinSub - Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
+        error_log('🏗️ CoinSub - Constructor - Method Title: ' . $this->method_title);
+        error_log('🏗️ CoinSub - Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
         
         // Initialize API client
         $this->api_client = new CoinSub_API_Client();
@@ -50,12 +66,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Initialize form fields
      */
     public function init_form_fields() {
+        error_log('🏗️ CoinSub - init_form_fields() called');
         $this->form_fields = array(
             'enabled' => array(
                 'title' => __('Enable/Disable', 'coinsub'),
                 'type' => 'checkbox',
                 'label' => __('Enable CoinSub', 'coinsub'),
-                'default' => 'no'
+                'default' => 'yes'  // ← Changed to 'yes' for testing
             ),
             'title' => array(
                 'title' => __('Title', 'coinsub'),
@@ -69,13 +86,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'type' => 'textarea',
                 'description' => __('This controls the description which the user sees during checkout.', 'coinsub'),
                 'default' => __('Pay with cryptocurrency using CoinSub', 'coinsub'),
-            ),
-            'testmode' => array(
-                'title' => __('Test Mode', 'coinsub'),
-                'type' => 'checkbox',
-                'label' => __('Enable Test Mode', 'coinsub'),
-                'default' => 'yes',
-                'description' => __('Place the payment gateway in test mode using test API keys.', 'coinsub'),
             ),
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
@@ -426,6 +436,34 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
+     * Display payment fields (custom button in payment box)
+     */
+    public function payment_fields() {
+        error_log('🎨 CoinSub - payment_fields() called! Gateway is being rendered!');
+        
+        // Show description
+        if ($this->description) {
+            echo '<p>' . wp_kses_post($this->description) . '</p>';
+        }
+        
+        // Show custom styled content
+        ?>
+        <div class="coinsub-payment-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0;">
+            <div style="color: white; font-size: 16px; margin-bottom: 10px;">
+                <span style="font-size: 24px;">🚀</span><br>
+                <strong>Pay with Crypto</strong>
+            </div>
+            <p style="color: rgba(255,255,255,0.9); font-size: 14px; margin: 10px 0;">
+                Accept USDC and USDT 
+            </p>
+            <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 5px; font-size: 12px; color: white;">
+                💳 Secure blockchain payment • ⚡ Fast confirmation
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
      * Process refunds (Manual crypto transfer required)
      */
     public function process_refund($order_id, $amount = null, $reason = '') {
@@ -611,15 +649,42 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
+     * Check if gateway needs setup
+     */
+    public function needs_setup() {
+        $needs_setup = empty($this->get_option('merchant_id'));
+        error_log('🔧 CoinSub - needs_setup() called. Result: ' . ($needs_setup ? 'YES' : 'NO'));
+        return $needs_setup;
+    }
+    
+    /**
      * Check if the gateway is available
      */
     public function is_available() {
-        // Debug: Log availability check
-        error_log('=== CoinSub Gateway - Availability Check ===');
+        // Debug: Log availability check with context
+        $context = is_checkout() ? 'CHECKOUT PAGE' : (is_admin() ? 'ADMIN' : 'OTHER');
+        error_log('=== CoinSub Gateway - Availability Check [' . $context . '] ===');
         error_log('CoinSub - Enabled setting: ' . $this->get_option('enabled'));
         error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
         error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
         
+        // Check cart
+        if (WC()->cart) {
+            error_log('CoinSub - Cart total: ' . WC()->cart->get_total(''));
+            error_log('CoinSub - Cart has items: ' . (WC()->cart->get_cart_contents_count() > 0 ? 'YES' : 'NO'));
+            error_log('CoinSub - Cart currency: ' . get_woocommerce_currency());
+            error_log('CoinSub - Cart needs shipping: ' . (WC()->cart->needs_shipping() ? 'YES' : 'NO'));
+            error_log('CoinSub - Chosen shipping methods: ' . json_encode(WC()->session->get('chosen_shipping_methods')));
+        }
+        
+        // Check if this is actually the checkout page context
+        if (is_checkout() && !is_wc_endpoint_url('order-pay')) {
+            error_log('CoinSub - Context: Regular checkout page');
+        } elseif (is_wc_endpoint_url('order-pay')) {
+            error_log('CoinSub - Context: Order pay page');
+        }
+        
+        // Always return true for now to force display
         if ($this->get_option('enabled') !== 'yes') {
             error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings');
             return false;
@@ -627,6 +692,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         if (empty($this->get_option('merchant_id'))) {
             error_log('CoinSub - UNAVAILABLE: No merchant ID configured');
+            return false;
+        }
+        
+        // Call parent method to ensure WooCommerce core checks pass
+        $parent_available = parent::is_available();
+        error_log('CoinSub - Parent is_available(): ' . ($parent_available ? 'TRUE' : 'FALSE'));
+        
+        if (!$parent_available) {
+            error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering)');
             return false;
         }
         

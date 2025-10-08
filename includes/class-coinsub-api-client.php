@@ -63,6 +63,8 @@ class CoinSub_API_Client {
      */
     public function create_purchase_session($order_data) {
         $endpoint = $this->api_base_url . '/purchase/session/start';
+        error_log('🌐 CoinSub API - Calling: ' . $endpoint);
+        error_log('🌐 CoinSub API - Amount: ' . $order_data['amount']);
         
         $payload = array(
             'name' => $order_data['name'],
@@ -157,6 +159,8 @@ class CoinSub_API_Client {
      */
     public function create_order($order_data) {
         $endpoint = $this->api_base_url . '/commerce/orders';
+        error_log('🌐 CoinSub API - Creating order at: ' . $endpoint);
+        error_log('🌐 CoinSub API - Order total: ' . $order_data['total']);
         
         $payload = array(
             'items' => $order_data['items'],
@@ -238,6 +242,8 @@ class CoinSub_API_Client {
      */
     public function create_product($product_data) {
         $endpoint = $this->api_base_url . '/commerce/products';
+        error_log('🌐 CoinSub API - Creating product: ' . $product_data['name']);
+        error_log('🌐 CoinSub API - Endpoint: ' . $endpoint);
         
         $headers = array(
             'Content-Type' => 'application/json',
