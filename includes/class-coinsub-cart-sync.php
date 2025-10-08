@@ -2,9 +2,7 @@
 /**
  * CoinSub Cart Synchronization
  * 
- * Handles real-time synchronization of WooCommerce cart with CoinSub orders
- * This ensures CoinSub orders exist BEFORE checkout, so purchase sessions
- * can use the correct price and name from the existing order.
+ * Tracks cart changes in real-time and keeps CoinSub order updated
  */
 
 if (!defined('ABSPATH')) {
@@ -16,70 +14,191 @@ class WC_CoinSub_Cart_Sync {
     private $api_client;
     
     public function __construct() {
-        // Initialize API client
-        require_once plugin_dir_path(__FILE__) . 'class-coinsub-api-client.php';
-        $this->api_client = new WC_CoinSub_API_Client();
+        // Hook into cart events
+        add_action('woocommerce_add_to_cart', array($this, 'on_cart_changed'), 10);
+        add_action('woocommerce_cart_item_removed', array($this, 'on_cart_changed'), 10);
+        add_action('woocommerce_cart_item_restored', array($this, 'on_cart_changed'), 10);
+        add_action('woocommerce_after_cart_item_quantity_update', array($this, 'on_cart_changed'), 10);
         
-        // Hook into cart events to sync products only
-        add_action('woocommerce_add_to_cart', array($this, 'on_add_to_cart'), 10, 6);
-        
-        // Hook into checkout page load - this is when we have shipping/taxes
-        add_action('woocommerce_checkout_init', array($this, 'on_checkout_init'), 10);
-        
-        // Hook into checkout order creation - link WC order to CoinSub order
-        add_action('woocommerce_checkout_order_processed', array($this, 'on_checkout_processed'), 10, 3);
+        // Hook into checkout updates (when shipping/taxes calculated)
+        add_action('woocommerce_checkout_update_order_review', array($this, 'on_checkout_update'), 10);
         
         error_log('🔄 CoinSub Cart Sync - Initialized');
     }
     
     /**
-     * When item is added to cart, ensure product exists in CoinSub
+     * Get API client instance (lazy initialization)
      */
-    public function on_add_to_cart($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
-        error_log('🛒 CoinSub Cart Sync - Item added to cart: Product ID ' . $product_id);
-        
-        // Get the product
-        $product = wc_get_product($product_id);
-        if (!$product) {
-            error_log('❌ CoinSub Cart Sync - Product not found');
-            return;
+    private function get_api_client() {
+        if ($this->api_client === null) {
+            // Check if class exists before instantiating
+            if (!class_exists('CoinSub_API_Client')) {
+                error_log('❌ CoinSub Cart Sync - API Client class not loaded yet');
+                return null;
+            }
+            $this->api_client = new CoinSub_API_Client();
         }
-        
-        // Ensure product exists in CoinSub
-        $this->sync_product($product);
+        return $this->api_client;
     }
     
     /**
-     * When checkout page loads - create/update order with shipping & taxes
-     * This runs AFTER user enters shipping address and totals are calculated
+     * When cart changes (item added, removed, quantity changed)
      */
-    public function on_checkout_init($checkout) {
-        error_log('🛒 CoinSub Cart Sync - Checkout initialized');
-        
-        // We'll sync the order when checkout updates (AJAX) - that's when we have shipping/taxes
-        add_action('woocommerce_checkout_update_order_review', array($this, 'on_checkout_update'), 10, 1);
-    }
-    
-    /**
-     * When checkout is updated via AJAX (shipping address entered, totals recalculated)
-     */
-    public function on_checkout_update($post_data) {
-        error_log('🛒 CoinSub Cart Sync - Checkout updated (shipping/taxes calculated), syncing order...');
+    public function on_cart_changed() {
+        error_log('🛒 CoinSub Cart Sync - Cart changed, updating order...');
         $this->sync_cart_to_order();
     }
     
     /**
-     * Sync a WooCommerce product to CoinSub
+     * When checkout is updated (shipping/taxes calculated)
      */
-    private function sync_product($product) {
-        $product_id = $product->get_id();
+    public function on_checkout_update($post_data) {
+        error_log('🛒 CoinSub Cart Sync - Checkout updated (shipping/taxes), updating order...');
+        $this->sync_cart_to_order();
+    }
+    
+    /**
+     * Sync current cart to CoinSub order (CREATE or UPDATE)
+     */
+    private function sync_cart_to_order() {
+        // Check if WooCommerce is fully loaded
+        if (!function_exists('WC') || !WC()->cart || !WC()->session) {
+            error_log('🛒 CoinSub Cart Sync - WooCommerce not ready, skipping');
+            return;
+        }
         
-        // Check if product already exists in CoinSub
-        $coinsub_product_id = get_post_meta($product_id, '_coinsub_product_id', true);
+        $cart = WC()->cart;
+        
+        if ($cart->is_empty()) {
+            error_log('🛒 CoinSub Cart Sync - Cart is empty, skipping');
+            return;
+        }
+        
+        // Get existing CoinSub order ID from session
+        $coinsub_order_id = WC()->session->get('coinsub_order_id');
+        
+        // Prepare order items - ensure products exist in CoinSub first
+        $items = array();
+        foreach ($cart->get_cart() as $cart_item) {
+            $product = $cart_item['data'];
+            $product_id = $cart_item['product_id'];
+            
+            // Get or create CoinSub product ID
+            $coinsub_product_id = $this->get_or_create_product($product);
+            
+            if (!$coinsub_product_id) {
+                error_log('❌ CoinSub Cart Sync - Failed to get/create product: ' . $product->get_name());
+                continue; // Skip this item
+            }
+            
+            $items[] = array(
+                'product_id' => $coinsub_product_id, // CoinSub product ID
+                'name' => $product->get_name(),
+                'quantity' => (int) $cart_item['quantity'],
+                'price' => (float) $product->get_price()
+            );
+        }
+        
+        if (empty($items)) {
+            error_log('❌ CoinSub Cart Sync - No items to sync');
+            return;
+        }
+        
+        // Calculate totals
+        $subtotal = 0;
+        foreach ($items as $item) {
+            $subtotal += $item['price'] * $item['quantity'];
+        }
+        
+        $shipping = (float) $cart->get_shipping_total();
+        $tax = (float) $cart->get_total_tax();
+        $total = $subtotal + $shipping + $tax;
+        
+        // Ensure total is never 0
+        if ($total <= 0) {
+            $total = $subtotal > 0 ? $subtotal : 0.01; // Minimum $0.01
+        }
+        
+        $order_data = array(
+            'items' => $items,
+            'product_price' => $subtotal,
+            'shipping_cost' => $shipping,
+            'tax_cost' => $tax,
+            'total' => $total,
+            'currency' => get_woocommerce_currency(),
+            'status' => 'cart'
+        );
+        
+        error_log('🛒 CoinSub Cart Sync - Order breakdown:');
+        error_log('  Items: ' . count($items));
+        error_log('  Subtotal: $' . $subtotal);
+        error_log('  Shipping: $' . $shipping);
+        error_log('  Tax: $' . $tax);
+        error_log('  TOTAL: $' . $total);
+        
+        try {
+            $api_client = $this->get_api_client();
+            if (!$api_client) {
+                error_log('❌ CoinSub Cart Sync - API client not available, skipping');
+                return null;
+            }
+            
+            if ($coinsub_order_id) {
+                // UPDATE existing order
+                error_log('🔄 CoinSub Cart Sync - Updating existing order: ' . $coinsub_order_id);
+                $result = $api_client->update_order($coinsub_order_id, $order_data);
+                
+                if ($result && !is_wp_error($result)) {
+                    error_log('✅ CoinSub Cart Sync - Order updated successfully');
+                    return $coinsub_order_id; // Return existing order ID
+                } else {
+                    error_log('❌ CoinSub Cart Sync - Failed to update order (maybe deleted), creating new one...');
+                    // Clear the old order ID from session
+                    WC()->session->set('coinsub_order_id', null);
+                    $coinsub_order_id = null; // Force create new
+                }
+            }
+            
+            if (!$coinsub_order_id) {
+                // CREATE new order
+                error_log('🆕 CoinSub Cart Sync - Creating new order...');
+                $result = $api_client->create_order($order_data);
+                
+                if ($result && isset($result['id']) && !is_wp_error($result)) {
+                    $coinsub_order_id = $result['id'];
+                    WC()->session->set('coinsub_order_id', $coinsub_order_id);
+                    error_log('✅ CoinSub Cart Sync - Order created: ' . $coinsub_order_id);
+                } else {
+                    error_log('❌ CoinSub Cart Sync - Failed to create order');
+                }
+            }
+        } catch (Exception $e) {
+            error_log('❌ CoinSub Cart Sync - Exception: ' . $e->getMessage());
+        } catch (Error $e) {
+            error_log('❌ CoinSub Cart Sync - Fatal Error: ' . $e->getMessage());
+        }
+        
+        return $coinsub_order_id;
+    }
+    
+    /**
+     * Get or create product in CoinSub
+     */
+    private function get_or_create_product($product) {
+        $wc_product_id = $product->get_id();
+        
+        // Check if we already have CoinSub product ID stored
+        $coinsub_product_id = get_post_meta($wc_product_id, '_coinsub_product_id', true);
         
         if ($coinsub_product_id) {
-            error_log('✅ CoinSub Cart Sync - Product already synced: ' . $coinsub_product_id);
+            error_log('✅ CoinSub Cart Sync - Product already exists: ' . $coinsub_product_id);
             return $coinsub_product_id;
+        }
+        
+        // Try to find product in CoinSub by WooCommerce ID
+        $api_client = $this->get_api_client();
+        if (!$api_client) {
+            return null;
         }
         
         // Create product in CoinSub
@@ -88,140 +207,39 @@ class WC_CoinSub_Cart_Sync {
             'description' => $product->get_short_description() ?: $product->get_description(),
             'price' => (float) $product->get_price(),
             'currency' => get_woocommerce_currency(),
-            'woocommerce_id' => $product_id,
-            'sku' => $product->get_sku() ?: 'wc-' . $product_id,
-            'image_url' => wp_get_attachment_url($product->get_image_id())
+            'image_url' => wp_get_attachment_url($product->get_image_id()),
+            'metadata' => json_encode(array(
+                'woocommerce_id' => $wc_product_id,
+                'sku' => $product->get_sku(),
+                'type' => $product->get_type()
+            ))
         );
         
         error_log('📦 CoinSub Cart Sync - Creating product: ' . $product->get_name());
         
-        $result = $this->api_client->create_product($product_data);
-        
-        if ($result && isset($result['id'])) {
-            // Store CoinSub product ID
-            update_post_meta($product_id, '_coinsub_product_id', $result['id']);
-            error_log('✅ CoinSub Cart Sync - Product created: ' . $result['id']);
-            return $result['id'];
-        } else {
-            error_log('❌ CoinSub Cart Sync - Failed to create product');
+        try {
+            $result = $api_client->create_product($product_data);
+            
+            if ($result && isset($result['id']) && !is_wp_error($result)) {
+                $coinsub_product_id = $result['id'];
+                // Store for future use
+                update_post_meta($wc_product_id, '_coinsub_product_id', $coinsub_product_id);
+                error_log('✅ CoinSub Cart Sync - Product created: ' . $coinsub_product_id);
+                return $coinsub_product_id;
+            } else {
+                error_log('❌ CoinSub Cart Sync - Failed to create product');
+                return null;
+            }
+        } catch (Exception $e) {
+            error_log('❌ CoinSub Cart Sync - Product creation exception: ' . $e->getMessage());
             return null;
         }
     }
     
     /**
-     * Sync current cart to CoinSub order
-     * This is the KEY function - it creates/updates the CoinSub order in real-time
-     */
-    private function sync_cart_to_order() {
-        // Get current cart
-        $cart = WC()->cart;
-        
-        if (!$cart || $cart->is_empty()) {
-            error_log('🛒 CoinSub Cart Sync - Cart is empty, skipping sync');
-            return;
-        }
-        
-        // Get or create session-based order ID
-        $session_order_id = WC()->session->get('coinsub_order_id');
-        
-        // Prepare order items
-        $items = array();
-        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
-            $product = $cart_item['data'];
-            $product_id = $cart_item['product_id'];
-            
-            // Ensure product exists in CoinSub
-            $coinsub_product_id = get_post_meta($product_id, '_coinsub_product_id', true);
-            if (!$coinsub_product_id) {
-                $coinsub_product_id = $this->sync_product($product);
-            }
-            
-            if ($coinsub_product_id) {
-                $items[] = array(
-                    'product_id' => $coinsub_product_id,
-                    'quantity' => $cart_item['quantity'],
-                    'price' => (float) $product->get_price()
-                );
-            }
-        }
-        
-        if (empty($items)) {
-            error_log('❌ CoinSub Cart Sync - No valid items to sync');
-            return;
-        }
-        
-        // Calculate totals including shipping and taxes
-        $subtotal = (float) $cart->get_subtotal();
-        $shipping_total = (float) $cart->get_shipping_total();
-        $tax_total = (float) $cart->get_total_tax();
-        $total = (float) $cart->get_total('edit');
-        
-        // Prepare order data with full breakdown
-        $order_data = array(
-            'items' => $items,
-            'subtotal' => $subtotal,
-            'shipping' => $shipping_total,
-            'tax' => $tax_total,
-            'total' => $total,
-            'currency' => get_woocommerce_currency(),
-            'customer_email' => WC()->customer ? WC()->customer->get_email() : '',
-            'status' => 'pending'
-        );
-        
-        error_log('🛒 CoinSub Cart Sync - Order breakdown:');
-        error_log('  - Subtotal: $' . $subtotal);
-        error_log('  - Shipping: $' . $shipping_total);
-        error_log('  - Tax: $' . $tax_total);
-        error_log('  - TOTAL: $' . $total);
-        
-        // Create or update order in CoinSub
-        if ($session_order_id) {
-            // TODO: Add update_order method to API client
-            error_log('🔄 CoinSub Cart Sync - Would update existing order: ' . $session_order_id);
-            // For now, we'll create a new one each time
-        }
-        
-        // Create new order
-        $result = $this->api_client->create_order($order_data);
-        
-        if ($result && isset($result['id'])) {
-            // Store order ID in session
-            WC()->session->set('coinsub_order_id', $result['id']);
-            error_log('✅ CoinSub Cart Sync - Order created/updated: ' . $result['id']);
-            error_log('💰 CoinSub Cart Sync - Order total: $' . $order_data['total']);
-            return $result['id'];
-        } else {
-            error_log('❌ CoinSub Cart Sync - Failed to create order');
-            return null;
-        }
-    }
-    
-    /**
-     * When checkout is processed, ensure we have the final order ready
-     */
-    public function on_checkout_processed($order_id, $posted_data, $order) {
-        error_log('🛒 CoinSub Cart Sync - Checkout processed for WC Order #' . $order_id);
-        
-        // Get the CoinSub order ID from session
-        $coinsub_order_id = WC()->session->get('coinsub_order_id');
-        
-        if ($coinsub_order_id) {
-            // Store CoinSub order ID in WooCommerce order meta
-            $order->update_meta_data('_coinsub_order_id', $coinsub_order_id);
-            $order->save();
-            error_log('✅ CoinSub Cart Sync - Linked WC Order #' . $order_id . ' to CoinSub Order ' . $coinsub_order_id);
-        } else {
-            error_log('⚠️ CoinSub Cart Sync - No CoinSub order found in session');
-        }
-    }
-    
-    /**
-     * Get the current CoinSub order ID for the cart
+     * Get current CoinSub order ID
      */
     public function get_current_order_id() {
         return WC()->session->get('coinsub_order_id');
     }
 }
-
-// Initialize cart sync
-new WC_CoinSub_Cart_Sync();

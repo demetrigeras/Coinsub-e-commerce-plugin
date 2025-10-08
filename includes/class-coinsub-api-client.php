@@ -62,7 +62,8 @@ class CoinSub_API_Client {
      * Create a purchase session
      */
     public function create_purchase_session($order_data) {
-        $endpoint = $this->api_base_url . '/purchase/session/start';
+        // Purchase session uses base v1 URL, not /commerce
+        $endpoint = 'https://dev-api.coinsub.io/v1/purchase/session/start';
         error_log('🌐 CoinSub API - Calling: ' . $endpoint);
         error_log('🌐 CoinSub API - Amount: ' . $order_data['amount']);
         
@@ -164,7 +165,10 @@ class CoinSub_API_Client {
             'items' => $order_data['items'],
             'total' => $order_data['total'],
             'currency' => $order_data['currency'],
-            'status' => 'cart'
+            'status' => isset($order_data['status']) ? $order_data['status'] : 'cart',
+            'shipping_cost' => isset($order_data['shipping_cost']) ? $order_data['shipping_cost'] : (isset($order_data['shipping']) ? $order_data['shipping'] : 0),
+            'tax_cost' => isset($order_data['tax_cost']) ? $order_data['tax_cost'] : (isset($order_data['tax']) ? $order_data['tax'] : 0),
+            'product_price' => isset($order_data['product_price']) ? $order_data['product_price'] : (isset($order_data['subtotal']) ? $order_data['subtotal'] : $order_data['total'])
         );
         
         $headers = array(
@@ -174,6 +178,9 @@ class CoinSub_API_Client {
             
         );
         
+        error_log('🌐 CoinSub API - Request payload: ' . json_encode($payload));
+        error_log('🌐 CoinSub API - Request headers: ' . json_encode($headers));
+        
         $response = wp_remote_post($endpoint, array(
             'headers' => $headers,
             'body' => json_encode($payload),
@@ -181,16 +188,77 @@ class CoinSub_API_Client {
         ));
         
         if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - Order creation network error: ' . $response->get_error_message());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
         $body = wp_remote_retrieve_body($response);
+        $status_code = wp_remote_retrieve_response_code($response);
         $data = json_decode($body, true);
         
-        if (wp_remote_retrieve_response_code($response) !== 201) {
-            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        error_log('🌐 CoinSub API - Order response status: ' . $status_code);
+        error_log('🌐 CoinSub API - Order response body: ' . substr($body, 0, 500));
+        
+        if ($status_code !== 201) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('❌ CoinSub API - Order creation failed: ' . $error_msg);
+            return new WP_Error('api_error', $error_msg);
         }
         
+        error_log('✅ CoinSub API - Order created successfully with ID: ' . ($data['id'] ?? 'unknown'));
+        return $data;
+    }
+    
+    /**
+     * Update an existing order in CoinSub
+     */
+    public function update_order($order_id, $order_data) {
+        $endpoint = $this->api_base_url . '/orders/' . $order_id;
+        error_log('🌐 CoinSub API - Updating order: ' . $order_id);
+        error_log('🌐 CoinSub API - New total: ' . $order_data['total']);
+        
+        $payload = array(
+            'items' => $order_data['items'],
+            'total' => $order_data['total'],
+            'currency' => $order_data['currency'],
+            'status' => $order_data['status'],
+            'shipping_cost' => isset($order_data['shipping_cost']) ? $order_data['shipping_cost'] : 0,
+            'tax_cost' => isset($order_data['tax_cost']) ? $order_data['tax_cost'] : 0,
+            'product_price' => isset($order_data['product_price']) ? $order_data['product_price'] : $order_data['total']
+        );
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key,
+        );
+        
+        $response = wp_remote_request($endpoint, array(
+            'method' => 'PUT',
+            'headers' => $headers,
+            'body' => json_encode($payload),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - Order update network error: ' . $response->get_error_message());
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $status_code = wp_remote_retrieve_response_code($response);
+        $data = json_decode($body, true);
+        
+        error_log('🌐 CoinSub API - Update response status: ' . $status_code);
+        error_log('🌐 CoinSub API - Update response body: ' . substr($body, 0, 500));
+        
+        if ($status_code !== 200) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('❌ CoinSub API - Order update failed: ' . $error_msg);
+            return new WP_Error('api_error', $error_msg);
+        }
+        
+        error_log('✅ CoinSub API - Order updated successfully');
         return $data;
     }
     
@@ -253,16 +321,24 @@ class CoinSub_API_Client {
         ));
         
         if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - Product creation network error: ' . $response->get_error_message());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
         $body = wp_remote_retrieve_body($response);
+        $status_code = wp_remote_retrieve_response_code($response);
         $data = json_decode($body, true);
         
-        if (wp_remote_retrieve_response_code($response) !== 201) {
-            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        error_log('🌐 CoinSub API - Product response status: ' . $status_code);
+        error_log('🌐 CoinSub API - Product response body: ' . substr($body, 0, 500));
+        
+        if ($status_code !== 201) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('❌ CoinSub API - Product creation failed: ' . $error_msg);
+            return new WP_Error('api_error', $error_msg);
         }
         
+        error_log('✅ CoinSub API - Product created successfully with ID: ' . ($data['id'] ?? 'unknown'));
         return $data;
     }
     

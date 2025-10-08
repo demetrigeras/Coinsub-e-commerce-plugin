@@ -152,24 +152,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('✅ CoinSub - Order found. Starting payment process...');
         
         try {
-            // Check if we already have a CoinSub order from cart sync
-            $coinsub_order_id = $order->get_meta('_coinsub_order_id');
+            // Get CoinSub order ID from session (created by cart sync)
+            $coinsub_order_id = WC()->session->get('coinsub_order_id');
             
             if (!$coinsub_order_id) {
-                error_log('⚠️ CoinSub - No existing order from cart sync, creating now...');
-                error_log('📦 CoinSub - Step 1: Creating products in CoinSub...');
-                
-                // First, ensure products exist in CoinSub commerce_products table
-                $this->ensure_products_exist($order);
-                error_log('✅ CoinSub - Products created/verified');
-                
-                // Prepare order data for CoinSub commerce_orders table
-                error_log('🛒 CoinSub - Step 2: Creating order in CoinSub...');
+                error_log('⚠️ CoinSub - No order from cart sync, creating now...');
                 $order_data = $this->prepare_order_data($order);
-                
-                // Create order in CoinSub commerce_orders table
                 $coinsub_order = $this->api_client->create_order($order_data);
-                error_log('✅ CoinSub - Order created: ' . ($coinsub_order['id'] ?? 'unknown'));
                 
                 if (is_wp_error($coinsub_order)) {
                     throw new Exception($coinsub_order->get_error_message());
@@ -177,13 +166,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 
                 $coinsub_order_id = $coinsub_order['id'];
             } else {
-                error_log('✅ CoinSub - Using existing order from cart sync: ' . $coinsub_order_id);
-                $coinsub_order = array('id' => $coinsub_order_id);
+                error_log('✅ CoinSub - Using existing order from cart: ' . $coinsub_order_id);
             }
             
             // Create purchase session with order details
-            error_log('💳 CoinSub - Step 3: Creating purchase session...');
-            $purchase_session_data = $this->prepare_purchase_session_data($order, $coinsub_order);
+            error_log('💳 CoinSub - Step 2: Creating purchase session...');
+            $purchase_session_data = $this->prepare_purchase_session_data($order, array('id' => $coinsub_order_id));
             error_log('CoinSub - Session data: ' . json_encode(['amount' => $purchase_session_data['amount'], 'currency' => $purchase_session_data['currency']]));
             $purchase_session = $this->api_client->create_purchase_session($purchase_session_data);
             error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
@@ -193,9 +181,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
             
             // Checkout the order (link to purchase session)
-            error_log('🔗 CoinSub - Step 4: Linking order to session...');
+            error_log('🔗 CoinSub - Step 3: Linking order to session...');
             $checkout_result = $this->api_client->checkout_order(
-                $coinsub_order['id'],
+                $coinsub_order_id,
                 $purchase_session['purchase_session_id']
             );
             error_log('✅ CoinSub - Order linked to session!');
@@ -205,7 +193,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
             
             // Store CoinSub data in order meta
-            $order->update_meta_data('_coinsub_order_id', $coinsub_order['id']);
+            $order->update_meta_data('_coinsub_order_id', $coinsub_order_id);
             $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session['purchase_session_id']);
             $order->update_meta_data('_coinsub_checkout_url', $purchase_session['checkout_url']);
             $order->update_meta_data('_coinsub_merchant_id', $this->get_option('merchant_id'));
@@ -288,11 +276,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $product = $item->get_product();
             if (!$product) continue;
             
-            // Get CoinSub product ID from order meta if available
-            $coinsub_product_id = $order->get_meta('_coinsub_product_' . $product->get_id());
-            
+            // Merchant should map WooCommerce products to CoinSub products in their dashboard
+            // We send WooCommerce product ID and the merchant's CoinSub system will map it
             $items[] = array(
-                'product_id' => $coinsub_product_id ?: $product->get_id(), // Use CoinSub product ID if available
+                'product_id' => (string) $product->get_id(), // WooCommerce product ID
+                'name' => $item->get_name(), // Product name
                 'quantity' => (int) $item->get_quantity(),
                 'price' => (float) $item->get_total() / $item->get_quantity() // Price per unit
             );

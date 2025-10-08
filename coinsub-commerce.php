@@ -61,7 +61,7 @@ function coinsub_commerce_init() {
     new CoinSub_Webhook_Handler();
     new CoinSub_Order_Manager();
     
-    // Initialize cart sync (only on frontend)
+    // Initialize cart sync (tracks cart changes in real-time)
     if (!is_admin()) {
         new WC_CoinSub_Cart_Sync();
     }
