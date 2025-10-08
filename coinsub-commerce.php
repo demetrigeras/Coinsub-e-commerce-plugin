@@ -55,15 +55,40 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-order-manager.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-logs.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-test.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-cart-sync.php';
     
     // Initialize components
     new CoinSub_Webhook_Handler();
     new CoinSub_Order_Manager();
     
+    // Initialize cart sync (only on frontend)
+    if (!is_admin()) {
+        new WC_CoinSub_Cart_Sync();
+    }
+    
     // Initialize admin tools (only in admin)
     if (is_admin()) {
         new CoinSub_Admin_Logs();
         new CoinSub_Admin_Test();
+    }
+    
+    // Force traditional checkout template (not block-based)
+    add_action('template_redirect', 'coinsub_force_traditional_checkout');
+}
+
+/**
+ * Force traditional checkout template for CoinSub compatibility
+ */
+function coinsub_force_traditional_checkout() {
+    if (is_checkout() && !is_wc_endpoint_url('order-pay')) {
+        // Remove block-based checkout and use shortcode
+        remove_action('woocommerce_before_checkout_form', 'woocommerce_checkout_form_wrapper_start');
+        remove_action('woocommerce_after_checkout_form', 'woocommerce_checkout_form_wrapper_end');
+        
+        // Force shortcode checkout
+        add_filter('woocommerce_checkout_shortcode_tag', function() {
+            return 'woocommerce_checkout';
+        });
     }
 }
 
@@ -134,6 +159,22 @@ add_action('plugins_loaded', 'coinsub_commerce_init');
 add_filter('woocommerce_payment_gateways', 'coinsub_add_gateway_class');
 add_action('before_woocommerce_init', 'coinsub_commerce_declare_hpos_compatibility');
 
+// Force traditional checkout (disable blocks)
+add_filter('woocommerce_checkout_shortcode_tag', function() {
+    return 'woocommerce_checkout';
+});
+
+// Disable block-based checkout for CoinSub compatibility
+add_action('init', function() {
+    if (class_exists('WooCommerce')) {
+        // Force traditional checkout template
+        remove_action('woocommerce_checkout_form', 'woocommerce_checkout_form');
+        add_action('woocommerce_checkout_form', function() {
+            echo do_shortcode('[woocommerce_checkout]');
+        });
+    }
+});
+
 // Force gateway availability for debugging
 add_filter('woocommerce_available_payment_gateways', 'coinsub_force_availability', 999);
 
@@ -154,6 +195,36 @@ function coinsub_force_availability($gateways) {
     }
     
     return $gateways;
+}
+
+// Debug payment processing
+add_action('woocommerce_checkout_process', 'coinsub_debug_checkout_process');
+function coinsub_debug_checkout_process() {
+    error_log('🛒 CoinSub - woocommerce_checkout_process action fired');
+    error_log('🛒 CoinSub - POST data: ' . json_encode($_POST));
+    
+    if (isset($_POST['payment_method'])) {
+        error_log('🛒 CoinSub - Payment method in POST: ' . $_POST['payment_method']);
+        if ($_POST['payment_method'] === 'coinsub') {
+            error_log('🛒 CoinSub - ✅ CoinSub payment method selected!');
+        }
+    } else {
+        error_log('🛒 CoinSub - ❌ No payment_method in POST data');
+    }
+}
+
+// Debug before payment processing
+add_action('woocommerce_before_checkout_process', 'coinsub_debug_before_checkout');
+function coinsub_debug_before_checkout() {
+    error_log('🚀 CoinSub - woocommerce_before_checkout_process action fired');
+    error_log('🚀 CoinSub - Cart total: $' . WC()->cart->get_total('edit'));
+    error_log('🚀 CoinSub - Cart items: ' . WC()->cart->get_cart_contents_count());
+}
+
+// Debug after payment processing
+add_action('woocommerce_after_checkout_process', 'coinsub_debug_after_checkout');
+function coinsub_debug_after_checkout() {
+    error_log('✅ CoinSub - woocommerce_after_checkout_process action fired');
 }
 
 // Activation and deactivation hooks

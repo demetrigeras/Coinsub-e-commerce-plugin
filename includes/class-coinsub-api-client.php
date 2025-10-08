@@ -41,8 +41,8 @@ class CoinSub_API_Client {
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
         // CoinSub API base URL - using development environment
-        $this->api_base_url = 'https://dev-api.coinsub.io/v1'; // Development API with v1 prefix
-        // For production, use: 'https://api.coinsub.io/v1'
+        $this->api_base_url = 'https://dev-api.coinsub.io/v1/commerce'; // Development API with v1/commerce prefix
+        // For production, use: 'https://api.coinsub.io/v1/commerce'
         
         // Use working credentials as defaults
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : 'ca875a80-9b10-40ce-85c0-5af81856733a';
@@ -156,7 +156,7 @@ class CoinSub_API_Client {
      * Create an order in CoinSub
      */
     public function create_order($order_data) {
-        $endpoint = $this->api_base_url . '/commerce/orders';
+        $endpoint = $this->api_base_url . '/orders';
         error_log('🌐 CoinSub API - Creating order at: ' . $endpoint);
         error_log('🌐 CoinSub API - Order total: ' . $order_data['total']);
         
@@ -198,7 +198,7 @@ class CoinSub_API_Client {
      * Checkout an order (convert to purchase session)
      */
     public function checkout_order($order_id, $purchase_session_id) {
-        $endpoint = $this->api_base_url . '/commerce/orders/' . $order_id . '/checkout';
+        $endpoint = $this->api_base_url . '/orders/' . $order_id . '/checkout';
         
         $payload = array(
             'purchase_session_id' => $purchase_session_id
@@ -235,7 +235,7 @@ class CoinSub_API_Client {
      * Create a product in CoinSub commerce_products table
      */
     public function create_product($product_data) {
-        $endpoint = $this->api_base_url . '/commerce/products';
+        $endpoint = $this->api_base_url . '/products';
         error_log('🌐 CoinSub API - Creating product: ' . $product_data['name']);
         error_log('🌐 CoinSub API - Endpoint: ' . $endpoint);
         
@@ -270,7 +270,7 @@ class CoinSub_API_Client {
      * Get product by WooCommerce product ID
      */
     public function get_product_by_woocommerce_id($woocommerce_product_id) {
-        $endpoint = $this->api_base_url . '/commerce/products?woocommerce_id=' . $woocommerce_product_id;
+        $endpoint = $this->api_base_url . '/products?woocommerce_id=' . $woocommerce_product_id;
         
         $headers = array(
             'Content-Type' => 'application/json',
