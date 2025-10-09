@@ -247,12 +247,12 @@ function coinsub_debug_after_checkout() {
  */
 function coinsub_register_order_status() {
     register_post_status('wc-pending-coinsub', array(
-        'label'                     => _x('Pending Crypto Payment', 'Order status', 'coinsub'),
+        'label'                     => _x('Crypto Payment Processed', 'Order status', 'coinsub'),
         'public'                    => true,
         'exclude_from_search'       => false,
         'show_in_admin_all_list'    => true,
         'show_in_admin_status_list' => true,
-        'label_count'               => _n_noop('Pending Crypto Payment <span class="count">(%s)</span>', 'Pending Crypto Payment <span class="count">(%s)</span>', 'coinsub')
+        'label_count'               => _n_noop('Crypto Payment Processed <span class="count">(%s)</span>', 'Crypto Payment Processed <span class="count">(%s)</span>', 'coinsub')
     ));
 }
 
@@ -267,7 +267,7 @@ function coinsub_add_order_status($order_statuses) {
         $new_order_statuses[$key] = $status;
         
         if ('wc-pending' === $key) {
-            $new_order_statuses['wc-pending-coinsub'] = _x('Pending Crypto Payment', 'Order status', 'coinsub');
+            $new_order_statuses['wc-pending-coinsub'] = _x('Crypto Payment Processed', 'Order status', 'coinsub');
         }
     }
     

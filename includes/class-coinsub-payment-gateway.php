@@ -202,7 +202,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('🔗 CoinSub - Checkout URL stored: ' . $purchase_session['checkout_url']);
             
             // Update order status
-            $order->update_status('pending-coinsub', __('⏳ Waiting for crypto payment confirmation', 'coinsub'));
+            $order->update_status('pending-coinsub', __('✅ Crypto Payment Processed', 'coinsub'));
             
             // Empty cart
             WC()->cart->empty_cart();
@@ -894,12 +894,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function add_coinsub_order_status() {
         register_post_status('wc-pending-coinsub', array(
-            'label' => _x('Pending CoinSub Payment', 'Order status', 'coinsub'),
+            'label' => _x('Payment Completed', 'Order status', 'coinsub'),
             'public' => false,
             'exclude_from_search' => false,
             'show_in_admin_all_list' => true,
             'show_in_admin_status_list' => true,
-            'label_count' => _n_noop('Pending CoinSub Payment <span class="count">(%s)</span>', 'Pending CoinSub Payment <span class="count">(%s)</span>', 'coinsub')
+            'label_count' => _n_noop('Payment Completed <span class="count">(%s)</span>', 'Payment Completed <span class="count">(%s)</span>', 'coinsub')
         ));
         
         register_post_status('wc-refund-pending', array(
@@ -916,7 +916,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Add custom order status to WooCommerce
      */
     public function add_coinsub_order_status_to_woocommerce($order_statuses) {
-        $order_statuses['wc-pending-coinsub'] = _x('Pending CoinSub Payment', 'Order status', 'coinsub');
+        $order_statuses['wc-pending-coinsub'] = _x('Payment Completed', 'Order status', 'coinsub');
         $order_statuses['wc-refund-pending'] = _x('Refund Pending', 'Order status', 'coinsub');
         return $order_statuses;
     }
