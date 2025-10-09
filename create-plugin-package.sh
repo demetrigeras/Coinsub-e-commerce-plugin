@@ -17,6 +17,15 @@ cp coinsub-commerce.php "$PACKAGE_DIR/"
 echo "📦 Copying includes directory..."
 cp -r includes "$PACKAGE_DIR/"
 
+# Copy assets directory (if it exists)
+if [ -d "assets" ]; then
+    echo "📦 Copying assets directory..."
+    cp -r assets "$PACKAGE_DIR/"
+else
+    echo "📦 Creating assets directory..."
+    mkdir -p "$PACKAGE_DIR/assets/images"
+fi
+
 # Copy README
 echo "📦 Copying documentation..."
 cp README.md "$PACKAGE_DIR/"
