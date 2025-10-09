@@ -109,6 +109,10 @@ class CoinSub_API_Client {
         $purchase_session_id = $data['data']['purchase_session_id'] ?? null;
         $checkout_url = $data['data']['url'] ?? null;
         
+        error_log('🌐 CoinSub API - Purchase session response data: ' . json_encode($data));
+        error_log('🌐 CoinSub API - Extracted session ID: ' . $purchase_session_id);
+        error_log('🌐 CoinSub API - Extracted checkout URL: ' . $checkout_url);
+        
         // Remove 'sess_' prefix if present (CoinSub returns sess_UUID but checkout needs just UUID)
         if ($purchase_session_id && strpos($purchase_session_id, 'sess_') === 0) {
             $purchase_session_id = substr($purchase_session_id, 5); // Remove 'sess_' prefix
@@ -279,23 +283,36 @@ class CoinSub_API_Client {
            
         );
         
-        $response = wp_remote_post($endpoint, array(
+        error_log('🌐 CoinSub API - Checkout order: ' . $order_id);
+        error_log('🌐 CoinSub API - Purchase session: ' . $purchase_session_id);
+        error_log('🌐 CoinSub API - Endpoint: ' . $endpoint);
+        
+        $response = wp_remote_request($endpoint, array(
+            'method' => 'PUT',
             'headers' => $headers,
             'body' => json_encode($payload),
             'timeout' => 30
         ));
         
         if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - Checkout order network error: ' . $response->get_error_message());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
         $body = wp_remote_retrieve_body($response);
+        $status_code = wp_remote_retrieve_response_code($response);
         $data = json_decode($body, true);
         
-        if (wp_remote_retrieve_response_code($response) !== 200) {
-            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        error_log('🌐 CoinSub API - Checkout response status: ' . $status_code);
+        error_log('🌐 CoinSub API - Checkout response body: ' . substr($body, 0, 500));
+        
+        if ($status_code !== 200) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('❌ CoinSub API - Checkout order failed: ' . $error_msg);
+            return new WP_Error('api_error', $error_msg);
         }
         
+        error_log('✅ CoinSub API - Order checkout successful!');
         return $data;
     }
     

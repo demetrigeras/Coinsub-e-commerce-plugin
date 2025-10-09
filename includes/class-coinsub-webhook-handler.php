@@ -15,60 +15,72 @@ class CoinSub_Webhook_Handler {
      * Constructor
      */
     public function __construct() {
-        add_action('init', array($this, 'add_webhook_endpoint'));
-        add_action('template_redirect', array($this, 'handle_webhook'));
+        add_action('rest_api_init', array($this, 'register_webhook_endpoint'));
         add_action('wp_ajax_coinsub_test_connection', array($this, 'test_connection'));
         add_action('wp_ajax_nopriv_coinsub_test_connection', array($this, 'test_connection'));
     }
     
     /**
-     * Add webhook endpoint
+     * Register webhook endpoint with WordPress REST API
      */
-    public function add_webhook_endpoint() {
-        add_rewrite_rule(
-            '^wp-json/coinsub/v1/webhook/?$',
-            'index.php?coinsub_webhook=1',
-            'top'
-        );
+    public function register_webhook_endpoint() {
+        // Main webhook endpoint
+        register_rest_route('coinsub/v1', '/webhook', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'handle_webhook'),
+            'permission_callback' => '__return_true', // Allow public access
+        ));
         
-        add_rewrite_tag('%coinsub_webhook%', '([^&]+)');
+        // Test endpoint to verify webhook is accessible
+        register_rest_route('coinsub/v1', '/webhook/test', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'test_webhook_endpoint'),
+            'permission_callback' => '__return_true',
+        ));
+    }
+    
+    /**
+     * Test webhook endpoint
+     */
+    public function test_webhook_endpoint($request) {
+        error_log('🧪 CoinSub Webhook - Test endpoint accessed');
+        return new WP_REST_Response(array(
+            'status' => 'success',
+            'message' => 'CoinSub webhook endpoint is working!',
+            'endpoint' => rest_url('coinsub/v1/webhook'),
+            'timestamp' => current_time('mysql')
+        ), 200);
     }
     
     /**
      * Handle webhook requests
      */
-    public function handle_webhook() {
-        if (!get_query_var('coinsub_webhook')) {
-            return;
-        }
+    public function handle_webhook($request) {
+        error_log('🔔 CoinSub Webhook - Received webhook request');
         
-        // Set content type
-        header('Content-Type: application/json');
-        
-        // Get the raw POST data
-        $raw_data = file_get_contents('php://input');
-        $data = json_decode($raw_data, true);
+        // Get the request body
+        $data = $request->get_json_params();
         
         if (!$data) {
-            http_response_code(400);
-            echo json_encode(array('error' => 'Invalid JSON data'));
-            exit;
+            error_log('❌ CoinSub Webhook - Invalid JSON data');
+            return new WP_REST_Response(array('error' => 'Invalid JSON data'), 400);
         }
         
+        error_log('🔔 CoinSub Webhook - Data: ' . json_encode($data));
+        
         // Verify webhook signature if configured
+        $raw_data = $request->get_body();
         if (!$this->verify_webhook_signature($raw_data)) {
-            http_response_code(401);
-            echo json_encode(array('error' => 'Invalid signature'));
-            exit;
+            error_log('❌ CoinSub Webhook - Invalid signature');
+            return new WP_REST_Response(array('error' => 'Invalid signature'), 401);
         }
         
         // Process the webhook
         $this->process_webhook($data);
         
         // Return success response
-        http_response_code(200);
-        echo json_encode(array('status' => 'success'));
-        exit;
+        error_log('✅ CoinSub Webhook - Processed successfully');
+        return new WP_REST_Response(array('status' => 'success'), 200);
     }
     
     /**

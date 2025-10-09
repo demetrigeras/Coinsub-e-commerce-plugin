@@ -57,6 +57,10 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-test.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-cart-sync.php';
     
+    // Register custom order status
+    add_action('init', 'coinsub_register_order_status');
+    add_filter('wc_order_statuses', 'coinsub_add_order_status');
+    
     // Initialize components
     new CoinSub_Webhook_Handler();
     new CoinSub_Order_Manager();
@@ -164,6 +168,17 @@ add_filter('woocommerce_checkout_shortcode_tag', function() {
     return 'woocommerce_checkout';
 });
 
+// Completely disable block-based checkout
+add_filter('woocommerce_feature_enabled', function($enabled, $feature) {
+    if ($feature === 'checkout_block') {
+        return false; // Force disable checkout blocks
+    }
+    return $enabled;
+}, 10, 2);
+
+// Force classic checkout template
+add_filter('woocommerce_is_checkout_block', '__return_false');
+
 // Disable block-based checkout for CoinSub compatibility
 add_action('init', function() {
     if (class_exists('WooCommerce')) {
@@ -173,7 +188,7 @@ add_action('init', function() {
             echo do_shortcode('[woocommerce_checkout]');
         });
     }
-});
+}, 999);
 
 // Force gateway availability for debugging
 add_filter('woocommerce_available_payment_gateways', 'coinsub_force_availability', 999);
@@ -225,6 +240,38 @@ function coinsub_debug_before_checkout() {
 add_action('woocommerce_after_checkout_process', 'coinsub_debug_after_checkout');
 function coinsub_debug_after_checkout() {
     error_log('✅ CoinSub - woocommerce_after_checkout_process action fired');
+}
+
+/**
+ * Register custom order status for CoinSub
+ */
+function coinsub_register_order_status() {
+    register_post_status('wc-pending-coinsub', array(
+        'label'                     => _x('Pending Crypto Payment', 'Order status', 'coinsub'),
+        'public'                    => true,
+        'exclude_from_search'       => false,
+        'show_in_admin_all_list'    => true,
+        'show_in_admin_status_list' => true,
+        'label_count'               => _n_noop('Pending Crypto Payment <span class="count">(%s)</span>', 'Pending Crypto Payment <span class="count">(%s)</span>', 'coinsub')
+    ));
+}
+
+/**
+ * Add custom order status to WooCommerce order statuses
+ */
+function coinsub_add_order_status($order_statuses) {
+    $new_order_statuses = array();
+    
+    // Add after pending
+    foreach ($order_statuses as $key => $status) {
+        $new_order_statuses[$key] = $status;
+        
+        if ('wc-pending' === $key) {
+            $new_order_statuses['wc-pending-coinsub'] = _x('Pending Crypto Payment', 'Order status', 'coinsub');
+        }
+    }
+    
+    return $new_order_statuses;
 }
 
 // Activation and deactivation hooks

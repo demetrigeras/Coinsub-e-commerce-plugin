@@ -202,36 +202,64 @@ class WC_CoinSub_Cart_Sync {
         }
         
         // Create product in CoinSub
+        $price = (float) $product->get_price();
+        
+        // Ensure price is valid (not 0 or negative)
+        if ($price <= 0) {
+            error_log('❌ CoinSub Cart Sync - Invalid price for product: ' . $product->get_name() . ' (Price: ' . $price . ')');
+            return null;
+        }
+        
+        $image_url = wp_get_attachment_url($product->get_image_id());
+        $description = $product->get_short_description() ?: $product->get_description();
+        
         $product_data = array(
             'name' => $product->get_name(),
-            'description' => $product->get_short_description() ?: $product->get_description(),
-            'price' => (float) $product->get_price(),
-            'currency' => get_woocommerce_currency(),
-            'image_url' => wp_get_attachment_url($product->get_image_id()),
-            'metadata' => json_encode(array(
-                'woocommerce_id' => $wc_product_id,
-                'sku' => $product->get_sku(),
-                'type' => $product->get_type()
-            ))
+            'price' => $price,
+            'currency' => get_woocommerce_currency()
         );
         
-        error_log('📦 CoinSub Cart Sync - Creating product: ' . $product->get_name());
+        // Add optional fields only if they have values
+        if ($description) {
+            $product_data['description'] = $description;
+        }
+        if ($image_url) {
+            $product_data['image_url'] = $image_url;
+        }
+        
+        // Add metadata as object (not string)
+        $product_data['metadata'] = array(
+            'woocommerce_id' => $wc_product_id,
+            'sku' => $product->get_sku() ?: '',
+            'type' => $product->get_type()
+        );
+        
+        error_log('📦 CoinSub Cart Sync - Creating product: ' . $product->get_name() . ' (Price: $' . $price . ')');
         
         try {
             $result = $api_client->create_product($product_data);
             
-            if ($result && isset($result['id']) && !is_wp_error($result)) {
+            // Check for WP_Error FIRST before accessing as array
+            if (is_wp_error($result)) {
+                error_log('❌ CoinSub Cart Sync - Product creation failed: ' . $result->get_error_message());
+                return null;
+            }
+            
+            if ($result && isset($result['id'])) {
                 $coinsub_product_id = $result['id'];
                 // Store for future use
                 update_post_meta($wc_product_id, '_coinsub_product_id', $coinsub_product_id);
                 error_log('✅ CoinSub Cart Sync - Product created: ' . $coinsub_product_id);
                 return $coinsub_product_id;
             } else {
-                error_log('❌ CoinSub Cart Sync - Failed to create product');
+                error_log('❌ CoinSub Cart Sync - Failed to create product (no ID returned)');
                 return null;
             }
         } catch (Exception $e) {
             error_log('❌ CoinSub Cart Sync - Product creation exception: ' . $e->getMessage());
+            return null;
+        } catch (Error $e) {
+            error_log('❌ CoinSub Cart Sync - Product creation fatal error: ' . $e->getMessage());
             return null;
         }
     }

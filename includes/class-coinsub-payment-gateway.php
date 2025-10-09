@@ -207,14 +207,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Empty cart
             WC()->cart->empty_cart();
             
-            // Store checkout URL for automatic opening
-            $this->store_checkout_url($purchase_session['checkout_url']);
+            $checkout_url = $purchase_session['checkout_url'];
+            error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
             
-            error_log('🎉 CoinSub - Payment process complete! Redirecting to: ' . $purchase_session['checkout_url']);
-            
+            // Redirect directly to CoinSub checkout page
+            // Order stays "pending-coinsub" until webhook confirms payment
             return array(
                 'result' => 'success',
-                'redirect' => $this->get_return_url($order)
+                'redirect' => $checkout_url
             );
             
         } catch (Exception $e) {
@@ -408,8 +408,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                     'country' => $order->get_shipping_country()
                 )
             ),
-            'success_url' => "",
-            'cancel_url' => ""
+            'success_url' => $this->get_return_url($order), // Return to order received page after payment
+            'cancel_url' => wc_get_checkout_url() // Return to checkout if cancelled
         );
     }
     
@@ -425,32 +425,48 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Add checkout script to automatically open CoinSub checkout
+     * Add checkout script to automatically open CoinSub checkout in new tab
      */
     public function add_checkout_script() {
-        // Get checkout URL from transient
-        $user_id = get_current_user_id();
-        $session_id = $user_id ? $user_id : session_id();
+        // Check if we're on the order received page
+        if (!is_wc_endpoint_url('order-received')) {
+            return;
+        }
         
-        $checkout_url = get_transient('coinsub_checkout_url_' . $session_id);
+        // Get order ID from URL
+        global $wp;
+        $order_id = absint($wp->query_vars['order-received']);
+        
+        if (!$order_id) {
+            return;
+        }
+        
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+        
+        // Check if this is a CoinSub order with pending redirect
+        $checkout_url = $order->get_meta('_coinsub_pending_redirect');
         
         if (!empty($checkout_url)) {
-            // Delete transient immediately to prevent duplicate redirects
-            delete_transient('coinsub_checkout_url_' . $session_id);
+            // Delete the meta to prevent duplicate redirects
+            $order->delete_meta_data('_coinsub_pending_redirect');
+            $order->save();
             
             ?>
             <script type="text/javascript">
             jQuery(document).ready(function($) {
                 // Open CoinSub checkout in new tab
-                window.open('<?php echo esc_js($checkout_url); ?>', '_blank');
+                var coinsubWindow = window.open('<?php echo esc_js($checkout_url); ?>', '_blank');
                 
                 // Show notice to user
-                $('body').prepend('<div id="coinsub-checkout-notice" style="position: fixed; top: 20px; right: 20px; background: #0073aa; color: white; padding: 15px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"><strong>CoinSub Payment</strong><br>Please complete your payment in the new tab that opened.</div>');
+                $('body').prepend('<div id="coinsub-checkout-notice" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">🚀 Complete Your Payment</strong><br><br>A new tab has opened with your CoinSub checkout.<br><br><small>Your order will be confirmed once payment is received.</small><br><br><button onclick="window.open(\'<?php echo esc_js($checkout_url); ?>\', \'_blank\')" style="background: white; color: #1e3a8a; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold;">Reopen Payment Page</button></div>');
                 
-                // Remove notice after 10 seconds
+                // Remove notice after 30 seconds
                 setTimeout(function() {
                     $('#coinsub-checkout-notice').fadeOut();
-                }, 10000);
+                }, 30000);
             });
             </script>
             <?php
@@ -476,21 +492,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         console.log('🚀 CoinSub payment_fields() rendered!');
         console.log('CoinSub gateway is displaying on the page');
         </script>
-        <div class="coinsub-payment-box" id="coinsub-payment-box-visible" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 15px; border-radius: 6px; text-align: center; margin: 8px 0; display: none; border: 1px solid #3b82f6;">
+        <div class="coinsub-payment-box" id="coinsub-payment-box-visible" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 10px; border-radius: 4px; text-align: center; margin: 8px 0; display: none; border: 1px solid #3b82f6; max-width: 300px;">
             <!-- Simple CoinSub Button -->
-            <div style="color: white; font-size: 16px; font-weight: bold; margin-bottom: 5px;">
+            <div style="color: white; font-size: 13px; font-weight: bold; margin-bottom: 3px;">
                 Pay with Crypto
             </div>
-            <div style="color: rgba(255,255,255,0.8); font-size: 12px; margin-bottom: 10px;">
-                by CoinSub
+            <div style="color: rgba(255,255,255,0.8); font-size: 10px; margin-bottom: 8px;">
+                by Coinsub
             </div>
             <!-- Custom CoinSub Payment Button -->
-            <button type="button" id="coinsub-place-order" style="background: white; color: #1e3a8a; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; display: none;">
-                Pay with Crypto (CoinSub)
+            <button type="button" id="coinsub-place-order" style="background: white; color: #1e3a8a; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px; display: none;">
+                Continue to Payment
             </button>
-            <div style="color: rgba(255,255,255,0.7); font-size: 10px; margin-top: 5px; display: none;" id="coinsub-timing-note">
-                ⏱️ Crypto payments may take a few minutes to confirm
-            </div>
+            
         </div>
         <script>
         console.log('CoinSub payment box HTML rendered with ID: coinsub-payment-box-visible');
