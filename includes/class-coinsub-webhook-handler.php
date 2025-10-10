@@ -87,9 +87,15 @@ class CoinSub_Webhook_Handler {
      * Process webhook data
      */
     private function process_webhook($data) {
+        error_log('CoinSub Webhook: Full payload: ' . json_encode($data));
+        
         $event_type = $data['type'] ?? 'unknown';
         $origin_id = $data['origin_id'] ?? null;
         $merchant_id = $data['merchant_id'] ?? null;
+        
+        error_log('CoinSub Webhook: Event type: ' . $event_type);
+        error_log('CoinSub Webhook: Origin ID: ' . $origin_id);
+        error_log('CoinSub Webhook: Merchant ID: ' . $merchant_id);
         
         if (!$origin_id) {
             error_log('CoinSub Webhook: No origin ID provided');
@@ -110,9 +116,17 @@ class CoinSub_Webhook_Handler {
         
         // Verify merchant ID matches
         $order_merchant_id = $order->get_meta('_coinsub_merchant_id');
-        if ($order_merchant_id && $merchant_id && $order_merchant_id !== $merchant_id) {
-            error_log('CoinSub Webhook: Merchant ID mismatch for order: ' . $order->get_id());
-            return;
+        if ($order_merchant_id && $merchant_id) {
+            // Remove mrch_ prefix if present for comparison
+            $clean_webhook_merchant_id = str_replace('mrch_', '', $merchant_id);
+            $clean_order_merchant_id = str_replace('mrch_', '', $order_merchant_id);
+            
+            if ($clean_order_merchant_id !== $clean_webhook_merchant_id) {
+                error_log('CoinSub Webhook: Merchant ID mismatch for order: ' . $order->get_id());
+                error_log('CoinSub Webhook: Order merchant ID: ' . $clean_order_merchant_id);
+                error_log('CoinSub Webhook: Webhook merchant ID: ' . $clean_webhook_merchant_id);
+                return;
+            }
         }
         
         switch ($event_type) {

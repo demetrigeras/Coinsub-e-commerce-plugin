@@ -3,7 +3,7 @@
 # CoinSub Commerce Plugin Package Creator
 # This script creates a deployable WordPress plugin package
 
-echo "🚀 Creating CoinSub Commerce Plugin Package..."
+echo "🚀 Creating Coinsub Commerce Plugin Package..."
 
 # Create package directory
 PACKAGE_DIR="coinsub-commerce-plugin"
@@ -17,13 +17,13 @@ cp coinsub-commerce.php "$PACKAGE_DIR/"
 echo "📦 Copying includes directory..."
 cp -r includes "$PACKAGE_DIR/"
 
-# Copy assets directory (if it exists)
-if [ -d "assets" ]; then
-    echo "📦 Copying assets directory..."
-    cp -r assets "$PACKAGE_DIR/"
+# Copy images directory (if it exists)
+if [ -d "images" ]; then
+    echo "📦 Copying images directory..."
+    cp -r images "$PACKAGE_DIR/"
 else
-    echo "📦 Creating assets directory..."
-    mkdir -p "$PACKAGE_DIR/assets/images"
+    echo "📦 Creating images directory..."
+    mkdir -p "$PACKAGE_DIR/images"
 fi
 
 # Copy README
@@ -108,4 +108,4 @@ echo "🚀 Ready for deployment!"
 echo "1. Upload coinsub-commerce.zip to WordPress"
 echo "2. Activate the plugin"
 echo "3. Configure settings in WooCommerce"
-echo "4. Set up webhook in CoinSub dashboard"
+echo "4. Set up webhook in Coinsub dashboard"

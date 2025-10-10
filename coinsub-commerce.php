@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: CoinSub
+ * Plugin Name: Coinsub
  * Plugin URI: https://coinsub.io
- * Description: Accept cryptocurrency payments with CoinSub. Simple crypto payments for WooCommerce.
+ * Description: Accept cryptocurrency payments with Coinsub. Simple crypto payments for WooCommerce.
  * Version: 1.0.0
  * Author: CoinSub
  * Author URI: https://coinsub.io
@@ -58,8 +58,6 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-cart-sync.php';
     
     // Register custom order status
-    add_action('init', 'coinsub_register_order_status');
-    add_filter('wc_order_statuses', 'coinsub_add_order_status');
     
     // Initialize components
     new CoinSub_Webhook_Handler();
@@ -200,7 +198,7 @@ function coinsub_force_availability($gateways) {
     error_log('🔧 CoinSub - Total gateways count: ' . count($gateways));
     
     if (isset($gateways['coinsub'])) {
-        error_log('🔧 CoinSub - ✅ Gateway IS in available list! CoinSub should be visible!');
+        error_log('🔧 CoinSub - ✅ Gateway IS in available list! Coinsub should be visible!');
         error_log('🔧 CoinSub - Gateway object type: ' . get_class($gateways['coinsub']));
         error_log('🔧 CoinSub - Gateway title: ' . $gateways['coinsub']->title);
         error_log('🔧 CoinSub - Gateway enabled: ' . $gateways['coinsub']->enabled);
@@ -242,37 +240,6 @@ function coinsub_debug_after_checkout() {
     error_log('✅ CoinSub - woocommerce_after_checkout_process action fired');
 }
 
-/**
- * Register custom order status for CoinSub
- */
-function coinsub_register_order_status() {
-    register_post_status('wc-pending-coinsub', array(
-        'label'                     => _x('Crypto Payment Processed', 'Order status', 'coinsub'),
-        'public'                    => true,
-        'exclude_from_search'       => false,
-        'show_in_admin_all_list'    => true,
-        'show_in_admin_status_list' => true,
-        'label_count'               => _n_noop('Crypto Payment Processed <span class="count">(%s)</span>', 'Crypto Payment Processed <span class="count">(%s)</span>', 'coinsub')
-    ));
-}
-
-/**
- * Add custom order status to WooCommerce order statuses
- */
-function coinsub_add_order_status($order_statuses) {
-    $new_order_statuses = array();
-    
-    // Add after pending
-    foreach ($order_statuses as $key => $status) {
-        $new_order_statuses[$key] = $status;
-        
-        if ('wc-pending' === $key) {
-            $new_order_statuses['wc-pending-coinsub'] = _x('Crypto Payment Processed', 'Order status', 'coinsub');
-        }
-    }
-    
-    return $new_order_statuses;
-}
 
 // Activation and deactivation hooks
 register_activation_hook(__FILE__, 'coinsub_commerce_activate');

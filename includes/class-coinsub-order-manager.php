@@ -83,41 +83,33 @@ class CoinSub_Order_Manager {
      * Display CoinSub information in admin order page
      */
     public function display_coinsub_info($order) {
-        $purchase_session_id = $order->get_meta('_coinsub_purchase_session_id');
-        $coinsub_order_id = $order->get_meta('_coinsub_order_id');
-        $transaction_id = $order->get_meta('_coinsub_transaction_id');
+        $transaction_hash = $order->get_meta('_coinsub_transaction_hash');
+        $payment_id = $order->get_meta('_coinsub_payment_id');
         
-        if (empty($purchase_session_id)) {
+        // Only show if payment is complete
+        if (empty($transaction_hash) && empty($payment_id)) {
             return;
         }
         
         ?>
         <div class="address">
-            <p><strong><?php _e('CoinSub Payment Information', 'coinsub-commerce'); ?></strong></p>
-            <p>
-                <strong><?php _e('Purchase Session ID:', 'coinsub-commerce'); ?></strong><br>
-                <code><?php echo esc_html($purchase_session_id); ?></code>
-            </p>
+            <p><strong><?php _e('Coinsub Payment', 'coinsub-commerce'); ?></strong></p>
             
-            <?php if ($coinsub_order_id): ?>
+            <?php if ($payment_id): ?>
             <p>
-                <strong><?php _e('CoinSub Order ID:', 'coinsub-commerce'); ?></strong><br>
-                <code><?php echo esc_html($coinsub_order_id); ?></code>
+                <strong><?php _e('Payment ID:', 'coinsub-commerce'); ?></strong><br>
+                <code><?php echo esc_html($payment_id); ?></code>
             </p>
             <?php endif; ?>
             
-            <?php if ($transaction_id): ?>
+            <?php if ($transaction_hash): ?>
             <p>
-                <strong><?php _e('Transaction ID:', 'coinsub-commerce'); ?></strong><br>
-                <code><?php echo esc_html($transaction_id); ?></code>
-            </p>
-            <?php endif; ?>
-            
-            <p>
-                <a href="<?php echo esc_url($order->get_meta('_coinsub_checkout_url')); ?>" target="_blank" class="button">
-                    <?php _e('View CoinSub Checkout', 'coinsub-commerce'); ?>
+                <strong><?php _e('Transaction:', 'coinsub-commerce'); ?></strong><br>
+                <a href="https://polygonscan.com/tx/<?php echo esc_attr($transaction_hash); ?>" target="_blank" style="color: #3b82f6;">
+                    <?php echo esc_html(substr($transaction_hash, 0, 10) . '...' . substr($transaction_hash, -8)); ?> 🔗
                 </a>
             </p>
+            <?php endif; ?>
         </div>
         <?php
     }

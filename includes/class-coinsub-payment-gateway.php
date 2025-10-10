@@ -17,28 +17,28 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Constructor
      */
     public function __construct() {
-        error_log('🏗️ CoinSub - Gateway constructor called');
+        error_log('🏗️ Coinsub - Gateway constructor called');
         
         $this->id = 'coinsub';
-        $this->icon = '';
+        $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.png';
         $this->has_fields = true; // Enable custom payment box
-        $this->method_title = __('coinsub', 'coinsub');
-        $this->method_description = __('Accept crypto payments with coinsub', 'coinsub');
+        $this->method_title = __('Coinsub', 'coinsub');
+        $this->method_description = __('Accept Crypto payments with Coinsub', 'coinsub');
         
         // Declare supported features
         $this->supports = array(
             'products'
         );
         
-        error_log('🏗️ CoinSub - Supports: ' . json_encode($this->supports));
+        error_log('🏗️ Coinsub - Supports: ' . json_encode($this->supports));
         
         // Load settings
         $this->init_form_fields();
         $this->init_settings();
         
         // Get settings for debugging
-        $this->title = $this->get_option('title', 'CoinSub');
-        $this->description = $this->get_option('description', 'Pay with cryptocurrency');
+        $this->title = $this->get_option('title', 'Pay with Coinsub');
+        $this->description = $this->get_option('description', '');
         $this->enabled = $this->get_option('enabled', 'yes');
         
         error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
@@ -57,8 +57,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
         add_action('wp_head', array($this, 'add_payment_button_styles'));
-        add_action('init', array($this, 'add_coinsub_order_status'));
-        add_filter('wc_order_statuses', array($this, 'add_coinsub_order_status_to_woocommerce'));
         add_filter('woocommerce_order_button_text', array($this, 'get_order_button_text'));
     }
     
@@ -66,32 +64,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Admin panel options
      */
     public function admin_options() {
-        ?>
-        <div style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 20px; margin: -20px -20px 20px -20px; border-radius: 8px 8px 0 0;">
-            <div style="display: flex; align-items: center; color: white;">
-                <div style="background: white; border-radius: 50%; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; margin-right: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-                    <!-- CSS-based coinsub logo (coin with lightning) -->
-                    <div style="width: 40px; height: 40px; position: relative;">
-                        <!-- Outer coin circle -->
-                        <div style="width: 36px; height: 36px; border: 3px solid #1e3a8a; border-radius: 50%; position: absolute; top: 2px; left: 2px;"></div>
-                        <!-- Inner lightning bolt -->
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 18px; height: 18px;">
-                            <div style="position: relative; width: 100%; height: 100%;">
-                                <!-- Lightning bolt shape -->
-                                <div style="position: absolute; top: 2px; left: 6px; width: 0; height: 0; border-left: 3px solid transparent; border-right: 3px solid transparent; border-top: 6px solid #1e3a8a;"></div>
-                                <div style="position: absolute; top: 8px; left: 4px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid #1e3a8a;"></div>
-                                <div style="position: absolute; top: 16px; left: 6px; width: 0; height: 0; border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 2px solid #1e3a8a;"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <h2 style="margin: 0; font-size: 28px; font-weight: bold; color: white;">coinsub</h2>
-                    <p style="margin: 5px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">Crypto payments for WooCommerce</p>
-                </div>
-            </div>
-        </div>
-        <?php
         parent::admin_options();
     }
 
@@ -104,14 +76,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'enabled' => array(
                 'title' => __('Enable/Disable', 'coinsub'),
                 'type' => 'checkbox',
-                'label' => __('Enable coinsub', 'coinsub'),
+                'label' => __('Enable Coinsub', 'coinsub'),
                 'default' => 'yes'  // ← Changed to 'yes' for testing
             ),
             'title' => array(
                 'title' => __('Title', 'coinsub'),
                 'type' => 'text',
                 'description' => __('This controls the title which the user sees during checkout.', 'coinsub'),
-                'default' => __('coinsub', 'coinsub'),
+                'default' => __('Pay with Coinsub', 'coinsub'),
                 'desc_tip' => true,
             ),
             'description' => array(
@@ -234,8 +206,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             
             error_log('🔗 CoinSub - Checkout URL stored: ' . $purchase_session['checkout_url']);
             
-            // Update order status
-            $order->update_status('pending-coinsub', __('✅ Crypto Payment Processed', 'coinsub'));
+            // Update order status - awaiting payment confirmation
+            $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Coinsub checkout.', 'coinsub'));
             
             // Empty cart
             WC()->cart->empty_cart();
@@ -510,8 +482,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Display payment fields (simple description)
      */
     public function payment_fields() {
-        // Very simple text
-        echo '<p style="margin: 0; padding: 8px 0; font-size: 14px;">Pay with crypto. Click "Place order" to continue.</p>';
+        // No description needed - label says it all
     }
     
     /**
@@ -562,7 +533,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Get payment method icon
      */
     public function get_icon() {
-        $icon_html = '<img src="' . esc_url(COINSUB_PLUGIN_URL . 'assets/images/coinsub-logo.png') . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; height: auto;" />';
+        $icon_html = '<img src="' . esc_url(COINSUB_PLUGIN_URL . 'images/coinsub.png') . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; height: auto;" />';
         return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
     }
     
@@ -570,7 +541,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Customize the payment button text
      */
     public function get_order_button_text() {
-        return __('Pay with Crypto', 'coinsub');
+        return __('Pay with Coinsub', 'coinsub');
     }
     
     /**
@@ -588,33 +559,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 position: relative !important;
             }
             
+            /* Hide the payment box - we don't need it */
             .woocommerce-checkout .payment_method_coinsub .payment_box {
-                background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-                color: white;
-                border: 1px solid #3b82f6;
-                border-radius: 6px;
-                padding: 15px;
-                margin: 8px 0;
-                display: block !important;
+                display: none !important;
             }
             
-            .woocommerce-checkout .payment_method_coinsub .payment_box::before {
-                content: "🚀";
-                font-size: 24px;
-                margin-right: 10px;
-            }
-            
-            .woocommerce-checkout .payment_method_coinsub label {
-                font-weight: bold;
-                font-size: 16px;
-            }
-            
-            .woocommerce-checkout .payment_method_coinsub .payment_box p {
-                color: white;
-                margin: 10px 0;
-            }
-            
-            #place_order {
+            /* Style the "Place Order" button when Coinsub is selected */
+            .payment_method_coinsub input[type="radio"]:checked ~ #place_order,
+            body.woocommerce-checkout.payment_method_coinsub #place_order {
                 background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
                 border: none !important;
                 color: white !important;
@@ -628,151 +580,32 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 transition: all 0.3s ease !important;
             }
             
-            #place_order:hover {
+            body.woocommerce-checkout.payment_method_coinsub #place_order:hover {
                 transform: translateY(-2px) !important;
                 box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6) !important;
             }
-            
-            .woocommerce-checkout .payment_method_coinsub {
-                background: #f8f9fa !important;
-                border: 1px solid #3b82f6 !important;
-                border-radius: 6px;
-                margin: 8px 0;
-                padding: 12px !important;
-                display: list-item !important;
-            }
             </style>
             <script>
-            console.log('🔍 CoinSub Debug - Styles loaded');
-            
-            // Force traditional checkout if block checkout is detected
+            // Simple debugging - no complex workarounds needed since you're using traditional checkout
             jQuery(document).ready(function($) {
-                console.log('🔍 CoinSub - Initializing checkout compatibility...');
+                console.log('✅ Coinsub payment gateway loaded');
                 
-                // Check if we're on a block-based checkout
-                var isBlockCheckout = $('.wp-block-woocommerce-checkout').length > 0;
-                console.log('Is block checkout:', isBlockCheckout);
+                // Style the Place Order button when Coinsub is selected
+                $('input[name="payment_method"]').on('change', function() {
+                    var selectedMethod = $(this).val();
+                    if (selectedMethod === 'coinsub') {
+                        console.log('✅ Coinsub selected');
+                        $('body').addClass('payment_method_coinsub');
+                    } else {
+                        $('body').removeClass('payment_method_coinsub');
+                    }
+                });
                 
-                if (isBlockCheckout) {
-                    console.log('🚨 BLOCK CHECKOUT DETECTED - Attempting to force traditional checkout...');
-                    
-                    // Try to replace block checkout with traditional
-                    setTimeout(function() {
-                        var blockCheckout = $('.wp-block-woocommerce-checkout');
-                        if (blockCheckout.length > 0) {
-                            console.log('🔄 Replacing block checkout with traditional...');
-                            blockCheckout.html('<div class="woocommerce-checkout">' + 
-                                '<form name="checkout" method="post" class="checkout woocommerce-checkout" action="" enctype="multipart/form-data">' +
-                                '<div class="woocommerce-checkout-payment" id="payment">' +
-                                '<ul class="wc_payment_methods payment_methods methods">' +
-                                '<li class="wc_payment_method payment_method_cod">' +
-                                '<input id="payment_method_cod" type="radio" class="input-radio" name="payment_method" value="cod" checked="checked">' +
-                                '<label for="payment_method_cod">Cash on delivery</label>' +
-                                '</li>' +
-                                '<li class="wc_payment_method payment_method_coinsub">' +
-                                '<input id="payment_method_coinsub" type="radio" class="input-radio" name="payment_method" value="coinsub">' +
-                                '<label for="payment_method_coinsub">CoinSub</label>' +
-                                '<div class="payment_box payment_method_coinsub">' +
-                                '<div class="coinsub-payment-box" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; color: white;">' +
-                                '<div style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">CoinSub</div>' +
-                                '<div>Pay with Cryptocurrency</div>' +
-                                '<div style="font-size: 14px; margin-top: 10px;">Accept USDC and USDT payments</div>' +
-                                '</div>' +
-                                '</div>' +
-                                '</li>' +
-                                '</ul>' +
-                                '<div class="form-row place-order">' +
-                                '<button type="submit" class="button alt" name="woocommerce_checkout_place_order" id="place_order" value="Place order" data-value="Place order">Place order</button>' +
-                                '</div>' +
-                                '</div>' +
-                                '</form>' +
-                                '</div>');
-                            console.log('✅ Traditional checkout forced!');
-                        }
-                    }, 2000);
+                // Check initial state
+                var initialMethod = $('input[name="payment_method"]:checked').val();
+                if (initialMethod === 'coinsub') {
+                    $('body').addClass('payment_method_coinsub');
                 }
-                
-                // Regular payment method checking
-                setTimeout(function() {
-                    console.log('🔍 CoinSub Debug - Checking for payment method...');
-                    
-                    // Find the payment methods container with multiple selectors
-                    var paymentUL = $('ul.payment_methods, ul.wc_payment_methods, .woocommerce-checkout-payment ul');
-                    console.log('Payment methods UL found:', paymentUL.length);
-                    
-                    if (paymentUL.length > 0) {
-                        console.log('Payment UL HTML:', paymentUL.html().substring(0, 500));
-                        
-                        var allMethods = paymentUL.find('li');
-                        console.log('Total payment method items:', allMethods.length);
-                        
-                        allMethods.each(function(index) {
-                            var className = $(this).attr('class') || 'no-class';
-                            var inputVal = $(this).find('input[type=radio]').val();
-                            console.log('Method ' + index + ':', className, 'Input value:', inputVal);
-                        });
-                        
-                        // Check specifically for coinsub
-                        var coinsubMethod = paymentUL.find('li.payment_method_coinsub, li[class*="coinsub"], input[value="coinsub"]');
-                        console.log('CoinSub elements found:', coinsubMethod.length);
-                        
-                        if (coinsubMethod.length > 0) {
-                            console.log('✅ FOUND CoinSub!', coinsubMethod.html());
-                        } else {
-                            console.log('❌ CoinSub NOT in list');
-                        }
-                    } else {
-                        console.log('❌ Could not find payment methods UL container at all!');
-                        console.log('Page HTML sample:', $('body').html().substring(0, 1000));
-                    }
-                    
-                    // Check entire page for "coinsub" string
-                    var pageHTML = $('body').html();
-                    var coinsubMentions = (pageHTML.match(/coinsub/gi) || []).length;
-                    console.log('Times "coinsub" appears in page HTML:', coinsubMentions);
-                }, 1000);
-                
-                // Also check on AJAX complete
-                $(document.body).on('updated_checkout', function() {
-                    console.log('🔄 Checkout updated (AJAX) - rechecking...');
-                    setTimeout(function() {
-                        var paymentUL = $('ul.payment_methods, ul.wc_payment_methods');
-                        var coinsubMethod = paymentUL.find('li.payment_method_coinsub');
-                        console.log('CoinSub after AJAX:', coinsubMethod.length > 0 ? 'YES ✅' : 'NO ❌');
-                        if (coinsubMethod.length === 0) {
-                            console.log('Available after AJAX:', paymentUL.find('li').length);
-                        }
-                    }, 500);
-                });
-                
-                // Debug form submission
-                $('form.checkout').on('submit', function(e) {
-                    console.log('🚀 Form submitted!');
-                    console.log('Selected payment method:', $('input[name="payment_method"]:checked').val());
-                    console.log('Form data:', $(this).serialize());
-                    
-                    var selectedPayment = $('input[name="payment_method"]:checked').val();
-                    if (selectedPayment === 'coinsub') {
-                        console.log('✅ CoinSub payment method is selected - form should process normally');
-                    } else {
-                        console.log('❌ CoinSub NOT selected. Selected:', selectedPayment);
-                    }
-                });
-                
-                // Debug when place order button is clicked
-                $(document).on('click', '#place_order', function(e) {
-                    console.log('🎯 Place Order button clicked!');
-                    console.log('Selected payment method:', $('input[name="payment_method"]:checked').val());
-                    
-                    var selectedPayment = $('input[name="payment_method"]:checked').val();
-                    if (selectedPayment === 'coinsub') {
-                        console.log('✅ CoinSub selected - should trigger process_payment()');
-                    } else {
-                        console.log('❌ CoinSub NOT selected. Selected:', selectedPayment);
-                    }
-                });
-                
-                // No custom button logic - just use standard WooCommerce flow
             });
             </script>
             <?php
@@ -810,37 +643,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         );
     }
     
-    /**
-     * Add custom order status
-     */
-    public function add_coinsub_order_status() {
-        register_post_status('wc-pending-coinsub', array(
-            'label' => _x('Payment Completed', 'Order status', 'coinsub'),
-            'public' => false,
-            'exclude_from_search' => false,
-            'show_in_admin_all_list' => true,
-            'show_in_admin_status_list' => true,
-            'label_count' => _n_noop('Payment Completed <span class="count">(%s)</span>', 'Payment Completed <span class="count">(%s)</span>', 'coinsub')
-        ));
-        
-        register_post_status('wc-refund-pending', array(
-            'label' => _x('Refund Pending', 'Order status', 'coinsub'),
-            'public' => false,
-            'exclude_from_search' => false,
-            'show_in_admin_all_list' => true,
-            'show_in_admin_status_list' => true,
-            'label_count' => _n_noop('Refund Pending <span class="count">(%s)</span>', 'Refund Pending <span class="count">(%s)</span>', 'coinsub')
-        ));
-    }
-    
-    /**
-     * Add custom order status to WooCommerce
-     */
-    public function add_coinsub_order_status_to_woocommerce($order_statuses) {
-        $order_statuses['wc-pending-coinsub'] = _x('Payment Completed', 'Order status', 'coinsub');
-        $order_statuses['wc-refund-pending'] = _x('Refund Pending', 'Order status', 'coinsub');
-        return $order_statuses;
-    }
     
     /**
      * Check if gateway needs setup
