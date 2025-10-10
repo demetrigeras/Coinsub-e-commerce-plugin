@@ -44,9 +44,9 @@ class CoinSub_API_Client {
         $this->api_base_url = 'https://dev-api.coinsub.io/v1/commerce'; // Development API with v1/commerce prefix
         // For production, use: 'https://api.coinsub.io/v1/commerce'
         
-        // Use working credentials as defaults
-        $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : 'ca875a80-9b10-40ce-85c0-5af81856733a';
-        $this->api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : 'abf3e9e5-0140-4fda-abc9-7dd87a358852';
+        // Get merchant credentials from settings
+        $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
+        $this->api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
     }
     
     /**
@@ -414,5 +414,36 @@ class CoinSub_API_Client {
         }
         
         return wp_remote_retrieve_response_code($response) === 200;
+    }
+    
+    /**
+     * Cancel a subscription agreement
+     */
+    public function cancel_agreement($agreement_id) {
+        $endpoint = $this->api_base_url . '/agreements/cancel/' . $agreement_id;
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
+        );
+        
+        $response = wp_remote_post($endpoint, array(
+            'headers' => $headers,
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (wp_remote_retrieve_response_code($response) !== 200) {
+            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'Failed to cancel subscription');
+        }
+        
+        return $data;
     }
 }

@@ -37,8 +37,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $this->init_settings();
         
         // Get settings for debugging
-        $this->title = $this->get_option('title', 'Pay with Coinsub');
-        $this->description = $this->get_option('description', '');
+        $this->title = 'Pay with Coinsub';
+        $this->description = '';
         $this->enabled = $this->get_option('enabled', 'yes');
         
         error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
@@ -64,7 +64,63 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Admin panel options
      */
     public function admin_options() {
-        parent::admin_options();
+        ?>
+        <h2><?php echo esc_html($this->get_method_title()); ?></h2>
+        <p><?php echo esc_html($this->get_method_description()); ?></p>
+        
+        <div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;">
+            <h3 style="margin-top: 0;">📋 Setup Instructions</h3>
+            
+            <h4>Step 1: Get Your Coinsub Credentials</h4>
+            <ol style="line-height: 1.8;">
+                <li>Go to <a href="https://coinsub.io" target="_blank">coinsub.io</a> and sign up or log in</li>
+                <li>Navigate to <strong>Settings</strong> in your Coinsub dashboard</li>
+                <li>Copy your <strong>Merchant ID</strong></li>
+                <li>Create and copy your <strong>API Key</strong></li>
+                <li>Paste both into the fields below</li>
+            </ol>
+            
+            <h4>Step 2: Configure Webhook (CRITICAL)</h4>
+            <ol style="line-height: 1.8;">
+                <li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)</li>
+                <li>Go back to your Coinsub dashboard <strong>Settings</strong></li>
+                <li>Find the <strong>Webhook URL</strong> field</li>
+                <li><strong>Paste your webhook URL</strong> into that field and save</li>
+                <li><em>This is essential - without this, orders won't update when payments complete!</em></li>
+            </ol>
+            
+            <h4>Step 3: Fix WordPress Checkout Page</h4>
+            <ol style="line-height: 1.8;">
+                <li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong></li>
+                <li>In the page editor, click the <strong>⋮</strong> (three vertical dots) in the top right</li>
+                <li>Select <strong>Code Editor</strong></li>
+                <li>Replace any block content with: <code>[woocommerce_checkout]</code></li>
+                <li>Click <strong>Update</strong> to save</li>
+            </ol>
+            
+            <h4>Step 4: Remove Payment Blocks (Important)</h4>
+            <ol style="line-height: 1.8;">
+                <li>In the page editor, click the <strong>⋮</strong> (three vertical dots) again</li>
+                <li>Select <strong>Preferences</strong></li>
+                <li>In the search bar, type <strong>"payments"</strong></li>
+                <li><strong>Uncheck all blocks related to payments</strong></li>
+                <li>Close preferences and update the page</li>
+            </ol>
+            
+            <h4>Step 5: Enable Coinsub</h4>
+            <ol style="line-height: 1.8;">
+                <li>Check the <strong>"Enable Coinsub Crypto Payments"</strong> box below</li>
+                <li>Click <strong>Save changes</strong></li>
+                <li>Done! Customers will now see "Pay with Coinsub" at checkout</li>
+            </ol>
+            
+            <p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Coinsub works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p>
+        </div>
+        
+        <table class="form-table">
+        <?php $this->generate_settings_html(); ?>
+        </table>
+        <?php
     }
 
     /**
@@ -76,53 +132,31 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'enabled' => array(
                 'title' => __('Enable/Disable', 'coinsub'),
                 'type' => 'checkbox',
-                'label' => __('Enable Coinsub', 'coinsub'),
-                'default' => 'yes'  // ← Changed to 'yes' for testing
-            ),
-            'title' => array(
-                'title' => __('Title', 'coinsub'),
-                'type' => 'text',
-                'description' => __('This controls the title which the user sees during checkout.', 'coinsub'),
-                'default' => __('Pay with Coinsub', 'coinsub'),
-                'desc_tip' => true,
-            ),
-            'description' => array(
-                'title' => __('Description', 'coinsub'),
-                'type' => 'textarea',
-                'description' => __('This controls the description which the user sees during checkout.', 'coinsub'),
-                'default' => __('Pay with crypto. Click "Place order" to continue.', 'coinsub'),
+                'label' => __('Enable Coinsub Crypto Payments', 'coinsub'),
+                'default' => 'no'
             ),
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Your CoinSub Merchant ID (required)', 'coinsub'),
+                'description' => __('Get this from your Coinsub merchant dashboard', 'coinsub'),
                 'default' => '',
-                'desc_tip' => true,
+                'placeholder' => 'e.g., 12345678-abcd-1234-abcd-123456789abc',
                 'required' => true,
             ),
             'api_key' => array(
                 'title' => __('API Key', 'coinsub'),
                 'type' => 'password',
-                'description' => __('Your CoinSub API Key (required)', 'coinsub'),
+                'description' => __('Get this from your Coinsub merchant dashboard', 'coinsub'),
                 'default' => '',
-                'desc_tip' => true,
                 'required' => true,
             ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Your webhook URL for CoinSub to send payment notifications (auto-generated)', 'coinsub'),
+                'description' => __('Copy this URL and add it to your Coinsub merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
                 'default' => home_url('/wp-json/coinsub/v1/webhook'),
                 'custom_attributes' => array('readonly' => 'readonly'),
-                'desc_tip' => true,
-            ),
-            'webhook_instructions' => array(
-                'title' => __('Webhook Setup Instructions', 'coinsub'),
-                'type' => 'title',
-                'description' => sprintf(
-                    __('<strong>Important:</strong> Copy the webhook URL above and configure it in your CoinSub merchant dashboard. This URL will receive payment notifications and automatically update your WooCommerce orders.<br><br><strong>Webhook URL:</strong> <code>%s</code>', 'coinsub'),
-                    home_url('/wp-json/coinsub/v1/webhook')
-                ),
+                'css' => 'background: #f0f0f0;',
             ),
         );
     }
@@ -305,6 +339,23 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Prepare purchase session data
      */
     private function prepare_purchase_session_data($order, $coinsub_order) {
+        // Check if this is a subscription order
+        $is_subscription = false;
+        $subscription_data = null;
+        
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            if ($product && $product->get_meta('_coinsub_subscription') === 'yes') {
+                $is_subscription = true;
+                $subscription_data = array(
+                    'frequency' => $product->get_meta('_coinsub_frequency'),
+                    'interval' => $product->get_meta('_coinsub_interval'),
+                    'duration' => $product->get_meta('_coinsub_duration')
+                );
+                break;
+            }
+        }
+        
         // Prepare product information
         $product_names = array();
         $product_details = array();
@@ -356,18 +407,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         $details_string = implode(' | ', $details_parts);
         
-        return array(
+        $session_data = array(
             'name' => $order_name,
             'details' => $details_string,
             'currency' => $order->get_currency(),
             'amount' => $total_amount,
-            'recurring' => false,
+            'recurring' => $is_subscription,
             'metadata' => array(
                 'woocommerce_order_id' => $order->get_id(),
                 'order_number' => $order->get_order_number(),
                 'customer_email' => $order->get_billing_email(),
                 'customer_name' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
                 'source' => 'woocommerce_plugin',
+                'is_subscription' => $is_subscription,
                 'individual_products' => $product_names,
                 'product_count' => count($product_details),
                 'total_items' => $total_items,
@@ -416,6 +468,24 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'success_url' => $this->get_return_url($order), // Return to order received page after payment
             'cancel_url' => wc_get_checkout_url() // Return to checkout if cancelled
         );
+        
+        // Add subscription data if this is a subscription
+        if ($is_subscription && $subscription_data) {
+            // Map to lowercase string format for API
+            $interval_map = array('0' => 'day', '1' => 'week', '2' => 'month', '3' => 'year');
+            
+            $session_data['interval'] = isset($interval_map[$subscription_data['interval']]) 
+                ? $interval_map[$subscription_data['interval']] 
+                : 'month';
+            $session_data['frequency'] = (string) $subscription_data['frequency'];
+            $session_data['duration'] = (string) $subscription_data['duration'];
+            
+            // Mark in metadata for tracking
+            $session_data['metadata']['is_subscription'] = true;
+            $session_data['metadata']['subscription_settings'] = $subscription_data;
+        }
+        
+        return $session_data;
     }
     
     /**

@@ -119,6 +119,23 @@ class WC_CoinSub_Cart_Sync {
             $total = $subtotal > 0 ? $subtotal : 0.01; // Minimum $0.01
         }
         
+        // Check if cart contains subscription
+        $has_subscription = false;
+        $subscription_data = null;
+        
+        foreach ($cart->get_cart() as $cart_item) {
+            $product = $cart_item['data'];
+            if ($product->get_meta('_coinsub_subscription') === 'yes') {
+                $has_subscription = true;
+                $subscription_data = array(
+                    'frequency' => $product->get_meta('_coinsub_frequency'),
+                    'interval' => $product->get_meta('_coinsub_interval'),
+                    'duration' => $product->get_meta('_coinsub_duration')
+                );
+                break;
+            }
+        }
+        
         $order_data = array(
             'items' => $items,
             'product_price' => $subtotal,
@@ -126,7 +143,11 @@ class WC_CoinSub_Cart_Sync {
             'tax_cost' => $tax,
             'total' => $total,
             'currency' => get_woocommerce_currency(),
-            'status' => 'cart'
+            'status' => 'cart',
+            'metadata' => array(
+                'is_subscription' => $has_subscription,
+                'subscription_data' => $subscription_data
+            )
         );
         
         error_log('🛒 CoinSub Cart Sync - Order breakdown:');
