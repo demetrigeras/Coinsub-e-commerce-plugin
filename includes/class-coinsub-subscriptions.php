@@ -94,7 +94,8 @@ class CoinSub_Subscriptions {
         woocommerce_wp_checkbox(array(
             'id' => '_coinsub_subscription',
             'label' => __('Coinsub Subscription', 'coinsub'),
-            'description' => __('Enable this to make this a recurring subscription product', 'coinsub')
+            'description' => __('Enable this to make this a recurring subscription product', 'coinsub'),
+            'value' => get_post_meta($post->ID, '_coinsub_subscription', true)
         ));
         
         woocommerce_wp_select(array(
@@ -105,7 +106,11 @@ class CoinSub_Subscriptions {
                 '2' => 'Every Other',
                 '3' => 'Every Third',
                 '4' => 'Every Fourth',
+                '5' => 'Every Fifth',
+                '6' => 'Every Sixth',
+                '7' => 'Every Seventh',
             ),
+            'value' => get_post_meta($post->ID, '_coinsub_frequency', true),
             'desc_tip' => true,
             'description' => __('How often the subscription renews', 'coinsub')
         ));
@@ -119,13 +124,17 @@ class CoinSub_Subscriptions {
                 '2' => 'Month',
                 '3' => 'Year',
             ),
+            'value' => get_post_meta($post->ID, '_coinsub_interval', true),
             'desc_tip' => true,
             'description' => __('Time period for the subscription', 'coinsub')
         ));
         
+        $duration_value = get_post_meta($post->ID, '_coinsub_duration', true);
+        $duration_display = ($duration_value === '0' || empty($duration_value)) ? '' : $duration_value;
+        
         echo '<p class="form-field _coinsub_duration_field">';
         echo '<label for="_coinsub_duration">' . __('Duration', 'coinsub') . '</label>';
-        echo '<input type="text" id="_coinsub_duration" name="_coinsub_duration" placeholder="Until Cancelled" style="width: 50%;" />';
+        echo '<input type="text" id="_coinsub_duration" name="_coinsub_duration" value="' . esc_attr($duration_display) . '" placeholder="Until Cancelled" style="width: 50%;" />';
         echo '<span class="description" style="display: block; margin-top: 5px;">';
         echo __('Leave blank for <strong>"Until Cancelled"</strong> (subscription continues forever)<br>Or enter a number for limited payments (e.g., <strong>12</strong> = stops after 12 payments)', 'coinsub');
         echo '</span>';
@@ -142,14 +151,19 @@ class CoinSub_Subscriptions {
         update_post_meta($post_id, '_coinsub_subscription', $is_subscription);
         
         if ($is_subscription === 'yes') {
-            $frequency = sanitize_text_field($_POST['_coinsub_frequency']);
-            $interval = sanitize_text_field($_POST['_coinsub_interval']);
-            $duration = sanitize_text_field($_POST['_coinsub_duration']);
+            $frequency = isset($_POST['_coinsub_frequency']) ? sanitize_text_field($_POST['_coinsub_frequency']) : '1';
+            $interval = isset($_POST['_coinsub_interval']) ? sanitize_text_field($_POST['_coinsub_interval']) : '2';
+            $duration = isset($_POST['_coinsub_duration']) ? sanitize_text_field($_POST['_coinsub_duration']) : '';
             
             // Convert empty duration to "0" (Until Cancelled)
             if (empty($duration) || $duration === 'Until Cancelled') {
                 $duration = '0';
             }
+            
+            error_log('💾 Saving subscription product #' . $post_id);
+            error_log('  Frequency: ' . $frequency);
+            error_log('  Interval: ' . $interval);
+            error_log('  Duration: ' . $duration);
             
             update_post_meta($post_id, '_coinsub_frequency', $frequency);
             update_post_meta($post_id, '_coinsub_interval', $interval);

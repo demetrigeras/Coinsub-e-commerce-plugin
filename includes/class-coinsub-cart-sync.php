@@ -125,15 +125,23 @@ class WC_CoinSub_Cart_Sync {
         
         foreach ($cart->get_cart() as $cart_item) {
             $product = $cart_item['data'];
-            if ($product->get_meta('_coinsub_subscription') === 'yes') {
+            $is_sub = $product->get_meta('_coinsub_subscription');
+            error_log('🔍 Product ' . $product->get_name() . ' - Is subscription: ' . $is_sub);
+            
+            if ($is_sub === 'yes') {
                 $has_subscription = true;
                 $subscription_data = array(
                     'frequency' => $product->get_meta('_coinsub_frequency'),
                     'interval' => $product->get_meta('_coinsub_interval'),
                     'duration' => $product->get_meta('_coinsub_duration')
                 );
+                error_log('✅ Subscription detected! Frequency: ' . $subscription_data['frequency'] . ', Interval: ' . $subscription_data['interval'] . ', Duration: ' . $subscription_data['duration']);
                 break;
             }
+        }
+        
+        if ($has_subscription) {
+            error_log('🔄 Cart has subscription - will pass to order');
         }
         
         $order_data = array(

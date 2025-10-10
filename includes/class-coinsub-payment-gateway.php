@@ -352,8 +352,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                     'interval' => $product->get_meta('_coinsub_interval'),
                     'duration' => $product->get_meta('_coinsub_duration')
                 );
+                error_log('🔄 SUBSCRIPTION ORDER DETECTED!');
+                error_log('  Frequency: ' . $subscription_data['frequency']);
+                error_log('  Interval: ' . $subscription_data['interval']);
+                error_log('  Duration: ' . $subscription_data['duration']);
                 break;
             }
+        }
+        
+        if (!$is_subscription) {
+            error_log('📦 Regular order (not subscription)');
         }
         
         // Prepare product information
@@ -471,14 +479,35 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Add subscription data if this is a subscription
         if ($is_subscription && $subscription_data) {
-            // Map to lowercase string format for API
-            $interval_map = array('0' => 'day', '1' => 'week', '2' => 'month', '3' => 'year');
+            error_log('🔍 Raw subscription data from product:');
+            error_log('  Frequency: ' . var_export($subscription_data['frequency'], true));
+            error_log('  Interval: ' . var_export($subscription_data['interval'], true));
+            error_log('  Duration: ' . var_export($subscription_data['duration'], true));
             
-            $session_data['interval'] = isset($interval_map[$subscription_data['interval']]) 
-                ? $interval_map[$subscription_data['interval']] 
-                : 'month';
+            // Map interval number to capitalized string (matching Go API)
+            $interval_map = array(
+                '0' => 'Day', 0 => 'Day',
+                '1' => 'Week', 1 => 'Week',
+                '2' => 'Month', 2 => 'Month',
+                '3' => 'Year', 3 => 'Year'
+            );
+            
+            $interval_value = $subscription_data['interval'];
+            
+            // Don't default - let it error if interval is invalid
+            if (!isset($interval_map[$interval_value])) {
+                error_log('❌ Invalid interval value: ' . var_export($interval_value, true));
+                throw new Exception('Invalid subscription interval. Please check product settings.');
+            }
+            
+            $session_data['interval'] = $interval_map[$interval_value];
             $session_data['frequency'] = (string) $subscription_data['frequency'];
-            $session_data['duration'] = (string) $subscription_data['duration'];
+            $session_data['duration'] = (string) ($subscription_data['duration'] ?: '0');
+            
+            error_log('✅ Mapped subscription fields:');
+            error_log('  interval: ' . $session_data['interval']);
+            error_log('  frequency: ' . $session_data['frequency']);
+            error_log('  duration: ' . $session_data['duration']);
             
             // Mark in metadata for tracking
             $session_data['metadata']['is_subscription'] = true;

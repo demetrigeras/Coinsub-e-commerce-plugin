@@ -78,6 +78,21 @@ class CoinSub_API_Client {
             'cancel_url' => $order_data['cancel_url']
         );
         
+        // Add subscription fields if recurring
+        if (!empty($order_data['recurring']) && $order_data['recurring'] === true) {
+            if (isset($order_data['frequency'])) {
+                $payload['frequency'] = $order_data['frequency'];
+            }
+            if (isset($order_data['interval'])) {
+                $payload['interval'] = $order_data['interval'];
+            }
+            if (isset($order_data['duration'])) {
+                $payload['duration'] = $order_data['duration'];
+            }
+        }
+        
+        error_log('🌐 CoinSub API - Full Payload: ' . json_encode($payload));
+        
         $headers = array(
             'Content-Type' => 'application/json',
             'Merchant-ID' => $this->merchant_id,
