@@ -435,7 +435,8 @@ class CoinSub_API_Client {
      * Cancel a subscription agreement
      */
     public function cancel_agreement($agreement_id) {
-        $endpoint = $this->api_base_url . '/agreements/cancel/' . $agreement_id;
+        // Agreements endpoint is at /v1/agreements, not /v1/commerce
+        $endpoint = 'https://dev-api.coinsub.io/v1/agreements/cancel/' . $agreement_id;
         
         $headers = array(
             'Content-Type' => 'application/json',

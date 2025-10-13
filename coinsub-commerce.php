@@ -57,12 +57,14 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-test.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-cart-sync.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-subscriptions.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-account-pages.php';
     
     // Register custom order status
     
     // Initialize components
     new CoinSub_Webhook_Handler();
     new CoinSub_Order_Manager();
+    new CoinSub_Account_Pages();
     
     // Initialize cart sync (tracks cart changes in real-time)
     if (!is_admin()) {
