@@ -190,6 +190,16 @@ class CoinSub_API_Client {
             'product_price' => isset($order_data['product_price']) ? $order_data['product_price'] : (isset($order_data['subtotal']) ? $order_data['subtotal'] : $order_data['total'])
         );
         
+        // Add recurring flag if present
+        if (isset($order_data['recurring'])) {
+            $payload['recurring'] = $order_data['recurring'];
+        }
+        
+        // Add metadata if present
+        if (isset($order_data['metadata'])) {
+            $payload['metadata'] = $order_data['metadata'];
+        }
+        
         $headers = array(
             'Content-Type' => 'application/json',
             'Merchant-ID' => $this->merchant_id,
@@ -245,6 +255,16 @@ class CoinSub_API_Client {
             'tax_cost' => isset($order_data['tax_cost']) ? $order_data['tax_cost'] : 0,
             'product_price' => isset($order_data['product_price']) ? $order_data['product_price'] : $order_data['total']
         );
+        
+        // Add recurring flag if present
+        if (isset($order_data['recurring'])) {
+            $payload['recurring'] = $order_data['recurring'];
+        }
+        
+        // Add metadata if present
+        if (isset($order_data['metadata'])) {
+            $payload['metadata'] = $order_data['metadata'];
+        }
         
         $headers = array(
             'Content-Type' => 'application/json',

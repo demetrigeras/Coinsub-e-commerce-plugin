@@ -217,7 +217,6 @@ class CoinSub_Subscriptions {
                         <th><?php _e('Product', 'coinsub'); ?></th>
                         <th><?php _e('Amount', 'coinsub'); ?></th>
                         <th><?php _e('Frequency', 'coinsub'); ?></th>
-                        <th><?php _e('Next Payment', 'coinsub'); ?></th>
                         <th><?php _e('Status', 'coinsub'); ?></th>
                         <th><?php _e('Actions', 'coinsub'); ?></th>
                     </tr>
@@ -228,7 +227,6 @@ class CoinSub_Subscriptions {
                         <td><?php echo esc_html($subscription['product_name']); ?></td>
                         <td><?php echo wc_price($subscription['amount']); ?></td>
                         <td><?php echo esc_html($subscription['frequency_text']); ?></td>
-                        <td><?php echo esc_html($subscription['next_payment']); ?></td>
                         <td><?php echo esc_html($subscription['status']); ?></td>
                         <td>
                             <?php if ($subscription['status'] === 'Active'): ?>
@@ -295,30 +293,39 @@ class CoinSub_Subscriptions {
     private function get_customer_subscriptions($customer_id) {
         $subscriptions = array();
         
-        // Get orders with subscriptions
+        // Get ALL customer orders with Coinsub payment
         $orders = wc_get_orders(array(
             'customer_id' => $customer_id,
+            'payment_method' => 'coinsub',
             'limit' => -1,
-            'meta_key' => '_coinsub_agreement_id',
-            'meta_compare' => 'EXISTS'
         ));
         
         foreach ($orders as $order) {
-            $agreement_id = $order->get_meta('_coinsub_agreement_id');
-            $status = $order->get_meta('_coinsub_subscription_status');
+            // Check if this is a subscription order using the metadata flag
+            $is_subscription = $order->get_meta('_coinsub_is_subscription');
             
-            if (empty($agreement_id) || $status === 'cancelled') {
+            if ($is_subscription !== 'yes') {
+                continue; // Not a subscription, skip
+            }
+            
+            // Get agreement ID (this gets set by webhook after payment)
+            $agreement_id = $order->get_meta('_coinsub_agreement_id');
+            
+            if (empty($agreement_id)) {
+                // Subscription product but no agreement yet (payment not complete)
                 continue;
             }
             
+            $status = $order->get_meta('_coinsub_subscription_status');
+            
+            // Show both active and cancelled subscriptions
             $subscriptions[] = array(
                 'order_id' => $order->get_id(),
                 'agreement_id' => $agreement_id,
                 'product_name' => $this->get_subscription_product_name($order),
                 'amount' => $order->get_total(),
-                'frequency_text' => $order->get_meta('_coinsub_frequency_text'),
-                'next_payment' => $order->get_meta('_coinsub_next_payment'),
-                'status' => ucfirst($status ?: 'Active')
+                'frequency_text' => $this->get_subscription_frequency_text($order),
+                'status' => $status === 'cancelled' ? 'Cancelled' : 'Active'
             );
         }
         
@@ -336,6 +343,44 @@ class CoinSub_Subscriptions {
         
         $first_item = reset($items);
         return $first_item->get_name();
+    }
+    
+    /**
+     * Get subscription frequency text from order
+     */
+    private function get_subscription_frequency_text($order) {
+        $frequency_map = array(
+            '1' => 'Every',
+            '2' => 'Every Other',
+            '3' => 'Every Third',
+            '4' => 'Every Fourth',
+            '5' => 'Every Fifth',
+            '6' => 'Every Sixth',
+            '7' => 'Every Seventh',
+        );
+        
+        $interval_map = array(
+            '0' => 'Day',
+            '1' => 'Week',
+            '2' => 'Month',
+            '3' => 'Year',
+        );
+        
+        // Get subscription data from order items
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            if ($product && $product->get_meta('_coinsub_subscription') === 'yes') {
+                $frequency = $product->get_meta('_coinsub_frequency');
+                $interval = $product->get_meta('_coinsub_interval');
+                
+                $frequency_text = isset($frequency_map[$frequency]) ? $frequency_map[$frequency] : 'Every';
+                $interval_text = isset($interval_map[$interval]) ? $interval_map[$interval] : 'Month';
+                
+                return $frequency_text . ' ' . $interval_text;
+            }
+        }
+        
+        return __('N/A', 'coinsub');
     }
     
     /**

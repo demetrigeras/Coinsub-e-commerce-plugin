@@ -231,11 +231,23 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 throw new Exception($checkout_result->get_error_message());
             }
             
+            // Check if this is a subscription order
+            $is_subscription = false;
+            foreach ($order->get_items() as $item) {
+                $product = $item->get_product();
+                if ($product && $product->get_meta('_coinsub_subscription') === 'yes') {
+                    $is_subscription = true;
+                    error_log('✅ CoinSub - This is a SUBSCRIPTION order');
+                    break;
+                }
+            }
+            
             // Store CoinSub data in order meta
             $order->update_meta_data('_coinsub_order_id', $coinsub_order_id);
             $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session['purchase_session_id']);
             $order->update_meta_data('_coinsub_checkout_url', $purchase_session['checkout_url']);
             $order->update_meta_data('_coinsub_merchant_id', $this->get_option('merchant_id'));
+            $order->update_meta_data('_coinsub_is_subscription', $is_subscription ? 'yes' : 'no');
             $order->save();
             
             error_log('🔗 CoinSub - Checkout URL stored: ' . $purchase_session['checkout_url']);

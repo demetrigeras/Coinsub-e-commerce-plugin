@@ -152,8 +152,11 @@ class WC_CoinSub_Cart_Sync {
             'total' => $total,
             'currency' => get_woocommerce_currency(),
             'status' => 'cart',
+            'recurring' => $has_subscription,  // Top level flag for recurring orders
             'metadata' => array(
-                'is_subscription' => $has_subscription,
+                'origin' => 'woocommerce',
+                'platform' => 'woocommerce',
+                'store_url' => get_site_url(),
                 'subscription_data' => $subscription_data
             )
         );
@@ -256,12 +259,25 @@ class WC_CoinSub_Cart_Sync {
             $product_data['image_url'] = $image_url;
         }
         
+        // Check if this is a subscription product
+        $is_subscription = $product->get_meta('_coinsub_subscription') === 'yes';
+        
         // Add metadata as object (not string)
         $product_data['metadata'] = array(
             'woocommerce_id' => $wc_product_id,
             'sku' => $product->get_sku() ?: '',
-            'type' => $product->get_type()
+            'type' => $product->get_type(),
+            'is_subscription' => $is_subscription
         );
+        
+        // Add subscription details if it's a subscription product
+        if ($is_subscription) {
+            $product_data['metadata']['subscription'] = array(
+                'frequency' => $product->get_meta('_coinsub_frequency') ?: '1',
+                'interval' => $product->get_meta('_coinsub_interval') ?: '2',
+                'duration' => $product->get_meta('_coinsub_duration') ?: '0'
+            );
+        }
         
         error_log('📦 CoinSub Cart Sync - Creating product: ' . $product->get_name() . ' (Price: $' . $price . ')');
         
