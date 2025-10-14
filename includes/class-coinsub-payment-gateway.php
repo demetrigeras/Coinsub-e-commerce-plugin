@@ -219,16 +219,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 throw new Exception($purchase_session->get_error_message());
             }
             
-            // Checkout the order (link to purchase session)
-            error_log('🔗 CoinSub - Step 3: Linking order to session...');
-            $checkout_result = $this->api_client->checkout_order(
-                $coinsub_order_id,
-                $purchase_session['purchase_session_id']
-            );
-            error_log('✅ CoinSub - Order linked to session!');
+            // Update commerce order status to pending_checkout
+            error_log('🔗 CoinSub - Step 3: Updating order status to pending_checkout...');
+            $status_update = $this->api_client->update_order_status($coinsub_order_id, 'pending_checkout');
             
-            if (is_wp_error($checkout_result)) {
-                throw new Exception($checkout_result->get_error_message());
+            if (is_wp_error($status_update)) {
+                error_log('⚠️ Failed to update status (non-critical): ' . $status_update->get_error_message());
+            } else {
+                error_log('✅ Commerce order status updated to pending_checkout');
             }
             
             // Check if this is a subscription order
@@ -255,8 +253,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Update order status - awaiting payment confirmation
             $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Coinsub checkout.', 'coinsub'));
             
-            // Empty cart
+            // Empty cart and clear CoinSub order from session
             WC()->cart->empty_cart();
+            WC()->session->set('coinsub_order_id', null);  // Clear for next order
             
             $checkout_url = $purchase_session['checkout_url'];
             error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
@@ -343,7 +342,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'shipping' => (float) $order->get_shipping_total(),
             'tax' => (float) $order->get_total_tax(),
             'total' => (float) $order->get_total(),
-            'currency' => $order->get_currency()
+            'currency' => $order->get_currency(),
+            'commerce_company_type' => 'woocommerce'
         );
     }
     

@@ -159,7 +159,7 @@ class CoinSub_Webhook_Handler {
      * Handle payment completed
      */
     private function handle_payment_completed($order, $data) {
-        // Update order status - payment is complete!
+        // Update WooCommerce order status - payment is complete!
         $order->update_status('processing', __('Payment Complete', 'coinsub'));
         
         // Add order note with transaction details
@@ -174,7 +174,7 @@ class CoinSub_Webhook_Handler {
             )
         );
         
-        // Store transaction details
+        // Store transaction details in WooCommerce
         if (isset($data['payment_id'])) {
             $order->update_meta_data('_coinsub_payment_id', $data['payment_id']);
         }
@@ -196,6 +196,31 @@ class CoinSub_Webhook_Handler {
         }
         
         $order->save();
+        
+        // ✅ UPDATE COINSUB COMMERCE ORDER STATUS TO "PAID"
+        $coinsub_order_id = $order->get_meta('_coinsub_order_id');
+        if (!empty($coinsub_order_id)) {
+            error_log('🔄 Updating CoinSub commerce order status to PAID for order: ' . $coinsub_order_id);
+            
+            // Get API client
+            if (!class_exists('CoinSub_API_Client')) {
+                require_once plugin_dir_path(__FILE__) . 'class-coinsub-api-client.php';
+            }
+            $api_client = new CoinSub_API_Client();
+            
+            // Update ONLY status - nothing else!
+            $update_data = array(
+                'status' => 'paid'
+            );
+            
+            $result = $api_client->update_commerce_order_from_webhook($coinsub_order_id, $update_data);
+            
+            if (is_wp_error($result)) {
+                error_log('⚠️ Failed to update CoinSub commerce order: ' . $result->get_error_message());
+            } else {
+                error_log('✅ CoinSub commerce order status updated to PAID');
+            }
+        }
         
         // Send order completion emails
         WC()->mailer()->emails['WC_Email_Customer_Processing_Order']->trigger($order->get_id());

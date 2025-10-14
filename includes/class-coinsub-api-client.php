@@ -187,7 +187,8 @@ class CoinSub_API_Client {
             'status' => isset($order_data['status']) ? $order_data['status'] : 'cart',
             'shipping_cost' => isset($order_data['shipping_cost']) ? $order_data['shipping_cost'] : (isset($order_data['shipping']) ? $order_data['shipping'] : 0),
             'tax_cost' => isset($order_data['tax_cost']) ? $order_data['tax_cost'] : (isset($order_data['tax']) ? $order_data['tax'] : 0),
-            'product_price' => isset($order_data['product_price']) ? $order_data['product_price'] : (isset($order_data['subtotal']) ? $order_data['subtotal'] : $order_data['total'])
+            'product_price' => isset($order_data['product_price']) ? $order_data['product_price'] : (isset($order_data['subtotal']) ? $order_data['subtotal'] : $order_data['total']),
+            'commerce_company_type' => 'woocommerce'  // Always set to woocommerce
         );
         
         // Add recurring flag if present
@@ -242,7 +243,7 @@ class CoinSub_API_Client {
      * Update an existing order in CoinSub
      */
     public function update_order($order_id, $order_data) {
-        $endpoint = $this->api_base_url . '/orders/' . $order_id;
+        $endpoint = $this->api_base_url . '/orders/update/' . $order_id;
         error_log('🌐 CoinSub API - Updating order: ' . $order_id);
         error_log('🌐 CoinSub API - New total: ' . $order_data['total']);
         
@@ -452,6 +453,41 @@ class CoinSub_API_Client {
     }
     
     /**
+     * Update commerce order status
+     */
+    public function update_order_status($order_id, $status) {
+        $endpoint = $this->api_base_url . '/orders/updatestatus/' . $order_id;
+        
+        $payload = array(
+            'status' => $status
+        );
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
+        );
+        
+        $response = wp_remote_request($endpoint, array(
+            'method' => 'PUT',
+            'headers' => $headers,
+            'body' => json_encode($payload),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 200) {
+            return new WP_Error('api_error', 'Failed to update status');
+        }
+        
+        return true;
+    }
+    
+    /**
      * Cancel a subscription agreement
      */
     public function cancel_agreement($agreement_id) {
@@ -480,6 +516,56 @@ class CoinSub_API_Client {
             return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'Failed to cancel subscription');
         }
         
+        return $data;
+    }
+    
+    /**
+     * Update commerce order status from webhook
+     * ONLY UPDATES STATUS - DOES NOT TOUCH ITEMS!
+     */
+    public function update_commerce_order_from_webhook($order_id, $update_data) {
+        // Use the STATUS-ONLY endpoint to avoid wiping items!
+        $endpoint = $this->api_base_url . '/orders/updatestatus/' . $order_id;
+        
+        $payload = array(
+            'status' => $update_data['status']
+        );
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
+        );
+        
+        error_log('🌐 CoinSub API - Updating commerce order STATUS from webhook: ' . $order_id);
+        error_log('🌐 CoinSub API - New status: ' . $update_data['status']);
+        
+        $response = wp_remote_request($endpoint, array(
+            'method' => 'PUT',
+            'headers' => $headers,
+            'body' => json_encode($payload),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - Webhook update network error: ' . $response->get_error_message());
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $status_code = wp_remote_retrieve_response_code($response);
+        $data = json_decode($body, true);
+        
+        error_log('🌐 CoinSub API - Webhook update response status: ' . $status_code);
+        error_log('🌐 CoinSub API - Webhook update response body: ' . substr($body, 0, 500));
+        
+        if ($status_code !== 200) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('❌ CoinSub API - Webhook update failed: ' . $error_msg);
+            return new WP_Error('api_error', $error_msg);
+        }
+        
+        error_log('✅ CoinSub API - Commerce order status updated to: ' . $update_data['status']);
         return $data;
     }
 }
