@@ -144,6 +144,9 @@ class WC_CoinSub_Cart_Sync {
             error_log('🔄 Cart has subscription - will pass to order');
         }
         
+        // Get WooCommerce session ID to store in purchase_session_id field
+        $wc_session_id = WC()->session ? WC()->session->get_customer_id() : null;
+        
         $order_data = array(
             'items' => $items,
             'product_price' => $subtotal,
@@ -152,7 +155,9 @@ class WC_CoinSub_Cart_Sync {
             'total' => $total,
             'currency' => get_woocommerce_currency(),
             'status' => 'cart',
-            'recurring' => $has_subscription,  // Top level flag for recurring orders
+            'purchase_session_id' => $wc_session_id,  // Store WC session ID here!
+            'commerce_company_type' => 'woocommerce',  // Always woocommerce
+            'recurring' => $has_subscription,
             'metadata' => array(
                 'origin' => 'woocommerce',
                 'platform' => 'woocommerce',
