@@ -188,8 +188,13 @@ class CoinSub_API_Client {
             'shipping_cost' => isset($order_data['shipping_cost']) ? $order_data['shipping_cost'] : (isset($order_data['shipping']) ? $order_data['shipping'] : 0),
             'tax_cost' => isset($order_data['tax_cost']) ? $order_data['tax_cost'] : (isset($order_data['tax']) ? $order_data['tax'] : 0),
             'product_price' => isset($order_data['product_price']) ? $order_data['product_price'] : (isset($order_data['subtotal']) ? $order_data['subtotal'] : $order_data['total']),
-            'commerce_company_type' => 'woocommerce'  // Always set to woocommerce
+            'commerce_company_type' => 'woocommerce'  // Always woocommerce
         );
+        
+        // Add purchase_session_id if provided (WooCommerce session ID)
+        if (isset($order_data['purchase_session_id'])) {
+            $payload['purchase_session_id'] = $order_data['purchase_session_id'];
+        }
         
         // Add recurring flag if present
         if (isset($order_data['recurring'])) {

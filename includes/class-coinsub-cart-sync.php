@@ -146,6 +146,7 @@ class WC_CoinSub_Cart_Sync {
         
         // Get WooCommerce session ID to store in purchase_session_id field
         $wc_session_id = WC()->session ? WC()->session->get_customer_id() : null;
+        error_log('🔑 WooCommerce Session ID: ' . ($wc_session_id ? $wc_session_id : 'NOT AVAILABLE'));
         
         $order_data = array(
             'items' => $items,
@@ -165,6 +166,8 @@ class WC_CoinSub_Cart_Sync {
                 'subscription_data' => $subscription_data
             )
         );
+        
+        error_log('📦 Sending purchase_session_id to API: ' . ($wc_session_id ? $wc_session_id : 'NULL'));
         
         error_log('🛒 CoinSub Cart Sync - Order breakdown:');
         error_log('  Items: ' . count($items));

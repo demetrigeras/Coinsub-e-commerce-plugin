@@ -57,6 +57,7 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-test.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-cart-sync.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-subscriptions.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-subscriptions.php';
     
     // Register custom order status
     
