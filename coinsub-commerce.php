@@ -270,6 +270,10 @@ add_action('wp_ajax_nopriv_coinsub_check_webhook_status', 'coinsub_ajax_check_we
 add_action('wp_ajax_coinsub_get_latest_order_url', 'coinsub_ajax_get_latest_order_url');
 add_action('wp_ajax_nopriv_coinsub_get_latest_order_url', 'coinsub_ajax_get_latest_order_url');
 
+// WordPress Heartbeat for real-time webhook communication
+add_filter('heartbeat_received', 'coinsub_heartbeat_received', 10, 3);
+add_filter('heartbeat_nopriv_received', 'coinsub_heartbeat_received', 10, 3);
+
 function coinsub_ajax_process_payment() {
     error_log('CoinSub AJAX: Payment processing started');
     
@@ -483,5 +487,47 @@ function coinsub_ajax_get_latest_order_url() {
         error_log('CoinSub Get Order URL: Order not yet completed, status: ' . $order_status);
         wp_send_json_error('Order not completed yet');
     }
+}
+
+/**
+ * WordPress Heartbeat handler for real-time webhook communication
+ */
+function coinsub_heartbeat_received($response, $data, $screen_id) {
+    // Check if frontend is requesting webhook status
+    if (isset($data['coinsub_check_webhook']) && $data['coinsub_check_webhook']) {
+        error_log('💓 CoinSub Heartbeat: Checking for webhook completion...');
+        
+        // Get the most recent order with CoinSub payment method
+        $orders = wc_get_orders(array(
+            'limit' => 1,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'payment_method' => 'coinsub'
+        ));
+        
+        if (!empty($orders)) {
+            $order = $orders[0];
+            $redirect_flag = $order->get_meta('_coinsub_redirect_to_received');
+            
+            if ($redirect_flag === 'yes') {
+                error_log('💓 CoinSub Heartbeat: Webhook completed for order #' . $order->get_id());
+                
+                // Clear the redirect flag
+                $order->delete_meta_data('_coinsub_redirect_to_received');
+                $order->save();
+                
+                // Get the order-received page URL
+                $redirect_url = $order->get_checkout_order_received_url();
+                
+                // Send response back to frontend
+                $response['coinsub_webhook_complete'] = true;
+                $response['coinsub_redirect_url'] = $redirect_url;
+                
+                error_log('💓 CoinSub Heartbeat: Sending redirect URL to frontend: ' . $redirect_url);
+            }
+        }
+    }
+    
+    return $response;
 }
 ?>

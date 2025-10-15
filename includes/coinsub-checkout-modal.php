@@ -539,9 +539,27 @@ jQuery(document).ready(function($) {
         }
     };
     
-    // WEBHOOK POLLING: Check for webhook completion every 500ms
+    // WORDPRESS HEARTBEAT: Use WordPress built-in real-time communication
+    // This is the standard WordPress way for backend-to-frontend communication
+    jQuery(document).on('heartbeat-send', function(e, data) {
+        console.log('💓 WordPress Heartbeat - Sending webhook check request');
+        data.coinsub_check_webhook = true;
+    });
+    
+    jQuery(document).on('heartbeat-tick', function(e, data) {
+        if (data.coinsub_webhook_complete && data.coinsub_redirect_url) {
+            console.log('✅ WordPress Heartbeat - Webhook completed!');
+            console.log('✅ Redirecting to:', data.coinsub_redirect_url);
+            closeModal();
+            setTimeout(function() {
+                window.top.location.href = data.coinsub_redirect_url;
+            }, 1000);
+        }
+    });
+    
+    // FALLBACK: AJAX polling in case Heartbeat doesn't work
     var webhookCheckInterval = setInterval(function() {
-        console.log('🔍 Checking for webhook completion...');
+        console.log('🔍 Fallback: Checking for webhook completion...');
         
         $.ajax({
             url: wc_checkout_params.ajax_url,
@@ -551,30 +569,22 @@ jQuery(document).ready(function($) {
                 security: '<?php echo wp_create_nonce('coinsub_check_webhook'); ?>'
             },
             success: function(response) {
-                console.log('🔍 Webhook check response:', response);
+                console.log('🔍 Fallback webhook check response:', response);
                 
                 if (response.success && response.data && response.data.redirect_url) {
-                    console.log('✅ Webhook completed - closing modal first, then redirecting to:', response.data.redirect_url);
+                    console.log('✅ Fallback: Webhook completed - redirecting to:', response.data.redirect_url);
                     clearInterval(webhookCheckInterval);
-                    
-                    // CLOSE MODAL FIRST
                     closeModal();
-                    
-                    // THEN REDIRECT after modal closes
                     setTimeout(function() {
-                        console.log('🔄 Redirecting to:', response.data.redirect_url);
                         window.top.location.href = response.data.redirect_url;
-                    }, 1000); // Wait 1 second for modal to close
-                } else if (response.success === false) {
-                    console.log('⏳ Webhook not completed yet:', response.data);
+                    }, 1000);
                 }
             },
             error: function(xhr, status, error) {
-                console.log('⚠️ Failed to check webhook status:', error);
-                console.log('Response:', xhr.responseText);
+                console.log('⚠️ Fallback: Failed to check webhook status:', error);
             }
         });
-    }, 500); // Check every 500ms
+    }, 2000); // Check every 2 seconds as fallback
     
     // Stop checking after 60 seconds
     setTimeout(function() {
