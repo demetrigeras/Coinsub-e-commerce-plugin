@@ -588,15 +588,27 @@ jQuery(document).ready(function($) {
                 security: '<?php echo wp_create_nonce('coinsub_check_webhook'); ?>'
             },
             success: function(response) {
+                console.log('🔍 Webhook check response:', response);
+                
                 if (response.success && response.data && response.data.redirect_url) {
-                    console.log('✅ Webhook completed - redirecting to:', response.data.redirect_url);
+                    console.log('✅ Webhook completed - closing modal first, then redirecting to:', response.data.redirect_url);
                     clearInterval(webhookCheckInterval);
+                    
+                    // CLOSE MODAL FIRST
                     closeModal();
-                    window.top.location.href = response.data.redirect_url;
+                    
+                    // THEN REDIRECT after modal closes
+                    setTimeout(function() {
+                        console.log('🔄 Redirecting to:', response.data.redirect_url);
+                        window.top.location.href = response.data.redirect_url;
+                    }, 1000); // Wait 1 second for modal to close
+                } else if (response.success === false) {
+                    console.log('⏳ Webhook not completed yet:', response.data);
                 }
             },
-            error: function() {
-                console.log('⚠️ Failed to check webhook status');
+            error: function(xhr, status, error) {
+                console.log('⚠️ Failed to check webhook status:', error);
+                console.log('Response:', xhr.responseText);
             }
         });
     }, 500); // Check every 500ms
