@@ -160,26 +160,34 @@ jQuery(document).ready(function($) {
                                 }
                             });
                             
-                            // Add aggressive URL monitoring for regular modal
-                            var regularUrlMonitor = setInterval(function() {
-                                try {
-                                    var currentUrl = regularIframe.contentWindow.location.href;
-                                    console.log('Regular iframe URL check:', currentUrl);
+                                    // Add aggressive URL monitoring for regular modal
+                                    var regularUrlMonitor = setInterval(function() {
+                                        try {
+                                            var currentUrl = regularIframe.contentWindow.location.href;
+                                            console.log('Regular iframe URL check:', currentUrl);
+                                            
+                                            if (currentUrl.includes('order-received')) {
+                                                console.log('✅ Payment completed in regular modal (timer) - redirecting main page');
+                                                clearInterval(regularUrlMonitor);
+                                                
+                                                // Close modal and redirect main page
+                                                closeModal();
+                                                $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small></div>');
+                                                
+                                                setTimeout(function() {
+                                                    console.log('🔄 Redirecting main page to iframe URL:', currentUrl);
+                                                    window.top.location.href = currentUrl;
+                                                }, 2500);
+                                            }
+                                        } catch (e) {
+                                            // Cross-origin - ignore
+                                        }
+                                    }, 1000); // Check every second
                                     
-                                    if (currentUrl.includes('order-received')) {
-                                        console.log('✅ Payment completed in regular modal (timer) - handling redirect');
+                                    // Clear timer after 5 minutes
+                                    setTimeout(function() {
                                         clearInterval(regularUrlMonitor);
-                                        handlePaymentCompletion();
-                                    }
-                                } catch (e) {
-                                    // Cross-origin - ignore
-                                }
-                            }, 1000); // Check every second
-                            
-                            // Clear timer after 5 minutes
-                            setTimeout(function() {
-                                clearInterval(regularUrlMonitor);
-                            }, 300000);
+                                    }, 300000);
                         }
                         
                         // Quick check if original modal works, if not create emergency modal immediately
@@ -224,9 +232,17 @@ jQuery(document).ready(function($) {
                                             console.log('Emergency iframe URL check:', currentUrl);
                                             
                                             if (currentUrl.includes('order-received')) {
-                                                console.log('✅ Payment completed in emergency modal (timer) - handling redirect');
+                                                console.log('✅ Payment completed in emergency modal (timer) - redirecting main page');
                                                 clearInterval(emergencyUrlMonitor);
-                                                handlePaymentCompletion();
+                                                
+                                                // Close modal and redirect main page
+                                                closeModal();
+                                                $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small></div>');
+                                                
+                                                setTimeout(function() {
+                                                    console.log('🔄 Redirecting main page to iframe URL:', currentUrl);
+                                                    window.top.location.href = currentUrl;
+                                                }, 2500);
                                             }
                                         } catch (e) {
                                             // Cross-origin - ignore
@@ -426,10 +442,10 @@ jQuery(document).ready(function($) {
                 // Show success message
                 $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small></div>');
                 
-                // Redirect directly to the URL CoinSub provided
+                // Redirect the main page (not the iframe) to the URL CoinSub provided
                 setTimeout(function() {
-                    console.log('🔄 Redirecting to:', event.data.data.url);
-                    window.location.href = event.data.data.url;
+                    console.log('🔄 Redirecting main page to:', event.data.data.url);
+                    window.top.location.href = event.data.data.url;
                 }, 2500);
                 
                 return; // Exit early since we handled the redirect
