@@ -19,26 +19,30 @@ $api_host = parse_url($api_url, PHP_URL_HOST);
 <!-- CoinSub Checkout Modal Styles -->
 <style>
 #coinsub-checkout-modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 9999;
-    justify-content: center;
-    align-items: center;
+    display: none !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: rgba(0, 0, 0, 0.5) !important;
+    z-index: 99999 !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+#coinsub-checkout-modal.show {
+    display: flex !important;
 }
 
 .coinsub-modal-content {
-    background: #fff;
-    border-radius: 16px;
-    width: 420px;
-    height: 620px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-    overflow: hidden;
-    position: relative;
+    background: #fff !important;
+    border-radius: 16px !important;
+    width: 420px !important;
+    height: 620px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+    overflow: hidden !important;
+    position: relative !important;
 }
 
 #coinsub-close-modal {
@@ -116,11 +120,84 @@ jQuery(document).ready(function($) {
                 success: function(response) {
                     console.log('AJAX Success Response:', response);
                     
-                    if (response.success && response.data && response.data.coinsub_checkout_url) {
-                        console.log('Opening modal with URL:', response.data.coinsub_checkout_url);
+                    // Check for different response structures
+                    var checkoutUrl = null;
+                    
+                    if (response.success && response.data) {
+                        // Check for coinsub_checkout_url (our custom response)
+                        if (response.data.coinsub_checkout_url) {
+                            checkoutUrl = response.data.coinsub_checkout_url;
+                        }
+                        // Check for redirect (WooCommerce default response)
+                        else if (response.data.result === 'success' && response.data.redirect) {
+                            checkoutUrl = response.data.redirect;
+                        }
+                    }
+                    
+                    if (checkoutUrl) {
+                        console.log('Opening modal with URL:', checkoutUrl);
                         // Open modal with checkout URL
-                        $('#coinsub-checkout-iframe').attr('src', response.data.coinsub_checkout_url);
-                        $('#coinsub-checkout-modal').css('display', 'flex');
+                        $('#coinsub-checkout-iframe').attr('src', checkoutUrl);
+                        
+                        // Debug modal visibility
+                        console.log('Modal element:', $('#coinsub-checkout-modal')[0]);
+                        console.log('Modal exists:', $('#coinsub-checkout-modal').length > 0);
+                        
+                        // Show modal using class
+                        $('#coinsub-checkout-modal').addClass('show');
+                        
+                        console.log('Modal display:', $('#coinsub-checkout-modal').css('display'));
+                        console.log('Modal visibility:', $('#coinsub-checkout-modal').css('visibility'));
+                        console.log('Modal z-index:', $('#coinsub-checkout-modal').css('z-index'));
+                        console.log('Modal position:', $('#coinsub-checkout-modal').css('position'));
+                        console.log('Modal top:', $('#coinsub-checkout-modal').css('top'));
+                        console.log('Modal left:', $('#coinsub-checkout-modal').css('left'));
+                        console.log('Modal width:', $('#coinsub-checkout-modal').css('width'));
+                        console.log('Modal height:', $('#coinsub-checkout-modal').css('height'));
+                        console.log('Modal opacity:', $('#coinsub-checkout-modal').css('opacity'));
+                        console.log('Modal offset:', $('#coinsub-checkout-modal').offset());
+                        console.log('Modal is visible:', $('#coinsub-checkout-modal').is(':visible'));
+                        console.log('Modal has show class:', $('#coinsub-checkout-modal').hasClass('show'));
+                        
+                        // Check if modal is in viewport
+                        var modalElement = $('#coinsub-checkout-modal')[0];
+                        if (modalElement) {
+                            var rect = modalElement.getBoundingClientRect();
+                            console.log('Modal bounding rect:', rect);
+                            console.log('Modal in viewport:', rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth);
+                        }
+                        
+                        // Add a test element to verify positioning
+                        $('body').append('<div id="modal-test" style="position: fixed; top: 50px; left: 50px; width: 100px; height: 100px; background: red; z-index: 100000; color: white; padding: 10px;">TEST</div>');
+                        
+                        // Fallback: force visibility if class doesn't work
+                        setTimeout(function() {
+                            if (!$('#coinsub-checkout-modal').is(':visible')) {
+                                console.log('Modal not visible, forcing display');
+                                $('#coinsub-checkout-modal').css({
+                                    'display': 'flex !important',
+                                    'visibility': 'visible !important',
+                                    'opacity': '1 !important',
+                                    'background': 'rgba(255, 0, 0, 0.8) !important' // Make background red for testing
+                                });
+                                
+                                // Also try moving it to a known position
+                                $('#coinsub-checkout-modal').css({
+                                    'top': '0px !important',
+                                    'left': '0px !important',
+                                    'width': '100vw !important',
+                                    'height': '100vh !important'
+                                });
+                                
+                                console.log('Modal display after force:', $('#coinsub-checkout-modal').css('display'));
+                                console.log('Modal background after force:', $('#coinsub-checkout-modal').css('background'));
+                            }
+                            
+                            // Remove test element after 3 seconds
+                            setTimeout(function() {
+                                $('#modal-test').remove();
+                            }, 3000);
+                        }, 100);
                     } else {
                         console.log('Payment failed - response details:', response);
                         // Show detailed error
@@ -169,7 +246,7 @@ jQuery(document).ready(function($) {
     
     // Close modal functionality
     $('#coinsub-close-modal').on('click', function() {
-        $('#coinsub-checkout-modal').hide();
+        $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
         $('#coinsub-checkout-iframe').attr('src', '');
         $('#place_order').prop('disabled', false).text('Place order');
     });
@@ -177,7 +254,7 @@ jQuery(document).ready(function($) {
     // Close modal when clicking outside
     $('#coinsub-checkout-modal').on('click', function(e) {
         if (e.target === this) {
-            $(this).hide();
+            $(this).removeClass('show').css('display', 'none');
             $('#coinsub-checkout-iframe').attr('src', '');
             $('#place_order').prop('disabled', false).text('Place order');
         }
@@ -186,7 +263,7 @@ jQuery(document).ready(function($) {
     // ESC key to close
     $(document).on('keydown', function(e) {
         if (e.keyCode === 27 && $('#coinsub-checkout-modal').is(':visible')) {
-            $('#coinsub-checkout-modal').hide();
+            $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
             $('#coinsub-checkout-iframe').attr('src', '');
             $('#place_order').prop('disabled', false).text('Place order');
         }
@@ -202,7 +279,7 @@ jQuery(document).ready(function($) {
         
         if (event.data.type === 'payment_complete') {
             // Close modal
-            $('#coinsub-checkout-modal').hide();
+            $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
             $('#coinsub-checkout-iframe').attr('src', '');
             
             // Show success message
@@ -237,7 +314,7 @@ jQuery(document).ready(function($) {
             });
         } else if (event.data.type === 'payment_failed') {
             // Close modal and show error
-            $('#coinsub-checkout-modal').hide();
+            $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
             $('#coinsub-checkout-iframe').attr('src', '');
             alert('Payment failed. Please try again.');
             $('#place_order').prop('disabled', false).text('Place order');
