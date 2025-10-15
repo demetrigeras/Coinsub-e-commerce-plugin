@@ -590,10 +590,18 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Display payment fields (simple description)
+     * Display payment fields with modal checkout
      */
     public function payment_fields() {
-        // No description needed - label says it all
+        echo '<div id="coinsub-payment-description">';
+        echo '<p>' . __('Pay securely with cryptocurrency using CoinSub.', 'coinsub') . '</p>';
+        echo '</div>';
+        
+        // Initialize empty checkout URL for the template
+        $checkout_url = '';
+        
+        // Include the modal template
+        include plugin_dir_path(__FILE__) . 'coinsub-checkout-modal.php';
     }
     
     /**
