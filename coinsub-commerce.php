@@ -389,7 +389,7 @@ function coinsub_ajax_clear_cart_after_payment() {
     error_log('🆕 CoinSub Clear Cart: Clearing cart and session after successful payment - ready for new order!');
     
     // Clear the WooCommerce cart completely
-    WC()->cart->empty_cart();
+
     
     // Clear all CoinSub session data - FRESH START!
     WC()->session->set('coinsub_order_id', null);
