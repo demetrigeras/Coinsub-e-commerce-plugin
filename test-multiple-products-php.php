@@ -5,7 +5,7 @@
  */
 
 // Configuration
-$API_BASE_URL = "https://dev-api.coinsub.io/v1";
+$API_BASE_URL = "https://test-api.coinsub.io/v1";
 $MERCHANT_ID = "ca875a80-9b10-40ce-85c0-5af81856733a";
 $API_KEY = "abf3e9e5-0140-4fda-abc9-7dd87a358852";
 

@@ -41,7 +41,7 @@ class CoinSub_API_Client {
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
         // CoinSub API base URL - using development environment
-        $this->api_base_url = 'https://dev-api.coinsub.io/v1/commerce'; // Development API with v1/commerce prefix
+        $this->api_base_url = 'https://test-api.coinsub.io/v1/commerce'; // Test API with v1/commerce prefix
         // For production, use: 'https://api.coinsub.io/v1/commerce'
         
         // Get merchant credentials from settings
@@ -63,7 +63,7 @@ class CoinSub_API_Client {
      */
     public function create_purchase_session($order_data) {
         // Purchase session uses base v1 URL, not /commerce
-        $endpoint = 'https://dev-api.coinsub.io/v1/purchase/session/start';
+        $endpoint = 'https://test-api.coinsub.io/v1/purchase/session/start';
         error_log('🌐 CoinSub API - Calling: ' . $endpoint);
         error_log('🌐 CoinSub API - Amount: ' . $order_data['amount']);
         
@@ -503,7 +503,7 @@ class CoinSub_API_Client {
      */
     public function cancel_agreement($agreement_id) {
         // Agreements endpoint is at /v1/agreements, not /v1/commerce
-        $endpoint = 'https://dev-api.coinsub.io/v1/agreements/cancel/' . $agreement_id;
+        $endpoint = 'https://test-api.coinsub.io/v1/agreements/cancel/' . $agreement_id;
         
         $headers = array(
             'Content-Type' => 'application/json',

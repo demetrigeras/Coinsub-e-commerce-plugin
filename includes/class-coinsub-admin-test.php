@@ -62,7 +62,7 @@ class CoinSub_Admin_Test {
             <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0073aa;">
                 <h3>What This Tests:</h3>
                 <ul>
-                    <li>✅ Can connect to <code>https://dev-api.coinsub.io/v1</code></li>
+                    <li>✅ Can connect to <code>https://test-api.coinsub.io/v1</code></li>
                     <li>✅ Can create products in <code>commerce_products</code> table</li>
                     <li>✅ Can create orders in <code>commerce_orders</code> table</li>
                     <li>✅ Can create purchase sessions</li>
