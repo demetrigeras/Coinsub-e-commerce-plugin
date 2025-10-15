@@ -136,155 +136,31 @@ jQuery(document).ready(function($) {
                     
                     if (checkoutUrl) {
                         console.log('Opening modal with URL:', checkoutUrl);
-                        // Open modal with checkout URL
+                        
+                        // Try the original modal first
                         $('#coinsub-checkout-iframe').attr('src', checkoutUrl);
-                        
-                        // Debug modal visibility
-                        console.log('Modal element:', $('#coinsub-checkout-modal')[0]);
-                        console.log('Modal exists:', $('#coinsub-checkout-modal').length > 0);
-                        
-                        // Show modal using class
                         $('#coinsub-checkout-modal').addClass('show');
                         
-                        console.log('Modal display:', $('#coinsub-checkout-modal').css('display'));
-                        console.log('Modal visibility:', $('#coinsub-checkout-modal').css('visibility'));
-                        console.log('Modal z-index:', $('#coinsub-checkout-modal').css('z-index'));
-                        console.log('Modal position:', $('#coinsub-checkout-modal').css('position'));
-                        console.log('Modal top:', $('#coinsub-checkout-modal').css('top'));
-                        console.log('Modal left:', $('#coinsub-checkout-modal').css('left'));
-                        console.log('Modal width:', $('#coinsub-checkout-modal').css('width'));
-                        console.log('Modal height:', $('#coinsub-checkout-modal').css('height'));
-                        console.log('Modal opacity:', $('#coinsub-checkout-modal').css('opacity'));
-                        console.log('Modal offset:', $('#coinsub-checkout-modal').offset());
-                        console.log('Modal is visible:', $('#coinsub-checkout-modal').is(':visible'));
-                        console.log('Modal has show class:', $('#coinsub-checkout-modal').hasClass('show'));
-                        
-                        // Check if modal is in viewport
-                        var modalElement = $('#coinsub-checkout-modal')[0];
-                        if (modalElement) {
-                            var rect = modalElement.getBoundingClientRect();
-                            console.log('Modal bounding rect:', rect);
-                            console.log('Modal in viewport:', rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth);
-                        }
-                        
-                        // Check modal content
-                        console.log('Modal content exists:', $('.coinsub-modal-content').length > 0);
-                        console.log('Modal content display:', $('.coinsub-modal-content').css('display'));
-                        console.log('Modal content visibility:', $('.coinsub-modal-content').css('visibility'));
-                        console.log('Modal content width:', $('.coinsub-modal-content').css('width'));
-                        console.log('Modal content height:', $('.coinsub-modal-content').css('height'));
-                        console.log('Modal content opacity:', $('.coinsub-modal-content').css('opacity'));
-                        
-                        // Check iframe
-                        console.log('Iframe exists:', $('#coinsub-checkout-iframe').length > 0);
-                        console.log('Iframe src:', $('#coinsub-checkout-iframe').attr('src'));
-                        console.log('Iframe width:', $('#coinsub-checkout-iframe').css('width'));
-                        console.log('Iframe height:', $('#coinsub-checkout-iframe').css('height'));
-                        
-                        // Add a test element to verify positioning
-                        $('body').append('<div id="modal-test" style="position: fixed; top: 50px; left: 50px; width: 100px; height: 100px; background: red; z-index: 100000; color: white; padding: 10px;">TEST</div>');
-                        
-                        // Fallback: force visibility if class doesn't work
+                        // Quick check if original modal works, if not create emergency modal immediately
                         setTimeout(function() {
-                            // Use a more reliable visibility check
                             var modalElement = $('#coinsub-checkout-modal')[0];
-                            var isActuallyVisible = modalElement && 
-                                                   modalElement.offsetWidth > 0 && 
-                                                   modalElement.offsetHeight > 0 &&
-                                                   window.getComputedStyle(modalElement).display !== 'none' &&
-                                                   window.getComputedStyle(modalElement).visibility !== 'hidden' &&
-                                                   window.getComputedStyle(modalElement).opacity !== '0';
+                            var isVisible = modalElement && modalElement.offsetWidth > 0 && modalElement.offsetHeight > 0;
                             
-                            console.log('Modal offsetWidth:', modalElement ? modalElement.offsetWidth : 'N/A');
-                            console.log('Modal offsetHeight:', modalElement ? modalElement.offsetHeight : 'N/A');
-                            console.log('Modal computed display:', modalElement ? window.getComputedStyle(modalElement).display : 'N/A');
-                            console.log('Modal computed visibility:', modalElement ? window.getComputedStyle(modalElement).visibility : 'N/A');
-                            console.log('Modal computed opacity:', modalElement ? window.getComputedStyle(modalElement).opacity : 'N/A');
-                            console.log('Modal is actually visible:', isActuallyVisible);
-                            
-                            if (!isActuallyVisible) {
-                                console.log('Modal not visible, forcing display');
-                                $('#coinsub-checkout-modal').css({
-                                    'display': 'flex !important',
-                                    'visibility': 'visible !important',
-                                    'opacity': '1 !important',
-                                    'background': 'rgba(255, 0, 0, 0.8) !important' // Make background red for testing
-                                });
+                            if (!isVisible) {
+                                console.log('Original modal not visible, creating emergency modal');
                                 
-                                // Force modal content to be visible
-                                $('.coinsub-modal-content').css({
-                                    'display': 'block !important',
-                                    'visibility': 'visible !important',
-                                    'opacity': '1 !important',
-                                    'background': '#fff !important',
-                                    'width': '420px !important',
-                                    'height': '620px !important'
-                                });
+                                // Remove original modal
+                                $('#coinsub-checkout-modal').remove();
                                 
-                                // Force iframe to be visible
-                                $('#coinsub-checkout-iframe').css({
-                                    'display': 'block !important',
-                                    'visibility': 'visible !important',
-                                    'opacity': '1 !important',
-                                    'width': '100% !important',
-                                    'height': '100% !important'
-                                });
+                                // Create emergency modal
+                                var emergencyModal = $('<div id="emergency-modal" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; display: flex !important; justify-content: center !important; align-items: center !important;"><div style="background: white !important; width: 420px !important; height: 620px !important; border-radius: 16px !important; position: relative !important; overflow: hidden !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;"><iframe src="' + checkoutUrl + '" style="width: 100% !important; height: 100% !important; border: none !important;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe><button id="emergency-close" style="position: absolute !important; top: 10px !important; right: 15px !important; background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #666 !important; z-index: 1000000 !important;">×</button></div></div>');
                                 
-                                // Also try moving it to a known position
-                                $('#coinsub-checkout-modal').css({
-                                    'top': '0px !important',
-                                    'left': '0px !important',
-                                    'width': '100vw !important',
-                                    'height': '100vh !important'
-                                });
-                                
-                                console.log('Modal display after force:', $('#coinsub-checkout-modal').css('display'));
-                                console.log('Modal background after force:', $('#coinsub-checkout-modal').css('background'));
-                                console.log('Modal content display after force:', $('.coinsub-modal-content').css('display'));
-                                console.log('Iframe display after force:', $('#coinsub-checkout-iframe').css('display'));
-                                
-                                // Final fallback: create a completely new modal if still not visible
-                                setTimeout(function() {
-                                    var finalCheck = $('#coinsub-checkout-modal')[0];
-                                    var finalVisible = finalCheck && 
-                                                      finalCheck.offsetWidth > 0 && 
-                                                      finalCheck.offsetHeight > 0;
-                                    
-                                    if (!finalVisible) {
-                                        console.log('Creating emergency modal overlay');
-                                        
-                                        // Remove existing modal
-                                        $('#coinsub-checkout-modal').remove();
-                                        
-                                        // Create emergency modal
-                                        var emergencyModal = $('<div id="emergency-modal" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.8) !important; z-index: 999999 !important; display: flex !important; justify-content: center !important; align-items: center !important;"><div style="background: white !important; width: 420px !important; height: 620px !important; border-radius: 16px !important; position: relative !important; overflow: hidden !important;"><iframe src="' + checkoutUrl + '" style="width: 100% !important; height: 100% !important; border: none !important;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe><button id="emergency-close" style="position: absolute !important; top: 10px !important; right: 15px !important; background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #666 !important; z-index: 1000000 !important;">×</button></div></div>');
-                                        
-                                        $('body').append(emergencyModal);
-                                        
-                                        // Close emergency modal
-                                        $('#emergency-close').on('click', function() {
-                                            $('#emergency-modal').remove();
-                                            $('#place_order').prop('disabled', false).text('Place order');
-                                        });
-                                        
-                                        // Close on outside click
-                                        $('#emergency-modal').on('click', function(e) {
-                                            if (e.target === this) {
-                                                $(this).remove();
-                                                $('#place_order').prop('disabled', false).text('Place order');
-                                            }
-                                        });
-                                        
-                                        console.log('Emergency modal created and should be visible');
-                                    }
-                                }, 200);
+                                $('body').append(emergencyModal);
+                                console.log('Emergency modal created');
+                            } else {
+                                console.log('Original modal is visible');
                             }
-                            
-                            // Remove test element after 3 seconds
-                            setTimeout(function() {
-                                $('#modal-test').remove();
-                            }, 3000);
-                        }, 100);
+                        }, 50);
                     } else {
                         console.log('Payment failed - response details:', response);
                         // Show detailed error
@@ -331,28 +207,41 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Close modal functionality
-    $('#coinsub-close-modal').on('click', function() {
+    // Close modal functionality - works for both regular and emergency modals
+    function closeModal() {
+        // Close regular modal
         $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
         $('#coinsub-checkout-iframe').attr('src', '');
+        
+        // Close emergency modal
+        $('#emergency-modal').remove();
+        
+        // Re-enable place order button
         $('#place_order').prop('disabled', false).text('Place order');
+    }
+    
+    // Close modal button
+    $(document).on('click', '#coinsub-close-modal, #emergency-close', function() {
+        closeModal();
     });
     
     // Close modal when clicking outside
-    $('#coinsub-checkout-modal').on('click', function(e) {
+    $(document).on('click', '#coinsub-checkout-modal, #emergency-modal', function(e) {
         if (e.target === this) {
-            $(this).removeClass('show').css('display', 'none');
-            $('#coinsub-checkout-iframe').attr('src', '');
-            $('#place_order').prop('disabled', false).text('Place order');
+            closeModal();
         }
     });
     
     // ESC key to close
     $(document).on('keydown', function(e) {
-        if (e.keyCode === 27 && $('#coinsub-checkout-modal').is(':visible')) {
-            $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
-            $('#coinsub-checkout-iframe').attr('src', '');
-            $('#place_order').prop('disabled', false).text('Place order');
+        if (e.keyCode === 27) {
+            // Check if either modal is visible
+            var regularVisible = $('#coinsub-checkout-modal').is(':visible') || $('#coinsub-checkout-modal').hasClass('show');
+            var emergencyVisible = $('#emergency-modal').length > 0;
+            
+            if (regularVisible || emergencyVisible) {
+                closeModal();
+            }
         }
     });
     
@@ -365,9 +254,8 @@ jQuery(document).ready(function($) {
         }
         
         if (event.data.type === 'payment_complete') {
-            // Close modal
-            $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
-            $('#coinsub-checkout-iframe').attr('src', '');
+            // Close modal using unified function
+            closeModal();
             
             // Show success message
             $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Processing your order...</small></div>');
@@ -401,10 +289,8 @@ jQuery(document).ready(function($) {
             });
         } else if (event.data.type === 'payment_failed') {
             // Close modal and show error
-            $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
-            $('#coinsub-checkout-iframe').attr('src', '');
+            closeModal();
             alert('Payment failed. Please try again.');
-            $('#place_order').prop('disabled', false).text('Place order');
         }
     });
 });
