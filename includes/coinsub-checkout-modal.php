@@ -576,32 +576,35 @@ jQuery(document).ready(function($) {
         }
     };
     
-    // SIMPLE BACKUP REDIRECT: After 2.5 seconds, redirect to order-received page
-    // This is a backup in case webhook processing takes time
-    setTimeout(function() {
-        console.log('🔄 BACKUP REDIRECT - 2.5 seconds elapsed, checking for completed order...');
+    // WEBHOOK POLLING: Check for webhook completion every 500ms
+    var webhookCheckInterval = setInterval(function() {
+        console.log('🔍 Checking for webhook completion...');
         
-        // Check if we have a recent order and redirect to its order-received page
         $.ajax({
             url: wc_checkout_params.ajax_url,
             type: 'POST',
             data: {
-                action: 'coinsub_get_latest_order_url',
-                security: '<?php echo wp_create_nonce('coinsub_get_order_url'); ?>'
+                action: 'coinsub_check_webhook_status',
+                security: '<?php echo wp_create_nonce('coinsub_check_webhook'); ?>'
             },
             success: function(response) {
-                if (response.success && response.data && response.data.order_url) {
-                    console.log('🔄 BACKUP REDIRECT - Found order, redirecting to:', response.data.order_url);
+                if (response.success && response.data && response.data.redirect_url) {
+                    console.log('✅ Webhook completed - redirecting to:', response.data.redirect_url);
+                    clearInterval(webhookCheckInterval);
                     closeModal();
-                    window.top.location.href = response.data.order_url;
-                } else {
-                    console.log('🔄 BACKUP REDIRECT - No order found, staying on checkout page');
+                    window.top.location.href = response.data.redirect_url;
                 }
             },
             error: function() {
-                console.log('🔄 BACKUP REDIRECT - Failed to check for order');
+                console.log('⚠️ Failed to check webhook status');
             }
         });
-    }, 2500); // 2.5 seconds
+    }, 500); // Check every 500ms
+    
+    // Stop checking after 60 seconds
+    setTimeout(function() {
+        clearInterval(webhookCheckInterval);
+        console.log('⏰ Webhook check timeout - stopped polling');
+    }, 60000);
 });
 </script>
