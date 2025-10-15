@@ -499,5 +499,44 @@ jQuery(document).ready(function($) {
             }
         }
     });
+    
+    // PUSHER EVENT LISTENER: Listen for redirect events from CoinSub Pusher
+    // The redirect event is sent via Pusher, not window.postMessage
+    if (typeof window.Pusher !== 'undefined' || typeof window.pusher !== 'undefined') {
+        console.log('🔌 Pusher detected - setting up redirect listener');
+        
+        // Try to access Pusher instance from global scope
+        var pusher = window.Pusher || window.pusher;
+        if (pusher) {
+            // Subscribe to a channel that might contain redirect events
+            // We'll try to catch the redirect event that's being logged
+            console.log('🔌 Pusher instance found, setting up redirect detection');
+        }
+    }
+    
+    // MONITOR CONSOLE: Listen for redirect events in console logs
+    // Since we can see the redirect event in console, let's try to catch it
+    var originalConsoleLog = console.log;
+    console.log = function(...args) {
+        // Call original console.log
+        originalConsoleLog.apply(console, args);
+        
+        // Check if this is a redirect event
+        var message = args.join(' ');
+        if (message.includes('redirect') && message.includes('order-received')) {
+            console.log('🎯 CONSOLE MONITOR - Redirect event detected in console!');
+            
+            // Try to extract URL from the console message
+            var urlMatch = message.match(/https:\/\/[^\s]+order-received[^\s]+/);
+            if (urlMatch && urlMatch[0]) {
+                console.log('🎯 CONSOLE MONITOR - Extracted URL:', urlMatch[0]);
+                closeModal();
+                setTimeout(function() {
+                    console.log('🎯 CONSOLE MONITOR - Redirecting to:', urlMatch[0]);
+                    window.top.location.href = urlMatch[0];
+                }, 2500);
+            }
+        }
+    };
 });
 </script>
