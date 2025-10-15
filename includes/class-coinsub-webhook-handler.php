@@ -239,6 +239,16 @@ class CoinSub_Webhook_Handler {
             }
         }
         
+        // Clear cart and session data since payment is now complete
+        WC()->cart->empty_cart();
+        WC()->session->set('coinsub_order_id', null);
+        WC()->session->set('coinsub_purchase_session_id', null);
+        error_log('✅ CoinSub Webhook - Cart and session cleared after successful payment');
+        
+        // Set a flag to trigger redirect to order-received page
+        $order->update_meta_data('_coinsub_redirect_to_received', 'yes');
+        $order->save();
+        
         // Send order completion emails
         WC()->mailer()->emails['WC_Email_Customer_Processing_Order']->trigger($order->get_id());
         

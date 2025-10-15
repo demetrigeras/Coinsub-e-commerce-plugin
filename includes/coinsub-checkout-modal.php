@@ -47,7 +47,7 @@ $api_host = parse_url($api_url, PHP_URL_HOST);
 
 #coinsub-checkout-iframe {
     width: 100%;
-    height: calc(100% - 60px);
+    height: 100%;
     border: none;
 }
 
@@ -83,10 +83,6 @@ $api_host = parse_url($api_url, PHP_URL_HOST);
                 allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *"
                 title="CoinSub Checkout">
         </iframe>
-        <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 60px; background: #f8f9fa; border-top: 1px solid #dee2e6; display: flex; align-items: center; justify-content: space-between; padding: 0 15px;">
-            <button id="coinsub-close-modal-bottom" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #666;">Close</button>
-            <button id="coinsub-complete-payment" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">Payment Complete</button>
-        </div>
     </div>
 </div>
 
@@ -198,7 +194,7 @@ jQuery(document).ready(function($) {
                                 $('#coinsub-checkout-modal').remove();
                                 
                                 // Create emergency modal with iframe load handler
-                                var emergencyModal = $('<div id="emergency-modal" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; display: flex !important; justify-content: center !important; align-items: center !important;"><div style="background: white !important; width: 420px !important; height: 620px !important; border-radius: 16px !important; position: relative !important; overflow: hidden !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;"><iframe id="emergency-iframe" src="' + checkoutUrl + '" style="width: 100% !important; height: calc(100% - 60px) !important; border: none !important;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe><div style="position: absolute !important; bottom: 0 !important; left: 0 !important; right: 0 !important; height: 60px !important; background: #f8f9fa !important; border-top: 1px solid #dee2e6 !important; display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 0 15px !important;"><button id="emergency-close" style="background: none !important; border: none !important; font-size: 18px !important; cursor: pointer !important; color: #666 !important;">Close</button><button id="emergency-complete" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; border: none !important; color: white !important; padding: 8px 16px !important; border-radius: 4px !important; cursor: pointer !important; font-weight: bold !important;">Payment Complete</button></div><button id="emergency-close-x" style="position: absolute !important; top: 10px !important; right: 15px !important; background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #666 !important; z-index: 1000000 !important;">×</button></div></div>');
+                                var emergencyModal = $('<div id="emergency-modal" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; display: flex !important; justify-content: center !important; align-items: center !important;"><div style="background: white !important; width: 420px !important; height: 620px !important; border-radius: 16px !important; position: relative !important; overflow: hidden !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;"><iframe id="emergency-iframe" src="' + checkoutUrl + '" style="width: 100% !important; height: 100% !important; border: none !important;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe><button id="emergency-close" style="position: absolute !important; top: 10px !important; right: 15px !important; background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #666 !important; z-index: 1000000 !important;">×</button></div></div>');
                                 
                                 $('body').append(emergencyModal);
                                 console.log('Emergency modal created');
@@ -299,85 +295,56 @@ jQuery(document).ready(function($) {
         // Close modal immediately
         closeModal();
         
-        // Show success message with manual trigger button
-        $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Processing your order...</small><br><br><button id="manual-complete-payment" style="background: white; color: #059669; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px;">Complete Order</button></div>');
+        // Show success message - webhook will handle the rest
+        $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Webhook will update your order...</small></div>');
         
-        // Add manual completion trigger
-        $('#manual-complete-payment').on('click', function() {
-            console.log('🔄 Manual payment completion triggered');
-            $(this).text('Processing...').prop('disabled', true);
-            // Trigger the cart clearing and redirect
-            clearCartAndRedirect();
-        });
+        // Webhook will handle cart clearing and order updates
+        console.log('✅ Payment completion detected - webhook will handle cart clearing and order updates');
         
-        // Clear cart immediately
-        $.ajax({
-            url: wc_checkout_params.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'coinsub_clear_cart_after_payment',
-                security: '<?php echo wp_create_nonce('coinsub_clear_cart'); ?>'
-            },
-            success: function() {
-                console.log('✅ Cart cleared after successful payment');
-                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Order Complete!</strong><br><br>Your cart has been cleared.<br><small>Redirecting to your order...</small>');
-                
-                // Wait 2-3 seconds then redirect to orders page
-                setTimeout(function() {
-                    console.log('🔄 Redirecting to orders page...');
-                    // Redirect to My Account Orders page (or checkout page if not logged in)
-                    var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
-                    window.location.href = ordersUrl;
-                }, 2500); // 2.5 seconds delay
-            },
-            error: function() {
-                console.log('⚠️ Failed to clear cart - webhook will handle it');
-                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Your order will be confirmed shortly.</small>');
-                
-                // Still redirect after delay even if cart clear fails
-                setTimeout(function() {
-                    console.log('🔄 Redirecting to orders page (fallback)...');
-                    var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
-                    window.location.href = ordersUrl;
-                }, 3000);
-            }
-        });
+        // Start checking for webhook completion
+        checkForWebhookCompletion();
     }
     
-    // Function to clear cart and redirect (used by manual trigger)
-    function clearCartAndRedirect() {
-        console.log('🛒 Clearing cart and redirecting...');
+    // Function to check for webhook completion and redirect to order-received page
+    function checkForWebhookCompletion() {
+        var checkCount = 0;
+        var maxChecks = 30; // Check for 30 seconds (30 * 1000ms = 30s)
         
-        $.ajax({
-            url: wc_checkout_params.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'coinsub_clear_cart_after_payment',
-                security: '<?php echo wp_create_nonce('coinsub_clear_cart'); ?>'
-            },
-            success: function() {
-                console.log('✅ Cart cleared after manual trigger');
-                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Order Complete!</strong><br><br>Your cart has been cleared.<br><small>Redirecting to your order...</small>');
-                
-                // Wait 2-3 seconds then redirect to orders page
-                setTimeout(function() {
-                    console.log('🔄 Redirecting to orders page...');
-                    var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
-                    window.location.href = ordersUrl;
-                }, 2500);
-            },
-            error: function() {
-                console.log('⚠️ Failed to clear cart - webhook will handle it');
+        var checkInterval = setInterval(function() {
+            checkCount++;
+            console.log('🔍 Checking for webhook completion... (' + checkCount + '/' + maxChecks + ')');
+            
+            $.ajax({
+                url: wc_checkout_params.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'coinsub_check_webhook_status',
+                    security: '<?php echo wp_create_nonce('coinsub_check_webhook'); ?>'
+                },
+                success: function(response) {
+                    if (response.success && response.data && response.data.redirect_url) {
+                        console.log('✅ Webhook completed - redirecting to order-received page');
+                        clearInterval(checkInterval);
+                        $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Order Complete!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small>');
+                        setTimeout(function() {
+                            window.location.href = response.data.redirect_url;
+                        }, 1500);
+                    }
+                },
+                error: function() {
+                    console.log('⚠️ Failed to check webhook status');
+                }
+            });
+            
+            if (checkCount >= maxChecks) {
+                console.log('⏰ Webhook check timeout - assuming payment completed');
+                clearInterval(checkInterval);
                 $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Your order will be confirmed shortly.</small>');
-                
-                // Still redirect after delay even if cart clear fails
                 setTimeout(function() {
-                    console.log('🔄 Redirecting to orders page (fallback)...');
-                    var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
-                    window.location.href = ordersUrl;
-                }, 3000);
+                    $('#coinsub-payment-success').fadeOut();
+                }, 5000);
             }
-        });
+        }, 1000); // Check every second
     }
     
     // Close modal functionality - works for both regular and emergency modals
@@ -394,22 +361,8 @@ jQuery(document).ready(function($) {
     }
     
     // Close modal button
-    $(document).on('click', '#coinsub-close-modal, #coinsub-close-modal-bottom, #emergency-close, #emergency-close-x', function() {
+    $(document).on('click', '#coinsub-close-modal, #emergency-close', function() {
         closeModal();
-    });
-    
-    // Payment complete button in regular modal
-    $(document).on('click', '#coinsub-complete-payment', function() {
-        console.log('🎉 Payment completion triggered from regular modal button');
-        closeModal();
-        handlePaymentCompletion();
-    });
-    
-    // Payment complete button in emergency modal
-    $(document).on('click', '#emergency-complete', function() {
-        console.log('🎉 Payment completion triggered from emergency modal button');
-        closeModal();
-        handlePaymentCompletion();
     });
     
     // Close modal when clicking outside

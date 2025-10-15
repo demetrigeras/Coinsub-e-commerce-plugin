@@ -263,6 +263,8 @@ add_action('wp_ajax_nopriv_coinsub_process_payment', 'coinsub_ajax_process_payme
 // AJAX handler for clearing cart after successful payment
 add_action('wp_ajax_coinsub_clear_cart_after_payment', 'coinsub_ajax_clear_cart_after_payment');
 add_action('wp_ajax_nopriv_coinsub_clear_cart_after_payment', 'coinsub_ajax_clear_cart_after_payment');
+add_action('wp_ajax_coinsub_check_webhook_status', 'coinsub_ajax_check_webhook_status');
+add_action('wp_ajax_nopriv_coinsub_check_webhook_status', 'coinsub_ajax_check_webhook_status');
 
 function coinsub_ajax_process_payment() {
     error_log('CoinSub AJAX: Payment processing started');
@@ -351,6 +353,10 @@ function coinsub_ajax_process_payment() {
     $order->calculate_totals();
     $order->save();
     
+    error_log('CoinSub AJAX: Order created with ID: ' . $order->get_id());
+    error_log('CoinSub AJAX: Order status: ' . $order->get_status());
+    error_log('CoinSub AJAX: Order meta data: ' . json_encode($order->get_meta_data()));
+    
     // Process payment
     $result = $gateway->process_payment($order->get_id());
     
@@ -390,5 +396,47 @@ function coinsub_ajax_clear_cart_after_payment() {
     error_log('✅ CoinSub Clear Cart: Cart and session cleared successfully - ready for new orders!');
     
     wp_send_json_success(array('message' => 'Cart cleared successfully - ready for new orders!'));
+}
+
+function coinsub_ajax_check_webhook_status() {
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['security'], 'coinsub_check_webhook')) {
+        error_log('CoinSub Check Webhook: Security check failed');
+        wp_die('Security check failed');
+    }
+    
+    error_log('🔍 CoinSub Check Webhook: Checking for webhook completion...');
+    
+    // Get the most recent order with CoinSub payment method
+    $orders = wc_get_orders(array(
+        'limit' => 1,
+        'orderby' => 'date',
+        'order' => 'DESC',
+        'payment_method' => 'coinsub'
+    ));
+    
+    if (empty($orders)) {
+        error_log('CoinSub Check Webhook: No CoinSub orders found');
+        wp_send_json_error('No orders found');
+    }
+    
+    $order = $orders[0];
+    $redirect_flag = $order->get_meta('_coinsub_redirect_to_received');
+    
+    if ($redirect_flag === 'yes') {
+        error_log('✅ CoinSub Check Webhook: Webhook completed for order #' . $order->get_id());
+        
+        // Clear the redirect flag
+        $order->delete_meta_data('_coinsub_redirect_to_received');
+        $order->save();
+        
+        // Get the order-received URL
+        $redirect_url = $order->get_checkout_order_received_url();
+        
+        wp_send_json_success(array('redirect_url' => $redirect_url));
+    } else {
+        error_log('CoinSub Check Webhook: Webhook not yet completed for order #' . $order->get_id());
+        wp_send_json_error('Webhook not completed yet');
+    }
 }
 ?>
