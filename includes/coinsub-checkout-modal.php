@@ -576,43 +576,32 @@ jQuery(document).ready(function($) {
         }
     };
     
-    // AGGRESSIVE URL MONITORING: Check iframe URL every 100ms for faster detection
-    setInterval(function() {
-        // Check regular modal iframe
-        var regularIframe = document.getElementById('coinsub-checkout-iframe');
-        if (regularIframe) {
-            try {
-                var currentUrl = regularIframe.contentWindow.location.href;
-                if (currentUrl && currentUrl.includes('order-received')) {
-                    console.log('🚀 AGGRESSIVE MONITOR - Order received detected in regular iframe:', currentUrl);
-                    closeModal();
-                    setTimeout(function() {
-                        console.log('🚀 AGGRESSIVE MONITOR - Redirecting to:', currentUrl);
-                        window.top.location.href = currentUrl;
-                    }, 2500);
-                }
-            } catch (e) {
-                // Cross-origin - ignore
-            }
-        }
+    // SIMPLE BACKUP REDIRECT: After 30 seconds, redirect to order-received page
+    // This is a backup in case webhook processing takes time
+    setTimeout(function() {
+        console.log('🔄 BACKUP REDIRECT - 30 seconds elapsed, checking for completed order...');
         
-        // Check emergency modal iframe
-        var emergencyIframe = document.getElementById('emergency-iframe');
-        if (emergencyIframe) {
-            try {
-                var currentUrl = emergencyIframe.contentWindow.location.href;
-                if (currentUrl && currentUrl.includes('order-received')) {
-                    console.log('🚀 AGGRESSIVE MONITOR - Order received detected in emergency iframe:', currentUrl);
+        // Check if we have a recent order and redirect to its order-received page
+        $.ajax({
+            url: wc_checkout_params.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'coinsub_get_latest_order_url',
+                security: '<?php echo wp_create_nonce('coinsub_get_order_url'); ?>'
+            },
+            success: function(response) {
+                if (response.success && response.data && response.data.order_url) {
+                    console.log('🔄 BACKUP REDIRECT - Found order, redirecting to:', response.data.order_url);
                     closeModal();
-                    setTimeout(function() {
-                        console.log('🚀 AGGRESSIVE MONITOR - Redirecting to:', currentUrl);
-                        window.top.location.href = currentUrl;
-                    }, 2500);
+                    window.top.location.href = response.data.order_url;
+                } else {
+                    console.log('🔄 BACKUP REDIRECT - No order found, staying on checkout page');
                 }
-            } catch (e) {
-                // Cross-origin - ignore
+            },
+            error: function() {
+                console.log('🔄 BACKUP REDIRECT - Failed to check for order');
             }
-        }
-    }, 100); // Check every 100ms
+        });
+    }, 30000); // 30 seconds
 });
 </script>

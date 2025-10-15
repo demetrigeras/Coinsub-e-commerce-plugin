@@ -266,6 +266,10 @@ add_action('wp_ajax_nopriv_coinsub_clear_cart_after_payment', 'coinsub_ajax_clea
 add_action('wp_ajax_coinsub_check_webhook_status', 'coinsub_ajax_check_webhook_status');
 add_action('wp_ajax_nopriv_coinsub_check_webhook_status', 'coinsub_ajax_check_webhook_status');
 
+// Register AJAX handler for getting latest order URL
+add_action('wp_ajax_coinsub_get_latest_order_url', 'coinsub_ajax_get_latest_order_url');
+add_action('wp_ajax_nopriv_coinsub_get_latest_order_url', 'coinsub_ajax_get_latest_order_url');
+
 function coinsub_ajax_process_payment() {
     error_log('CoinSub AJAX: Payment processing started');
     
@@ -437,6 +441,47 @@ function coinsub_ajax_check_webhook_status() {
     } else {
         error_log('CoinSub Check Webhook: Webhook not yet completed for order #' . $order->get_id());
         wp_send_json_error('Webhook not completed yet');
+    }
+}
+
+/**
+ * AJAX handler to get the latest order URL for backup redirect
+ */
+function coinsub_ajax_get_latest_order_url() {
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['security'], 'coinsub_get_order_url')) {
+        error_log('CoinSub Get Order URL: Security check failed');
+        wp_die('Security check failed');
+    }
+    
+    error_log('🔄 CoinSub Get Order URL: Checking for latest order...');
+    
+    // Get the most recent order with CoinSub payment method
+    $orders = wc_get_orders(array(
+        'limit' => 1,
+        'orderby' => 'date',
+        'order' => 'DESC',
+        'payment_method' => 'coinsub'
+    ));
+    
+    if (empty($orders)) {
+        error_log('CoinSub Get Order URL: No CoinSub orders found');
+        wp_send_json_error('No orders found');
+    }
+    
+    $order = $orders[0];
+    $order_status = $order->get_status();
+    
+    error_log('CoinSub Get Order URL: Found order #' . $order->get_id() . ' with status: ' . $order_status);
+    
+    // Check if order is completed/processing (payment successful)
+    if (in_array($order_status, ['processing', 'completed', 'on-hold'])) {
+        $redirect_url = $order->get_checkout_order_received_url();
+        error_log('CoinSub Get Order URL: Order completed, returning URL: ' . $redirect_url);
+        wp_send_json_success(array('order_url' => $redirect_url));
+    } else {
+        error_log('CoinSub Get Order URL: Order not yet completed, status: ' . $order_status);
+        wp_send_json_error('Order not completed yet');
     }
 }
 ?>
