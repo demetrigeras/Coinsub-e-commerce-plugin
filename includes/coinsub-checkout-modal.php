@@ -167,6 +167,20 @@ jQuery(document).ready(function($) {
                             console.log('Modal in viewport:', rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth);
                         }
                         
+                        // Check modal content
+                        console.log('Modal content exists:', $('.coinsub-modal-content').length > 0);
+                        console.log('Modal content display:', $('.coinsub-modal-content').css('display'));
+                        console.log('Modal content visibility:', $('.coinsub-modal-content').css('visibility'));
+                        console.log('Modal content width:', $('.coinsub-modal-content').css('width'));
+                        console.log('Modal content height:', $('.coinsub-modal-content').css('height'));
+                        console.log('Modal content opacity:', $('.coinsub-modal-content').css('opacity'));
+                        
+                        // Check iframe
+                        console.log('Iframe exists:', $('#coinsub-checkout-iframe').length > 0);
+                        console.log('Iframe src:', $('#coinsub-checkout-iframe').attr('src'));
+                        console.log('Iframe width:', $('#coinsub-checkout-iframe').css('width'));
+                        console.log('Iframe height:', $('#coinsub-checkout-iframe').css('height'));
+                        
                         // Add a test element to verify positioning
                         $('body').append('<div id="modal-test" style="position: fixed; top: 50px; left: 50px; width: 100px; height: 100px; background: red; z-index: 100000; color: white; padding: 10px;">TEST</div>');
                         
@@ -181,6 +195,25 @@ jQuery(document).ready(function($) {
                                     'background': 'rgba(255, 0, 0, 0.8) !important' // Make background red for testing
                                 });
                                 
+                                // Force modal content to be visible
+                                $('.coinsub-modal-content').css({
+                                    'display': 'block !important',
+                                    'visibility': 'visible !important',
+                                    'opacity': '1 !important',
+                                    'background': '#fff !important',
+                                    'width': '420px !important',
+                                    'height': '620px !important'
+                                });
+                                
+                                // Force iframe to be visible
+                                $('#coinsub-checkout-iframe').css({
+                                    'display': 'block !important',
+                                    'visibility': 'visible !important',
+                                    'opacity': '1 !important',
+                                    'width': '100% !important',
+                                    'height': '100% !important'
+                                });
+                                
                                 // Also try moving it to a known position
                                 $('#coinsub-checkout-modal').css({
                                     'top': '0px !important',
@@ -191,6 +224,8 @@ jQuery(document).ready(function($) {
                                 
                                 console.log('Modal display after force:', $('#coinsub-checkout-modal').css('display'));
                                 console.log('Modal background after force:', $('#coinsub-checkout-modal').css('background'));
+                                console.log('Modal content display after force:', $('.coinsub-modal-content').css('display'));
+                                console.log('Iframe display after force:', $('#coinsub-checkout-iframe').css('display'));
                             }
                             
                             // Remove test element after 3 seconds
