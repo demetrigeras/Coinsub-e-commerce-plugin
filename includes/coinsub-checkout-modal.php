@@ -172,7 +172,6 @@ jQuery(document).ready(function($) {
                                                 
                                                 // Close modal and redirect main page
                                                 closeModal();
-                                                $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small></div>');
                                                 
                                                 setTimeout(function() {
                                                     console.log('🔄 Redirecting main page to iframe URL:', currentUrl);
@@ -237,7 +236,6 @@ jQuery(document).ready(function($) {
                                                 
                                                 // Close modal and redirect main page
                                                 closeModal();
-                                                $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small></div>');
                                                 
                                                 setTimeout(function() {
                                                     console.log('🔄 Redirecting main page to iframe URL:', currentUrl);
@@ -311,8 +309,7 @@ jQuery(document).ready(function($) {
         // Close modal immediately
         closeModal();
         
-        // Show success message - webhook will handle the rest
-        $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Webhook will update your order...</small></div>');
+            // Webhook will handle the rest
         
         // Webhook will handle cart clearing and order updates
         console.log('✅ Payment completion detected - webhook will handle cart clearing and order updates');
@@ -338,33 +335,31 @@ jQuery(document).ready(function($) {
                     security: '<?php echo wp_create_nonce('coinsub_check_webhook'); ?>'
                 },
                 success: function(response) {
-                    if (response.success && response.data && response.data.redirect_url) {
-                        console.log('✅ Webhook completed - redirecting to order-received page');
-                        clearInterval(checkInterval);
-                        $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Order Complete!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small>');
-                        setTimeout(function() {
-                            window.location.href = response.data.redirect_url;
-                        }, 1500);
-                    }
+                        if (response.success && response.data && response.data.redirect_url) {
+                            console.log('✅ Webhook completed - redirecting to order-received page');
+                            clearInterval(checkInterval);
+                            setTimeout(function() {
+                                window.location.href = response.data.redirect_url;
+                            }, 1500);
+                        }
                 },
                 error: function() {
                     console.log('⚠️ Failed to check webhook status');
                 }
             });
             
-            if (checkCount >= maxChecks) {
-                console.log('⏰ Webhook check timeout - redirecting to order-received as fallback');
-                clearInterval(checkInterval);
-                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small>');
-                
-                // Fallback: redirect to order-received page after 2.5 seconds
-                setTimeout(function() {
-                    console.log('🔄 Fallback redirect to order-received page');
-                    // Get the most recent order and redirect to its order-received page
-                    var fallbackUrl = '<?php echo esc_js(wc_get_checkout_url()); ?>';
-                    window.location.href = fallbackUrl;
-                }, 2500);
-            }
+                if (checkCount >= maxChecks) {
+                    console.log('⏰ Webhook check timeout - redirecting to order-received as fallback');
+                    clearInterval(checkInterval);
+                    
+                    // Fallback: redirect to order-received page after 2.5 seconds
+                    setTimeout(function() {
+                        console.log('🔄 Fallback redirect to order-received page');
+                        // Get the most recent order and redirect to its order-received page
+                        var fallbackUrl = '<?php echo esc_js(wc_get_checkout_url()); ?>';
+                        window.location.href = fallbackUrl;
+                    }, 2500);
+                }
         }, 1000); // Check every second
     }
     
@@ -438,9 +433,6 @@ jQuery(document).ready(function($) {
                 
                 // Close modal immediately
                 closeModal();
-                
-                // Show success message
-                $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small></div>');
                 
                 // Redirect the main page (not the iframe) to the URL CoinSub provided
                 setTimeout(function() {
