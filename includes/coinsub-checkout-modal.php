@@ -337,12 +337,17 @@ jQuery(document).ready(function($) {
             });
             
             if (checkCount >= maxChecks) {
-                console.log('⏰ Webhook check timeout - assuming payment completed');
+                console.log('⏰ Webhook check timeout - redirecting to order-received as fallback');
                 clearInterval(checkInterval);
-                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Your order will be confirmed shortly.</small>');
+                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small>');
+                
+                // Fallback: redirect to order-received page after 2.5 seconds
                 setTimeout(function() {
-                    $('#coinsub-payment-success').fadeOut();
-                }, 5000);
+                    console.log('🔄 Fallback redirect to order-received page');
+                    // Get the most recent order and redirect to its order-received page
+                    var fallbackUrl = '<?php echo esc_js(wc_get_checkout_url()); ?>';
+                    window.location.href = fallbackUrl;
+                }, 2500);
             }
         }, 1000); // Check every second
     }
@@ -398,7 +403,6 @@ jQuery(document).ready(function($) {
         console.log('Message data:', JSON.stringify(event.data, null, 2));
         
         // Handle different types of messages from CoinSub
-        // Check for payment completion in various formats
         var isPaymentComplete = false;
         
         // Format 1: Direct payment_complete
@@ -407,10 +411,29 @@ jQuery(document).ready(function($) {
             isPaymentComplete = true;
         }
         
-        // Format 2: Redirect with order-received URL
-        if (event.data.type === 'redirect' && event.data.data && event.data.data.url && event.data.data.url.includes('order-received')) {
-            console.log('✅ Payment completed - redirect to order-received');
-            isPaymentComplete = true;
+        // Format 2: Redirect event (this is what CoinSub sends!)
+        if (event.data.type === 'redirect' && event.data.data && event.data.data.url) {
+            console.log('✅ Payment completed - redirect event detected');
+            console.log('Redirect URL:', event.data.data.url);
+            
+            // Check if it's going to order-received page
+            if (event.data.data.url.includes('order-received')) {
+                console.log('✅ Redirecting to order-received page - payment complete!');
+                
+                // Close modal immediately
+                closeModal();
+                
+                // Show success message
+                $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Redirecting to your order...</small></div>');
+                
+                // Redirect directly to the URL CoinSub provided
+                setTimeout(function() {
+                    console.log('🔄 Redirecting to:', event.data.data.url);
+                    window.location.href = event.data.data.url;
+                }, 2500);
+                
+                return; // Exit early since we handled the redirect
+            }
         }
         
         // Format 3: Check if message contains payment success indicators
