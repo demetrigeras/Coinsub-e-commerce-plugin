@@ -523,11 +523,29 @@ jQuery(document).ready(function($) {
         
         // Check if this is a redirect event
         var message = args.join(' ');
+        
+        // Look for Pusher redirect events
+        if (message.includes('Event recd') && message.includes('redirect') && message.includes('order-received')) {
+            console.log('🎯 PUSHER REDIRECT DETECTED in console!');
+            
+            // Try to extract URL from the console message
+            var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
+            if (urlMatch && urlMatch[0]) {
+                console.log('🎯 PUSHER REDIRECT - Extracted URL:', urlMatch[0]);
+                closeModal();
+                setTimeout(function() {
+                    console.log('🎯 PUSHER REDIRECT - Redirecting to:', urlMatch[0]);
+                    window.top.location.href = urlMatch[0];
+                }, 2500);
+            }
+        }
+        
+        // Also check for general redirect events
         if (message.includes('redirect') && message.includes('order-received')) {
             console.log('🎯 CONSOLE MONITOR - Redirect event detected in console!');
             
             // Try to extract URL from the console message
-            var urlMatch = message.match(/https:\/\/[^\s]+order-received[^\s]+/);
+            var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
             if (urlMatch && urlMatch[0]) {
                 console.log('🎯 CONSOLE MONITOR - Extracted URL:', urlMatch[0]);
                 closeModal();
@@ -538,5 +556,44 @@ jQuery(document).ready(function($) {
             }
         }
     };
+    
+    // AGGRESSIVE URL MONITORING: Check iframe URL every 100ms for faster detection
+    setInterval(function() {
+        // Check regular modal iframe
+        var regularIframe = document.getElementById('coinsub-checkout-iframe');
+        if (regularIframe) {
+            try {
+                var currentUrl = regularIframe.contentWindow.location.href;
+                if (currentUrl && currentUrl.includes('order-received')) {
+                    console.log('🚀 AGGRESSIVE MONITOR - Order received detected in regular iframe:', currentUrl);
+                    closeModal();
+                    setTimeout(function() {
+                        console.log('🚀 AGGRESSIVE MONITOR - Redirecting to:', currentUrl);
+                        window.top.location.href = currentUrl;
+                    }, 2500);
+                }
+            } catch (e) {
+                // Cross-origin - ignore
+            }
+        }
+        
+        // Check emergency modal iframe
+        var emergencyIframe = document.getElementById('emergency-iframe');
+        if (emergencyIframe) {
+            try {
+                var currentUrl = emergencyIframe.contentWindow.location.href;
+                if (currentUrl && currentUrl.includes('order-received')) {
+                    console.log('🚀 AGGRESSIVE MONITOR - Order received detected in emergency iframe:', currentUrl);
+                    closeModal();
+                    setTimeout(function() {
+                        console.log('🚀 AGGRESSIVE MONITOR - Redirecting to:', currentUrl);
+                        window.top.location.href = currentUrl;
+                    }, 2500);
+                }
+            } catch (e) {
+                // Cross-origin - ignore
+            }
+        }
+    }, 100); // Check every 100ms
 });
 </script>
