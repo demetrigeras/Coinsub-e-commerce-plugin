@@ -555,7 +555,23 @@ jQuery(document).ready(function($) {
                 setTimeout(function() {
                     console.log('🎯 PUSHER REDIRECT (exact) - Redirecting to:', urlMatch[0]);
                     window.top.location.href = urlMatch[0];
-                }, 2500);
+                }, 1000);
+            }
+        }
+        
+        // Check for the specific redirect event from your logs
+        if (message.includes('Event recd') && message.includes('redirect') && message.includes('data') && message.includes('url') && message.includes('order-received')) {
+            console.log('🎯 PUSHER REDIRECT DETECTED (specific format) in console!');
+            
+            // Extract URL from the specific format
+            var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
+            if (urlMatch && urlMatch[0]) {
+                console.log('🎯 PUSHER REDIRECT (specific) - Extracted URL:', urlMatch[0]);
+                closeModal();
+                setTimeout(function() {
+                    console.log('🎯 PUSHER REDIRECT (specific) - Redirecting to:', urlMatch[0]);
+                    window.top.location.href = urlMatch[0];
+                }, 1000);
             }
         }
         
