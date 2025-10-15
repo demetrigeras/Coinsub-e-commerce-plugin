@@ -141,6 +141,25 @@ jQuery(document).ready(function($) {
                         $('#coinsub-checkout-iframe').attr('src', checkoutUrl);
                         $('#coinsub-checkout-modal').addClass('show');
                         
+                        // Monitor iframe URL changes for regular modal
+                        var regularIframe = document.getElementById('coinsub-checkout-iframe');
+                        if (regularIframe) {
+                            regularIframe.addEventListener('load', function() {
+                                try {
+                                    var currentUrl = regularIframe.contentWindow.location.href;
+                                    console.log('Regular iframe URL:', currentUrl);
+                                    
+                                    if (currentUrl.includes('order-received')) {
+                                        console.log('✅ Payment completed in regular modal - handling redirect');
+                                        handlePaymentCompletion();
+                                    }
+                                } catch (e) {
+                                    // Cross-origin restrictions - use message listener instead
+                                    console.log('Cross-origin iframe - using message listener');
+                                }
+                            });
+                        }
+                        
                         // Quick check if original modal works, if not create emergency modal immediately
                         setTimeout(function() {
                             var modalElement = $('#coinsub-checkout-modal')[0];
@@ -152,11 +171,30 @@ jQuery(document).ready(function($) {
                                 // Remove original modal
                                 $('#coinsub-checkout-modal').remove();
                                 
-                                // Create emergency modal
-                                var emergencyModal = $('<div id="emergency-modal" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; display: flex !important; justify-content: center !important; align-items: center !important;"><div style="background: white !important; width: 420px !important; height: 620px !important; border-radius: 16px !important; position: relative !important; overflow: hidden !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;"><iframe src="' + checkoutUrl + '" style="width: 100% !important; height: 100% !important; border: none !important;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe><button id="emergency-close" style="position: absolute !important; top: 10px !important; right: 15px !important; background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #666 !important; z-index: 1000000 !important;">×</button></div></div>');
+                                // Create emergency modal with iframe load handler
+                                var emergencyModal = $('<div id="emergency-modal" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; display: flex !important; justify-content: center !important; align-items: center !important;"><div style="background: white !important; width: 420px !important; height: 620px !important; border-radius: 16px !important; position: relative !important; overflow: hidden !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;"><iframe id="emergency-iframe" src="' + checkoutUrl + '" style="width: 100% !important; height: 100% !important; border: none !important;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe><button id="emergency-close" style="position: absolute !important; top: 10px !important; right: 15px !important; background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #666 !important; z-index: 1000000 !important;">×</button></div></div>');
                                 
                                 $('body').append(emergencyModal);
                                 console.log('Emergency modal created');
+                                
+                                // Monitor iframe URL changes for emergency modal
+                                var emergencyIframe = document.getElementById('emergency-iframe');
+                                if (emergencyIframe) {
+                                    emergencyIframe.addEventListener('load', function() {
+                                        try {
+                                            var currentUrl = emergencyIframe.contentWindow.location.href;
+                                            console.log('Emergency iframe URL:', currentUrl);
+                                            
+                                            if (currentUrl.includes('order-received')) {
+                                                console.log('✅ Payment completed in emergency modal - handling redirect');
+                                                handlePaymentCompletion();
+                                            }
+                                        } catch (e) {
+                                            // Cross-origin restrictions - use message listener instead
+                                            console.log('Cross-origin iframe - using message listener');
+                                        }
+                                    });
+                                }
                             } else {
                                 console.log('Original modal is visible');
                             }
@@ -207,6 +245,50 @@ jQuery(document).ready(function($) {
         }
     });
     
+    // Handle payment completion - unified function for both modals
+    function handlePaymentCompletion() {
+        console.log('🎉 Handling payment completion...');
+        
+        // Close modal immediately
+        closeModal();
+        
+        // Show success message
+        $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Processing your order...</small></div>');
+        
+        // Clear cart immediately
+        $.ajax({
+            url: wc_checkout_params.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'coinsub_clear_cart_after_payment',
+                security: '<?php echo wp_create_nonce('coinsub_clear_cart'); ?>'
+            },
+            success: function() {
+                console.log('✅ Cart cleared after successful payment');
+                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Order Complete!</strong><br><br>Your cart has been cleared.<br><small>Redirecting to your order...</small>');
+                
+                // Wait 2-3 seconds then redirect to orders page
+                setTimeout(function() {
+                    console.log('🔄 Redirecting to orders page...');
+                    // Redirect to My Account Orders page (or checkout page if not logged in)
+                    var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
+                    window.location.href = ordersUrl;
+                }, 2500); // 2.5 seconds delay
+            },
+            error: function() {
+                console.log('⚠️ Failed to clear cart - webhook will handle it');
+                $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Your order will be confirmed shortly.</small>');
+                
+                // Still redirect after delay even if cart clear fails
+                setTimeout(function() {
+                    console.log('🔄 Redirecting to orders page (fallback)...');
+                    var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
+                    window.location.href = ordersUrl;
+                }, 3000);
+            }
+        });
+    }
+    
     // Close modal functionality - works for both regular and emergency modals
     function closeModal() {
         // Close regular modal
@@ -253,40 +335,15 @@ jQuery(document).ready(function($) {
             return;
         }
         
-        if (event.data.type === 'payment_complete') {
-            // Close modal using unified function
-            closeModal();
+        console.log('CoinSub iframe message received:', event.data);
+        
+        // Handle different types of messages from CoinSub
+        if (event.data.type === 'payment_complete' || 
+            (event.data.type === 'redirect' && event.data.data && event.data.data.url && event.data.data.url.includes('order-received'))) {
             
-            // Show success message
-            $('body').prepend('<div id="coinsub-payment-success" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Processing your order...</small></div>');
+            console.log('✅ Payment completed via message - handling redirect');
+            handlePaymentCompletion();
             
-            // Clear cart immediately
-            $.ajax({
-                url: wc_checkout_params.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'coinsub_clear_cart_after_payment',
-                    security: '<?php echo wp_create_nonce('coinsub_clear_cart'); ?>'
-                },
-                success: function() {
-                    console.log('✅ Cart cleared after successful payment');
-                    $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Order Complete!</strong><br><br>Your cart has been cleared.<br><small>Redirecting to your order...</small>');
-                    
-                    // Redirect to orders page after 2 seconds
-                    setTimeout(function() {
-                        // Redirect to My Account Orders page (or checkout page if not logged in)
-                        var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
-                        window.location.href = ordersUrl;
-                    }, 1500); // Reduced from 2000ms to 1500ms for faster redirect
-                },
-                error: function() {
-                    console.log('⚠️ Failed to clear cart - webhook will handle it');
-                    $('#coinsub-payment-success').html('<strong style="font-size: 16px;">✅ Payment Successful!</strong><br><br>Your payment has been processed.<br><small>Your order will be confirmed shortly.</small>');
-                    setTimeout(function() {
-                        $('#coinsub-payment-success').fadeOut();
-                    }, 8000);
-                }
-            });
         } else if (event.data.type === 'payment_failed') {
             // Close modal and show error
             closeModal();
