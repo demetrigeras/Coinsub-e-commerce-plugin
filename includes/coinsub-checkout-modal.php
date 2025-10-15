@@ -181,7 +181,7 @@ jQuery(document).ready(function($) {
                                         } catch (e) {
                                             // Cross-origin - ignore
                                         }
-                                    }, 1000); // Check every second
+                                    }, 500); // Check every half second for faster detection
                                     
                                     // Clear timer after 5 minutes
                                     setTimeout(function() {
@@ -245,7 +245,7 @@ jQuery(document).ready(function($) {
                                         } catch (e) {
                                             // Cross-origin - ignore
                                         }
-                                    }, 1000); // Check every second
+                                    }, 500); // Check every half second for faster detection
                                     
                                     // Clear timer after 5 minutes
                                     setTimeout(function() {
@@ -403,9 +403,20 @@ jQuery(document).ready(function($) {
     
     // Listen for messages from iframe (payment completion)
     window.addEventListener('message', function(event) {
-        // Verify origin for security
-        var allowedOrigin = '<?php echo esc_js($api_scheme . '://' . $api_host); ?>';
-        if (event.origin !== allowedOrigin) {
+        // Debug: Log all messages to see what's coming through
+        console.log('🔍 Message received from origin:', event.origin);
+        console.log('🔍 Expected origin:', '<?php echo esc_js($api_scheme . '://' . $api_host); ?>');
+        console.log('🔍 Message data:', event.data);
+        
+        // Allow messages from CoinSub checkout domain
+        var allowedOrigins = [
+            '<?php echo esc_js($api_scheme . '://' . $api_host); ?>',
+            'https://test-buy.coinsub.io',
+            'https://buy.coinsub.io'
+        ];
+        
+        if (!allowedOrigins.includes(event.origin)) {
+            console.log('❌ Message blocked - origin not allowed:', event.origin);
             return;
         }
         
@@ -463,6 +474,29 @@ jQuery(document).ready(function($) {
             // Close modal and show error
             closeModal();
             alert('Payment failed. Please try again.');
+        }
+    });
+    
+    // BACKUP: Listen for ALL messages without origin checking (for debugging)
+    window.addEventListener('message', function(event) {
+        console.log('🚨 BACKUP LISTENER - All messages:', {
+            origin: event.origin,
+            data: event.data,
+            type: event.data?.type || 'unknown'
+        });
+        
+        // Handle redirect events regardless of origin
+        if (event.data && event.data.type === 'redirect' && event.data.data && event.data.data.url) {
+            console.log('🚨 BACKUP LISTENER - Redirect detected:', event.data.data.url);
+            
+            if (event.data.data.url.includes('order-received')) {
+                console.log('🚨 BACKUP LISTENER - Order received URL detected - closing modal and redirecting');
+                closeModal();
+                setTimeout(function() {
+                    console.log('🚨 BACKUP LISTENER - Redirecting main page to:', event.data.data.url);
+                    window.top.location.href = event.data.data.url;
+                }, 2500);
+            }
         }
     });
 });
