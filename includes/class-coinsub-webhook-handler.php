@@ -103,16 +103,29 @@ class CoinSub_Webhook_Handler {
         }
         
         // Find the order by origin ID (purchase session ID)
+        error_log('CoinSub Webhook: Searching for order with origin ID: ' . $origin_id);
         $order = $this->find_order_by_origin_id($origin_id);
         
         if (!$order) {
-            error_log('CoinSub Webhook: Order not found for origin ID: ' . $origin_id);
+            error_log('❌ CoinSub Webhook: Order not found for origin ID: ' . $origin_id);
             error_log('CoinSub Webhook: Event type: ' . $event_type);
             error_log('CoinSub Webhook: Merchant ID: ' . $merchant_id);
+            
+            // Debug: List all orders with CoinSub metadata
+            $all_orders = wc_get_orders(array('limit' => 10, 'orderby' => 'date', 'order' => 'DESC'));
+            error_log('CoinSub Webhook: Recent orders:');
+            foreach ($all_orders as $test_order) {
+                $test_session_id = $test_order->get_meta('_coinsub_purchase_session_id');
+                $test_coinsub_id = $test_order->get_meta('_coinsub_order_id');
+                if ($test_session_id || $test_coinsub_id) {
+                    error_log('  Order #' . $test_order->get_id() . ' - Session: ' . $test_session_id . ' - CoinSub ID: ' . $test_coinsub_id);
+                }
+            }
             return;
         }
         
-        error_log('CoinSub Webhook: Found order ID: ' . $order->get_id() . ' for origin ID: ' . $origin_id);
+        error_log('✅ CoinSub Webhook: Found order ID: ' . $order->get_id() . ' for origin ID: ' . $origin_id);
+        error_log('CoinSub Webhook: Order status before update: ' . $order->get_status());
         
         // Verify merchant ID matches
         $order_merchant_id = $order->get_meta('_coinsub_merchant_id');
@@ -159,8 +172,12 @@ class CoinSub_Webhook_Handler {
      * Handle payment completed
      */
     private function handle_payment_completed($order, $data) {
+        error_log('🎉 CoinSub Webhook: Processing payment completion for order #' . $order->get_id());
+        error_log('CoinSub Webhook: Current order status: ' . $order->get_status());
+        
         // Update WooCommerce order status - payment is complete!
         $order->update_status('processing', __('Payment Complete', 'coinsub'));
+        error_log('CoinSub Webhook: Updated order status to processing');
         
         // Add order note with transaction details
         $transaction_details = $data['transaction_details'] ?? array();

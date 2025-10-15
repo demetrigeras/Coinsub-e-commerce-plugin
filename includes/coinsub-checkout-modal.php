@@ -277,7 +277,7 @@ jQuery(document).ready(function($) {
                         // Redirect to My Account Orders page (or checkout page if not logged in)
                         var ordersUrl = '<?php echo esc_js(get_current_user_id() ? wc_get_account_endpoint_url("orders") : wc_get_checkout_url()); ?>';
                         window.location.href = ordersUrl;
-                    }, 2000);
+                    }, 1500); // Reduced from 2000ms to 1500ms for faster redirect
                 },
                 error: function() {
                     console.log('⚠️ Failed to clear cart - webhook will handle it');
