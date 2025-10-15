@@ -430,7 +430,7 @@ function coinsub_ajax_check_webhook_status() {
         $order->delete_meta_data('_coinsub_redirect_to_received');
         $order->save();
         
-        // Get the order-received URL
+        // Get the order-received page URL (where customers see their completed order)
         $redirect_url = $order->get_checkout_order_received_url();
         
         wp_send_json_success(array('redirect_url' => $redirect_url));
