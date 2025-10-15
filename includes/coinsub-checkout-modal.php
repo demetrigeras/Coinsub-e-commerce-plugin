@@ -563,16 +563,49 @@ jQuery(document).ready(function($) {
         if (message.includes('Event recd') && message.includes('redirect') && message.includes('data') && message.includes('url') && message.includes('order-received')) {
             console.log('🎯 PUSHER REDIRECT DETECTED (specific format) in console!');
             
-            // Extract URL from the specific format
-            var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
-            if (urlMatch && urlMatch[0]) {
-                console.log('🎯 PUSHER REDIRECT (specific) - Extracted URL:', urlMatch[0]);
-                closeModal();
-                setTimeout(function() {
-                    console.log('🎯 PUSHER REDIRECT (specific) - Redirecting to:', urlMatch[0]);
-                    window.top.location.href = urlMatch[0];
-                }, 1000);
-            }
+            // Don't use the URL from CoinSub - instead get the latest order URL from WordPress
+            console.log('🎯 PUSHER REDIRECT - Getting latest order URL from WordPress...');
+            closeModal();
+            
+            // Get the latest order URL from WordPress instead of using CoinSub's URL
+            $.ajax({
+                url: wc_checkout_params.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'coinsub_get_latest_order_url',
+                    security: '<?php echo wp_create_nonce('coinsub_get_order_url'); ?>'
+                },
+                success: function(response) {
+                    if (response.success && response.data && response.data.order_url) {
+                        console.log('🎯 PUSHER REDIRECT - WordPress order URL:', response.data.order_url);
+                        setTimeout(function() {
+                            console.log('🎯 PUSHER REDIRECT - Redirecting to WordPress order URL:', response.data.order_url);
+                            window.top.location.href = response.data.order_url;
+                        }, 1000);
+                    } else {
+                        console.log('🎯 PUSHER REDIRECT - No WordPress order found, using CoinSub URL as fallback');
+                        // Fallback to CoinSub URL if WordPress doesn't have the order yet
+                        var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
+                        if (urlMatch && urlMatch[0]) {
+                            setTimeout(function() {
+                                console.log('🎯 PUSHER REDIRECT - Fallback redirect to:', urlMatch[0]);
+                                window.top.location.href = urlMatch[0];
+                            }, 1000);
+                        }
+                    }
+                },
+                error: function() {
+                    console.log('🎯 PUSHER REDIRECT - Failed to get WordPress order, using CoinSub URL as fallback');
+                    // Fallback to CoinSub URL
+                    var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
+                    if (urlMatch && urlMatch[0]) {
+                        setTimeout(function() {
+                            console.log('🎯 PUSHER REDIRECT - Fallback redirect to:', urlMatch[0]);
+                            window.top.location.href = urlMatch[0];
+                        }, 1000);
+                    }
+                }
+            });
         }
         
         // Also check for general redirect events
