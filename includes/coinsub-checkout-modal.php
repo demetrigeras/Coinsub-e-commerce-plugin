@@ -576,10 +576,10 @@ jQuery(document).ready(function($) {
         }
     };
     
-    // SIMPLE BACKUP REDIRECT: After 30 seconds, redirect to order-received page
+    // SIMPLE BACKUP REDIRECT: After 2.5 seconds, redirect to order-received page
     // This is a backup in case webhook processing takes time
     setTimeout(function() {
-        console.log('🔄 BACKUP REDIRECT - 30 seconds elapsed, checking for completed order...');
+        console.log('🔄 BACKUP REDIRECT - 2.5 seconds elapsed, checking for completed order...');
         
         // Check if we have a recent order and redirect to its order-received page
         $.ajax({
@@ -602,6 +602,6 @@ jQuery(document).ready(function($) {
                 console.log('🔄 BACKUP REDIRECT - Failed to check for order');
             }
         });
-    }, 30000); // 30 seconds
+    }, 2500); // 2.5 seconds
 });
 </script>
