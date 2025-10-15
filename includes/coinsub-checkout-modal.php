@@ -524,17 +524,36 @@ jQuery(document).ready(function($) {
         // Check if this is a redirect event
         var message = args.join(' ');
         
-        // Look for Pusher redirect events
+        // Look for Pusher redirect events - check the exact format from your logs
         if (message.includes('Event recd') && message.includes('redirect') && message.includes('order-received')) {
             console.log('🎯 PUSHER REDIRECT DETECTED in console!');
+            console.log('🎯 Full message:', message);
             
-            // Try to extract URL from the console message
+            // Try to extract URL from the console message - handle the exact format
             var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
             if (urlMatch && urlMatch[0]) {
                 console.log('🎯 PUSHER REDIRECT - Extracted URL:', urlMatch[0]);
                 closeModal();
                 setTimeout(function() {
                     console.log('🎯 PUSHER REDIRECT - Redirecting to:', urlMatch[0]);
+                    window.top.location.href = urlMatch[0];
+                }, 2500);
+            } else {
+                console.log('🎯 PUSHER REDIRECT - Could not extract URL from:', message);
+            }
+        }
+        
+        // Also check for the exact format: ["Event recd",{"event":"redirect","data":{"url":"..."}}]
+        if (message.includes('["Event recd"') && message.includes('"event":"redirect"') && message.includes('order-received')) {
+            console.log('🎯 PUSHER REDIRECT DETECTED (exact format) in console!');
+            
+            // Try to extract URL from the exact Pusher format
+            var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
+            if (urlMatch && urlMatch[0]) {
+                console.log('🎯 PUSHER REDIRECT (exact) - Extracted URL:', urlMatch[0]);
+                closeModal();
+                setTimeout(function() {
+                    console.log('🎯 PUSHER REDIRECT (exact) - Redirecting to:', urlMatch[0]);
                     window.top.location.href = urlMatch[0];
                 }, 2500);
             }
