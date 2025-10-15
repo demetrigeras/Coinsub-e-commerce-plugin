@@ -57,6 +57,8 @@ class CoinSub_Webhook_Handler {
      */
     public function handle_webhook($request) {
         error_log('🔔 CoinSub Webhook - Received webhook request');
+        error_log('🔔 CoinSub Webhook - Request headers: ' . json_encode($request->get_headers()));
+        error_log('🔔 CoinSub Webhook - Raw body: ' . $request->get_body());
         
         // Get the request body
         $data = $request->get_json_params();
