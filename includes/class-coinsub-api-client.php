@@ -75,7 +75,8 @@ class CoinSub_API_Client {
             'recurring' => $order_data['recurring'] ?? false,
             'metadata' => $order_data['metadata'],
             'success_url' => $order_data['success_url'],
-            'cancel_url' => $order_data['cancel_url']
+            'cancel_url' => $order_data['cancel_url'],
+            'failure_url' => $order_data['failure_url'] ?? $order_data['cancel_url'] // Use cancel_url as fallback if failure_url not provided
         );
         
         // Add subscription fields if recurring
@@ -93,6 +94,8 @@ class CoinSub_API_Client {
         
         error_log('🌐 CoinSub API - Full Payload: ' . json_encode($payload));
         error_log('🌐 CoinSub API - Success URL being sent: ' . ($payload['success_url'] ?? 'NOT SET'));
+        error_log('🌐 CoinSub API - Cancel URL being sent: ' . ($payload['cancel_url'] ?? 'NOT SET'));
+        error_log('🌐 CoinSub API - Failure URL being sent: ' . ($payload['failure_url'] ?? 'NOT SET'));
         
         $headers = array(
             'Content-Type' => 'application/json',

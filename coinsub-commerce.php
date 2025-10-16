@@ -163,6 +163,7 @@ add_action('plugins_loaded', 'coinsub_commerce_init');
 add_filter('woocommerce_payment_gateways', 'coinsub_add_gateway_class');
 add_action('before_woocommerce_init', 'coinsub_commerce_declare_hpos_compatibility');
 
+
 // Force traditional checkout (disable blocks)
 add_filter('woocommerce_checkout_shortcode_tag', function() {
     return 'woocommerce_checkout';
@@ -530,4 +531,5 @@ function coinsub_heartbeat_received($response, $data, $screen_id) {
     
     return $response;
 }
+
 ?>

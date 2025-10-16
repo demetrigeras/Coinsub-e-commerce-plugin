@@ -1,92 +1,45 @@
 <?php
 /**
- * CoinSub Checkout Modal Template
+ * CoinSub Checkout Integration
  * 
- * This file contains the HTML, CSS, and JavaScript for the iframe checkout modal
+ * This file contains the HTML, CSS, and JavaScript for the CoinSub checkout iframe
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
-
-// Get the checkout URL from the payment gateway
-$checkout_url = isset($checkout_url) ? $checkout_url : '';
-$api_url = get_option('coinsub_api_url', 'https://test-buy.coinsub.io');
-$api_scheme = parse_url($api_url, PHP_URL_SCHEME);
-$api_host = parse_url($api_url, PHP_URL_HOST);
 ?>
 
-<!-- CoinSub Checkout Modal Styles -->
+<!-- CoinSub Checkout Styles -->
 <style>
-#coinsub-checkout-modal {
-    display: none !important;
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    background: rgba(0, 0, 0, 0.5) !important;
-    z-index: 99999 !important;
-    justify-content: center !important;
-    align-items: center !important;
-}
-
-#coinsub-checkout-modal.show {
-    display: flex !important;
-}
-
-.coinsub-modal-content {
-    background: #fff !important;
-    border-radius: 16px !important;
-    width: 420px !important;
-    height: 620px !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
-    overflow: hidden !important;
-    position: relative !important;
+#coinsub-checkout-container {
+    margin: 20px 0;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    display: none; /* Hidden by default */
 }
 
 #coinsub-checkout-iframe {
     width: 100%;
-    height: 100%;
+    height: 800px;
     border: none;
 }
-
-#coinsub-close-modal {
-    position: absolute;
-    top: 10px;
-    right: 15px;
-    background: none;
-    border: none;
-    font-size: 24px;
-    cursor: pointer;
-    color: #666;
-    z-index: 10001;
-}
-
 
 /* Mobile responsive */
 @media (max-width: 768px) {
-    .coinsub-modal-content {
-        width: 95%;
-        height: 80%;
-        margin: 10px;
+    #coinsub-checkout-container {
+        margin: 10px 0;
+    }
+    
+    #coinsub-checkout-iframe {
+        height: 600px;
     }
 }
 </style>
 
-<!-- CoinSub Checkout Modal HTML -->
-<div id="coinsub-checkout-modal">
-    <div class="coinsub-modal-content">
-        <button id="coinsub-close-modal">×</button>
-        <iframe id="coinsub-checkout-iframe" 
-                src="" 
-                allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *"
-                title="CoinSub Checkout">
-        </iframe>
-    </div>
-</div>
-
-<!-- CoinSub Checkout Modal JavaScript -->
+<!-- CoinSub Checkout JavaScript -->
 <script type="text/javascript">
 jQuery(document).ready(function($) {
     // Override the place order button for CoinSub
@@ -138,83 +91,25 @@ jQuery(document).ready(function($) {
                     }
                     
                     if (checkoutUrl) {
-                        console.log('Opening modal with URL:', checkoutUrl);
+                        console.log('Opening CoinSub checkout iframe:', checkoutUrl);
                         
-                        // Try the original modal first
-                        $('#coinsub-checkout-iframe').attr('src', checkoutUrl);
-                        $('#coinsub-checkout-modal').addClass('show');
+                        // Remove any existing CoinSub iframe to prevent duplicates
+                        $('#coinsub-checkout-iframe').remove();
+                        $('#coinsub-checkout-container').remove();
                         
-                        // Start webhook monitoring instead of iframe monitoring
-                        console.log('🔍 Starting webhook monitoring for payment completion...');
-                        startWebhookMonitoring();
+                        // Create iframe container above the payment button
+                        var iframeContainer = $('<div id="coinsub-checkout-container" style="margin: 20px 0; background: white; border-radius: 16px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); overflow: hidden;"><iframe id="coinsub-checkout-iframe" src="' + checkoutUrl + '" style="width: 100%; height: 800px; border: none;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe></div>');
                         
-                        // Quick check if original modal works, if not create emergency modal immediately
-                        setTimeout(function() {
-                            var modalElement = $('#coinsub-checkout-modal')[0];
-                            var isVisible = modalElement && modalElement.offsetWidth > 0 && modalElement.offsetHeight > 0;
-                            
-                            if (!isVisible) {
-                                console.log('Original modal not visible, creating emergency modal');
-                                
-                                // Remove original modal
-                                $('#coinsub-checkout-modal').remove();
-                                
-                                // Create emergency modal with iframe load handler
-                                var emergencyModal = $('<div id="emergency-modal" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; display: flex !important; justify-content: center !important; align-items: center !important;"><div style="background: white !important; width: 420px !important; height: 620px !important; border-radius: 16px !important; position: relative !important; overflow: hidden !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;"><iframe id="emergency-iframe" src="' + checkoutUrl + '" style="width: 100% !important; height: 100% !important; border: none !important;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"></iframe><button id="emergency-close" style="position: absolute !important; top: 10px !important; right: 15px !important; background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #666 !important; z-index: 1000000 !important;">×</button></div></div>');
-                                
-                                $('body').append(emergencyModal);
-                                console.log('Emergency modal created');
-                                
-                                // Monitor iframe URL changes for emergency modal
-                                var emergencyIframe = document.getElementById('emergency-iframe');
-                                if (emergencyIframe) {
-                                    emergencyIframe.addEventListener('load', function() {
-                                        try {
-                                            var currentUrl = emergencyIframe.contentWindow.location.href;
-                                            console.log('Emergency iframe URL:', currentUrl);
-                                            
-                                            if (currentUrl.includes('order-received')) {
-                                                console.log('✅ Payment completed in emergency modal - handling redirect');
-                                                handlePaymentCompletion();
-                                            }
-                                        } catch (e) {
-                                            // Cross-origin restrictions - use message listener instead
-                                            console.log('Cross-origin iframe - using message listener');
-                                        }
-                                    });
-                                    
-                                    // Add aggressive URL monitoring for emergency modal
-                                    var emergencyUrlMonitor = setInterval(function() {
-                                        try {
-                                            var currentUrl = emergencyIframe.contentWindow.location.href;
-                                            console.log('Emergency iframe URL check:', currentUrl);
-                                            
-                                            if (currentUrl.includes('order-received')) {
-                                                console.log('✅ Payment completed in emergency modal (timer) - redirecting main page');
-                                                clearInterval(emergencyUrlMonitor);
-                                                
-                                                // Close modal and redirect main page
-                                                closeModal();
-                                                
-                                                setTimeout(function() {
-                                                    console.log('🔄 Redirecting main page to iframe URL:', currentUrl);
-                                                    window.top.location.href = currentUrl;
-                                                }, 2500);
-                                            }
-                                        } catch (e) {
-                                            // Cross-origin - ignore
-                                        }
-                                    }, 500); // Check every half second for faster detection
-                                    
-                                    // Clear timer after 5 minutes
-                                    setTimeout(function() {
-                                        clearInterval(emergencyUrlMonitor);
-                                    }, 300000);
-                                }
-                            } else {
-                                console.log('Original modal is visible');
-                            }
-                        }, 50);
+                        // Insert above the payment button
+                        $('.woocommerce-checkout .form-row.place-order').before(iframeContainer);
+                        
+                        // Show the iframe container
+                        $('#coinsub-checkout-container').show();
+                        
+                        // Hide the payment button since iframe is now visible
+                        $('.woocommerce-checkout .form-row.place-order').hide();
+                        
+                        console.log('✅ CoinSub checkout iframe embedded above payment button');
                     } else {
                         console.log('Payment failed - response details:', response);
                         // Show detailed error
@@ -261,84 +156,15 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Simple function: Got payment? Redirect to orders page outside modal
-    function startWebhookMonitoring() {
-        console.log('🎯 CoinSub - Using Pusher redirect detection (no polling needed)');
-        // Pusher redirect detection handles everything automatically
+    // Add a way to show payment button again (for debugging or if needed)
+    function showPaymentButton() {
+        $('.woocommerce-checkout .form-row.place-order').show();
+        $('#coinsub-checkout-container').remove();
     }
     
-    // Handle payment completion - simplified
-    function handlePaymentCompletion() {
-        console.log('🎉 Payment completion detected - webhook will handle the rest');
-        // Webhook monitoring will handle the redirect
-    }
+    // Make function available globally for debugging
+    window.showPaymentButton = showPaymentButton;
     
-    
-    // Close modal functionality - works for both regular and emergency modals
-    function closeModal() {
-        // Close regular modal
-        $('#coinsub-checkout-modal').removeClass('show').css('display', 'none');
-        $('#coinsub-checkout-iframe').attr('src', '');
-        
-        // Close emergency modal
-        $('#emergency-modal').remove();
-        
-        // Re-enable place order button
-        $('#place_order').prop('disabled', false).text('Place order');
-    }
-    
-    // Close modal button
-    $(document).on('click', '#coinsub-close-modal, #emergency-close', function() {
-        closeModal();
-    });
-    
-    // Close modal when clicking outside
-    $(document).on('click', '#coinsub-checkout-modal, #emergency-modal', function(e) {
-        if (e.target === this) {
-            closeModal();
-        }
-    });
-    
-    // ESC key to close
-    $(document).on('keydown', function(e) {
-        if (e.keyCode === 27) {
-            // Check if either modal is visible
-            var regularVisible = $('#coinsub-checkout-modal').is(':visible') || $('#coinsub-checkout-modal').hasClass('show');
-            var emergencyVisible = $('#emergency-modal').length > 0;
-            
-            if (regularVisible || emergencyVisible) {
-                closeModal();
-            }
-        }
-    });
-    
-    // Listen for Pusher redirect events (the simple approach!)
-    var originalConsoleLog = console.log;
-    console.log = function(...args) {
-        originalConsoleLog.apply(console, args);
-        
-        var message = args.join(' ');
-        
-        // Check for Pusher redirect events
-        if (message.includes('Pusher') && message.includes('redirect') && message.includes('order-received')) {
-            console.log('🎯 PUSHER REDIRECT DETECTED!');
-            
-            // Extract URL from the Pusher message
-            var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
-            if (urlMatch && urlMatch[0]) {
-                console.log('🎯 REDIRECTING MAIN PAGE TO:', urlMatch[0]);
-                
-                // Close modal
-                closeModal();
-                
-                // Redirect main page (outside iframe) to order-received page
-                setTimeout(function() {
-                    window.location.href = urlMatch[0];
-                }, 1000);
-            }
-        }
-    };
-    
-    console.log('🔍 CoinSub checkout modal loaded - listening for Pusher redirect events');
+    console.log('✅ CoinSub checkout integration loaded');
 });
 </script>

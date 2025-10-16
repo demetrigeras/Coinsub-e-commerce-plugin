@@ -493,7 +493,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 )
             ),
             'success_url' => $this->get_return_url($order), // Return to order received page after payment
-            'cancel_url' => wc_get_checkout_url() // Return to checkout if cancelled
+            'cancel_url' => $this->get_return_url($order), // Return to order received page if cancelled
+            'failure_url' => $this->get_return_url($order) // Return to order received page if failed
         );
         
         // Add subscription data if this is a subscription

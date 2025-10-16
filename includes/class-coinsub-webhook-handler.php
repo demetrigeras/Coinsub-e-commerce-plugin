@@ -180,8 +180,8 @@ class CoinSub_Webhook_Handler {
         error_log('CoinSub Webhook: Current order status: ' . $order->get_status());
         
         // Update WooCommerce order status - payment is complete!
-        $order->update_status('processing', __('Payment Complete', 'coinsub'));
-        error_log('CoinSub Webhook: Updated order status to processing');
+        $order->update_status('completed', __('Payment Complete', 'coinsub'));
+        error_log('CoinSub Webhook: Updated order status to completed');
         
         // Add order note with transaction details
         $transaction_details = $data['transaction_details'] ?? array();
