@@ -58,6 +58,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('wp_footer', array($this, 'add_checkout_script'));
         add_action('wp_head', array($this, 'add_payment_button_styles'));
         add_filter('woocommerce_order_button_text', array($this, 'get_order_button_text'));
+        
+        // Add AJAX actions
+        add_action('wp_ajax_coinsub_redirect_after_payment', array($this, 'redirect_after_payment_ajax'));
+        add_action('wp_ajax_nopriv_coinsub_redirect_after_payment', array($this, 'redirect_after_payment_ajax'));
     }
     
     /**
@@ -426,6 +430,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $details_parts[] = 'Tax: $' . number_format($tax_total, 2);
         }
         $details_string = implode(' | ', $details_parts);
+        
+        $success_url = $this->get_return_url($order);
+        error_log('🔗 CoinSub - Success URL: ' . $success_url);
         
         $session_data = array(
             'name' => $order_name,
@@ -850,5 +857,52 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅✅✅');
         return true;
+    }
+    
+    /**
+     * Simple function: Got payment? Redirect to orders page outside modal
+     */
+    public function redirect_after_payment() {
+        // Get the most recent order
+        $user_id = get_current_user_id();
+        $orders = wc_get_orders(array(
+            'customer_id' => $user_id,
+            'status' => array('completed'),
+            'limit' => 1,
+            'orderby' => 'date',
+            'order' => 'DESC'
+        ));
+        
+        if (!empty($orders)) {
+            $order = $orders[0];
+            $redirect_url = $order->get_checkout_order_received_url();
+            
+            error_log('🎯 CoinSub - Payment completed! Redirecting to: ' . $redirect_url);
+            
+            // Return redirect URL for JavaScript to use
+            return array(
+                'success' => true,
+                'redirect_url' => $redirect_url,
+                'order_id' => $order->get_id()
+            );
+        }
+        
+        return array(
+            'success' => false,
+            'message' => 'No completed orders found'
+        );
+    }
+    
+    /**
+     * AJAX handler for redirect after payment
+     */
+    public function redirect_after_payment_ajax() {
+        $result = $this->redirect_after_payment();
+        
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
     }
 }

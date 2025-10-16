@@ -18,6 +18,8 @@ class CoinSub_Webhook_Handler {
         add_action('rest_api_init', array($this, 'register_webhook_endpoint'));
         add_action('wp_ajax_coinsub_test_connection', array($this, 'test_connection'));
         add_action('wp_ajax_nopriv_coinsub_test_connection', array($this, 'test_connection'));
+        add_action('wp_ajax_coinsub_check_payment_status', array($this, 'check_payment_status'));
+        add_action('wp_ajax_nopriv_coinsub_check_payment_status', array($this, 'check_payment_status'));
     }
     
     /**
@@ -433,6 +435,57 @@ class CoinSub_Webhook_Handler {
             wp_send_json_success('Connection successful');
         } else {
             wp_send_json_error('Connection failed');
+        }
+    }
+    
+    /**
+     * Check payment status for frontend polling
+     */
+    public function check_payment_status() {
+        error_log('🔍 CoinSub - Checking payment status...');
+        
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['security'], 'coinsub_check_payment')) {
+            error_log('❌ CoinSub - Invalid nonce');
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+        
+        error_log('✅ CoinSub - Nonce verified');
+        
+        // Get the most recent order for this user
+        $user_id = get_current_user_id();
+        $orders = wc_get_orders(array(
+            'customer_id' => $user_id,
+            'status' => array('pending', 'processing', 'completed'),
+            'limit' => 1,
+            'orderby' => 'date',
+            'order' => 'DESC'
+        ));
+        
+        if (empty($orders)) {
+            wp_send_json_success(array(
+                'payment_completed' => false,
+                'message' => 'No recent orders found'
+            ));
+            return;
+        }
+        
+        $order = $orders[0];
+        
+        // Check if order is completed
+        if ($order->get_status() === 'completed') {
+            wp_send_json_success(array(
+                'payment_completed' => true,
+                'redirect_url' => $order->get_checkout_order_received_url(),
+                'order_id' => $order->get_id()
+            ));
+        } else {
+            wp_send_json_success(array(
+                'payment_completed' => false,
+                'order_status' => $order->get_status(),
+                'order_id' => $order->get_id()
+            ));
         }
     }
 }

@@ -92,6 +92,7 @@ class CoinSub_API_Client {
         }
         
         error_log('🌐 CoinSub API - Full Payload: ' . json_encode($payload));
+        error_log('🌐 CoinSub API - Success URL being sent: ' . ($payload['success_url'] ?? 'NOT SET'));
         
         $headers = array(
             'Content-Type' => 'application/json',
@@ -127,6 +128,7 @@ class CoinSub_API_Client {
         error_log('🌐 CoinSub API - Purchase session response data: ' . json_encode($data));
         error_log('🌐 CoinSub API - Extracted session ID: ' . $purchase_session_id);
         error_log('🌐 CoinSub API - Extracted checkout URL: ' . $checkout_url);
+        error_log('🌐 CoinSub API - Full response body: ' . $body);
         
         // Remove 'sess_' prefix if present (CoinSub returns sess_UUID but checkout needs just UUID)
         if ($purchase_session_id && strpos($purchase_session_id, 'sess_') === 0) {

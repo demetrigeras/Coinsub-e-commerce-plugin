@@ -125,13 +125,15 @@ jQuery(document).ready(function($) {
                     var checkoutUrl = null;
                     
                     if (response.success && response.data) {
-                        // Check for coinsub_checkout_url (our custom response)
-                        if (response.data.coinsub_checkout_url) {
-                            checkoutUrl = response.data.coinsub_checkout_url;
-                        }
-                        // Check for redirect (WooCommerce default response)
-                        else if (response.data.result === 'success' && response.data.redirect) {
+                        // Check for redirect (payment gateway returns this)
+                        if (response.data.result === 'success' && response.data.redirect) {
                             checkoutUrl = response.data.redirect;
+                            console.log('✅ CoinSub - Found redirect URL:', checkoutUrl);
+                        }
+                        // Check for coinsub_checkout_url (alternative format)
+                        else if (response.data.coinsub_checkout_url) {
+                            checkoutUrl = response.data.coinsub_checkout_url;
+                            console.log('✅ CoinSub - Found checkout URL:', checkoutUrl);
                         }
                     }
                     
@@ -142,52 +144,9 @@ jQuery(document).ready(function($) {
                         $('#coinsub-checkout-iframe').attr('src', checkoutUrl);
                         $('#coinsub-checkout-modal').addClass('show');
                         
-                        // Monitor iframe URL changes for regular modal
-                        var regularIframe = document.getElementById('coinsub-checkout-iframe');
-                        if (regularIframe) {
-                            regularIframe.addEventListener('load', function() {
-                                try {
-                                    var currentUrl = regularIframe.contentWindow.location.href;
-                                    console.log('Regular iframe URL:', currentUrl);
-                                    
-                                    if (currentUrl.includes('order-received')) {
-                                        console.log('✅ Payment completed in regular modal - handling redirect');
-                                        handlePaymentCompletion();
-                                    }
-                                } catch (e) {
-                                    // Cross-origin restrictions - use message listener instead
-                                    console.log('Cross-origin iframe - using message listener');
-                                }
-                            });
-                            
-                                    // Add aggressive URL monitoring for regular modal
-                                    var regularUrlMonitor = setInterval(function() {
-                                        try {
-                                            var currentUrl = regularIframe.contentWindow.location.href;
-                                            console.log('Regular iframe URL check:', currentUrl);
-                                            
-                                            if (currentUrl.includes('order-received')) {
-                                                console.log('✅ Payment completed in regular modal (timer) - redirecting main page');
-                                                clearInterval(regularUrlMonitor);
-                                                
-                                                // Close modal and redirect main page
-                                                closeModal();
-                                                
-                                                setTimeout(function() {
-                                                    console.log('🔄 Redirecting main page to iframe URL:', currentUrl);
-                                                    window.top.location.href = currentUrl;
-                                                }, 2500);
-                                            }
-                                        } catch (e) {
-                                            // Cross-origin - ignore
-                                        }
-                                    }, 500); // Check every half second for faster detection
-                                    
-                                    // Clear timer after 5 minutes
-                                    setTimeout(function() {
-                                        clearInterval(regularUrlMonitor);
-                                    }, 300000);
-                        }
+                        // Start webhook monitoring instead of iframe monitoring
+                        console.log('🔍 Starting webhook monitoring for payment completion...');
+                        startWebhookMonitoring();
                         
                         // Quick check if original modal works, if not create emergency modal immediately
                         setTimeout(function() {
@@ -302,66 +261,18 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Handle payment completion - unified function for both modals
-    function handlePaymentCompletion() {
-        console.log('🎉 Handling payment completion...');
-        
-        // Close modal immediately
-        closeModal();
-        
-            // Webhook will handle the rest
-        
-        // Webhook will handle cart clearing and order updates
-        console.log('✅ Payment completion detected - webhook will handle cart clearing and order updates');
-        
-        // Start checking for webhook completion
-        checkForWebhookCompletion();
+    // Simple function: Got payment? Redirect to orders page outside modal
+    function startWebhookMonitoring() {
+        console.log('🎯 CoinSub - Using Pusher redirect detection (no polling needed)');
+        // Pusher redirect detection handles everything automatically
     }
     
-    // Function to check for webhook completion and redirect to order-received page
-    function checkForWebhookCompletion() {
-        var checkCount = 0;
-        var maxChecks = 30; // Check for 30 seconds (30 * 1000ms = 30s)
-        
-        var checkInterval = setInterval(function() {
-            checkCount++;
-            console.log('🔍 Checking for webhook completion... (' + checkCount + '/' + maxChecks + ')');
-            
-            $.ajax({
-                url: wc_checkout_params.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'coinsub_check_webhook_status',
-                    security: '<?php echo wp_create_nonce('coinsub_check_webhook'); ?>'
-                },
-                success: function(response) {
-                        if (response.success && response.data && response.data.redirect_url) {
-                            console.log('✅ Webhook completed - redirecting to order-received page');
-                            clearInterval(checkInterval);
-                            setTimeout(function() {
-                                window.location.href = response.data.redirect_url;
-                            }, 1500);
-                        }
-                },
-                error: function() {
-                    console.log('⚠️ Failed to check webhook status');
-                }
-            });
-            
-                if (checkCount >= maxChecks) {
-                    console.log('⏰ Webhook check timeout - redirecting to order-received as fallback');
-                    clearInterval(checkInterval);
-                    
-                    // Fallback: redirect to order-received page after 2.5 seconds
-                    setTimeout(function() {
-                        console.log('🔄 Fallback redirect to order-received page');
-                        // Get the most recent order and redirect to its order-received page
-                        var fallbackUrl = '<?php echo esc_js(wc_get_checkout_url()); ?>';
-                        window.location.href = fallbackUrl;
-                    }, 2500);
-                }
-        }, 1000); // Check every second
+    // Handle payment completion - simplified
+    function handlePaymentCompletion() {
+        console.log('🎉 Payment completion detected - webhook will handle the rest');
+        // Webhook monitoring will handle the redirect
     }
+    
     
     // Close modal functionality - works for both regular and emergency modals
     function closeModal() {
@@ -401,195 +312,33 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Listen for messages from iframe (payment completion)
-    window.addEventListener('message', function(event) {
-        // Debug: Log all messages to see what's coming through
-        console.log('🔍 Message received from origin:', event.origin);
-        console.log('🔍 Expected origin:', '<?php echo esc_js($api_scheme . '://' . $api_host); ?>');
-        console.log('🔍 Message data:', event.data);
-        
-        // Allow messages from CoinSub checkout domain
-        var allowedOrigins = [
-            '<?php echo esc_js($api_scheme . '://' . $api_host); ?>',
-            'https://test-buy.coinsub.io',
-            'https://buy.coinsub.io'
-        ];
-        
-        if (!allowedOrigins.includes(event.origin)) {
-            console.log('❌ Message blocked - origin not allowed:', event.origin);
-            return;
-        }
-        
-        console.log('CoinSub iframe message received:', event.data);
-        console.log('Message type:', event.data.type);
-        console.log('Message data:', JSON.stringify(event.data, null, 2));
-        
-        // Handle different types of messages from CoinSub
-        var isPaymentComplete = false;
-        
-        // Format 1: Direct payment_complete
-        if (event.data.type === 'payment_complete') {
-            console.log('✅ Payment completed - direct payment_complete message');
-            isPaymentComplete = true;
-        }
-        
-        // Format 2: Redirect event (this is what CoinSub sends!)
-        if (event.data.type === 'redirect' && event.data.data && event.data.data.url) {
-            console.log('✅ Payment completed - redirect event detected');
-            console.log('Redirect URL:', event.data.data.url);
-            
-            // Check if it's going to order-received page
-            if (event.data.data.url.includes('order-received')) {
-                console.log('✅ Redirecting to order-received page - payment complete!');
-                
-                // Close modal immediately
-                closeModal();
-                
-                // Redirect the main page (not the iframe) to the URL CoinSub provided
-                setTimeout(function() {
-                    console.log('🔄 Redirecting main page to:', event.data.data.url);
-                    window.top.location.href = event.data.data.url;
-                }, 2500);
-                
-                return; // Exit early since we handled the redirect
-            }
-        }
-        
-        // Format 3: Check if message contains payment success indicators
-        if (event.data && (
-            (event.data.event && event.data.event.includes('payment')) ||
-            (event.data.status && event.data.status === 'completed') ||
-            (event.data.payment_status && event.data.payment_status === 'completed') ||
-            (typeof event.data === 'string' && event.data.includes('payment_complete'))
-        )) {
-            console.log('✅ Payment completed - detected from message content');
-            isPaymentComplete = true;
-        }
-        
-        if (isPaymentComplete) {
-            console.log('🎉 Payment completion detected - handling redirect');
-            handlePaymentCompletion();
-            
-        } else if (event.data.type === 'payment_failed') {
-            // Close modal and show error
-            closeModal();
-            alert('Payment failed. Please try again.');
-        }
-    });
-    
-    // BACKUP: Listen for ALL messages without origin checking (for debugging)
-    window.addEventListener('message', function(event) {
-        console.log('🚨 BACKUP LISTENER - All messages:', {
-            origin: event.origin,
-            data: event.data,
-            type: event.data?.type || 'unknown'
-        });
-        
-        // Handle redirect events regardless of origin
-        if (event.data && event.data.type === 'redirect' && event.data.data && event.data.data.url) {
-            console.log('🚨 BACKUP LISTENER - Redirect detected:', event.data.data.url);
-            
-            if (event.data.data.url.includes('order-received')) {
-                console.log('🚨 BACKUP LISTENER - Order received URL detected - closing modal and redirecting');
-                closeModal();
-                setTimeout(function() {
-                    console.log('🚨 BACKUP LISTENER - Redirecting main page to:', event.data.data.url);
-                    window.top.location.href = event.data.data.url;
-                }, 2500);
-            }
-        }
-    });
-    
-    // PUSHER EVENT LISTENER: Listen for redirect events from CoinSub Pusher
-    // The redirect event is sent via Pusher, not window.postMessage
-    if (typeof window.Pusher !== 'undefined' || typeof window.pusher !== 'undefined') {
-        console.log('🔌 Pusher detected - setting up redirect listener');
-        
-        // Try to access Pusher instance from global scope
-        var pusher = window.Pusher || window.pusher;
-        if (pusher) {
-            // Subscribe to a channel that might contain redirect events
-            // We'll try to catch the redirect event that's being logged
-            console.log('🔌 Pusher instance found, setting up redirect detection');
-        }
-    }
-    
-    // SIMPLE PUSHER REDIRECT DETECTION: Just catch the redirect and redirect immediately
+    // Listen for Pusher redirect events (the simple approach!)
     var originalConsoleLog = console.log;
     console.log = function(...args) {
-        // Call original console.log
         originalConsoleLog.apply(console, args);
         
         var message = args.join(' ');
         
-        // Simple check: if it contains redirect and order-received, redirect immediately
-        if (message.includes('redirect') && message.includes('order-received')) {
-            console.log('🎯 SIMPLE REDIRECT DETECTED!');
-            console.log('🎯 Message:', message);
+        // Check for Pusher redirect events
+        if (message.includes('Pusher') && message.includes('redirect') && message.includes('order-received')) {
+            console.log('🎯 PUSHER REDIRECT DETECTED!');
             
-            // Extract URL
+            // Extract URL from the Pusher message
             var urlMatch = message.match(/https:\/\/[^\s'"]+order-received[^\s'"]+/);
             if (urlMatch && urlMatch[0]) {
-                console.log('🎯 REDIRECTING TO:', urlMatch[0]);
+                console.log('🎯 REDIRECTING MAIN PAGE TO:', urlMatch[0]);
+                
+                // Close modal
                 closeModal();
+                
+                // Redirect main page (outside iframe) to order-received page
                 setTimeout(function() {
-                    window.top.location.href = urlMatch[0];
-                }, 500);
+                    window.location.href = urlMatch[0];
+                }, 1000);
             }
         }
     };
     
-    // WORDPRESS HEARTBEAT: Use WordPress built-in real-time communication
-    // This is the standard WordPress way for backend-to-frontend communication
-    jQuery(document).on('heartbeat-send', function(e, data) {
-        console.log('💓 WordPress Heartbeat - Sending webhook check request');
-        data.coinsub_check_webhook = true;
-    });
-    
-    jQuery(document).on('heartbeat-tick', function(e, data) {
-        if (data.coinsub_webhook_complete && data.coinsub_redirect_url) {
-            console.log('✅ WordPress Heartbeat - Webhook completed!');
-            console.log('✅ Redirecting to:', data.coinsub_redirect_url);
-            closeModal();
-            setTimeout(function() {
-                window.top.location.href = data.coinsub_redirect_url;
-            }, 1000);
-        }
-    });
-    
-    // FALLBACK: AJAX polling in case Heartbeat doesn't work
-    var webhookCheckInterval = setInterval(function() {
-        console.log('🔍 Fallback: Checking for webhook completion...');
-        
-        $.ajax({
-            url: wc_checkout_params.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'coinsub_check_webhook_status',
-                security: '<?php echo wp_create_nonce('coinsub_check_webhook'); ?>'
-            },
-            success: function(response) {
-                console.log('🔍 Fallback webhook check response:', response);
-                
-                if (response.success && response.data && response.data.redirect_url) {
-                    console.log('✅ Fallback: Webhook completed - redirecting to:', response.data.redirect_url);
-                    clearInterval(webhookCheckInterval);
-                    closeModal();
-                    setTimeout(function() {
-                        window.top.location.href = response.data.redirect_url;
-                    }, 1000);
-                }
-            },
-            error: function(xhr, status, error) {
-                console.log('⚠️ Fallback: Failed to check webhook status:', error);
-            }
-        });
-    }, 2000); // Check every 2 seconds as fallback
-    
-    // Stop checking after 60 seconds
-    setTimeout(function() {
-        clearInterval(webhookCheckInterval);
-        console.log('⏰ Webhook check timeout - stopped polling');
-    }, 60000);
+    console.log('🔍 CoinSub checkout modal loaded - listening for Pusher redirect events');
 });
 </script>
