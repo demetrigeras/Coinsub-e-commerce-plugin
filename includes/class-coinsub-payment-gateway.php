@@ -264,11 +264,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $checkout_url = $purchase_session['checkout_url'];
             error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
             
-            // Redirect directly to CoinSub checkout page
-            // Order stays "pending-coinsub" until webhook confirms payment
+            // Return checkout URL for iframe display
             return array(
                 'result' => 'success',
-                'redirect' => $checkout_url
+                'redirect' => $checkout_url,
+                'coinsub_checkout_url' => $checkout_url
             );
             
         } catch (Exception $e) {
