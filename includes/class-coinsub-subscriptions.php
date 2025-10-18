@@ -142,7 +142,7 @@ class CoinSub_Subscriptions {
         
         echo '</div>';
     }
-    
+    //
     /**
      * Save subscription fields
      */
