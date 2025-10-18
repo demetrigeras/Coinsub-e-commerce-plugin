@@ -108,7 +108,7 @@ class CoinSub_Webhook_Handler {
         
         // Find the order by origin ID (purchase session ID)
         error_log('CoinSub Webhook: Searching for order with origin ID: ' . $origin_id);
-        $order = $this->find_order_by_origin_id($origin_id);
+        $order = $this->find_order_by_purchase_session_id($origin_id);
         
         if (!$order) {
             error_log('❌ CoinSub Webhook: Order not found for origin ID: ' . $origin_id);
@@ -218,31 +218,6 @@ class CoinSub_Webhook_Handler {
         
         $order->save();
         
-        // ✅ UPDATE COINSUB COMMERCE ORDER STATUS TO "PAID"
-        $coinsub_order_id = $order->get_meta('_coinsub_order_id');
-        if (!empty($coinsub_order_id)) {
-            error_log('🔄 Updating CoinSub commerce order status to PAID for order: ' . $coinsub_order_id);
-            
-            // Get API client
-            if (!class_exists('CoinSub_API_Client')) {
-                require_once plugin_dir_path(__FILE__) . 'class-coinsub-api-client.php';
-            }
-            $api_client = new CoinSub_API_Client();
-            
-            // Update ONLY status - nothing else!
-            $update_data = array(
-                'status' => 'paid'
-            );
-            
-            $result = $api_client->update_commerce_order_from_webhook($coinsub_order_id, $update_data);
-            
-            if (is_wp_error($result)) {
-                error_log('⚠️ Failed to update CoinSub commerce order: ' . $result->get_error_message());
-            } else {
-                error_log('✅ CoinSub commerce order status updated to PAID');
-            }
-        }
-        
         // Clear cart and session data since payment is now complete
         WC()->cart->empty_cart();
         WC()->session->set('coinsub_order_id', null);
@@ -346,13 +321,13 @@ class CoinSub_Webhook_Handler {
     }
     
     /**
-     * Find order by origin ID (purchase session ID)
+     * Find order by purchase session ID
      */
-    private function find_order_by_origin_id($origin_id) {
-        // First try with the exact origin_id
+    private function find_order_by_purchase_session_id($purchase_session_id) {
+        // Search for order with matching purchase session ID
         $orders = wc_get_orders(array(
             'meta_key' => '_coinsub_purchase_session_id',
-            'meta_value' => $origin_id,
+            'meta_value' => $purchase_session_id,
             'limit' => 1
         ));
         
@@ -360,26 +335,17 @@ class CoinSub_Webhook_Handler {
             return $orders[0];
         }
         
-        // If not found, try with sess_ prefix removed
-        if (strpos($origin_id, 'sess_') === 0) {
-            $uuid_part = substr($origin_id, 5); // Remove 'sess_' prefix
-            $orders = wc_get_orders(array(
-                'meta_key' => '_coinsub_purchase_session_id',
-                'meta_value' => $uuid_part,
-                'limit' => 1
-            ));
-            
-            if (!empty($orders)) {
-                return $orders[0];
-            }
-        }
+        // If not found, try with different prefix variations
+        $variations = array(
+            'sess_' . $purchase_session_id,
+            'wc_' . $purchase_session_id,
+            $purchase_session_id
+        );
         
-        // If still not found, try with sess_ prefix added
-        if (strpos($origin_id, 'sess_') !== 0) {
-            $sess_id = 'sess_' . $origin_id;
+        foreach ($variations as $variation) {
             $orders = wc_get_orders(array(
                 'meta_key' => '_coinsub_purchase_session_id',
-                'meta_value' => $sess_id,
+                'meta_value' => $variation,
                 'limit' => 1
             ));
             

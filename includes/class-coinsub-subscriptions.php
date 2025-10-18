@@ -64,15 +64,12 @@ class CoinSub_Subscriptions {
             }
         }
         
-        // Enforce rules
-        if ($is_subscription && $has_subscription) {
-            wc_add_notice(__('You can only have one subscription in your cart at a time. Please checkout your current subscription first.', 'coinsub'), 'error');
-            return false;
-        }
-        
+        // Enforce rules - prevent mixing subscriptions and regular products
         if ($is_subscription && $has_regular) {
-            wc_add_notice(__('Subscriptions must be purchased separately. Please checkout your current items first.', 'coinsub'), 'error');
-            return false;
+            wc_add_notice(__('Subscriptions must be purchased separately. Regular products have been removed from your cart.', 'coinsub'), 'notice');
+            // Remove regular products from cart
+            $this->remove_regular_products_from_cart();
+            return true; // Allow the subscription to be added
         }
         
         if (!$is_subscription && $has_subscription) {
@@ -80,7 +77,30 @@ class CoinSub_Subscriptions {
             return false;
         }
         
+        if ($is_subscription && $has_subscription) {
+            wc_add_notice(__('You can only have one subscription in your cart at a time. Please checkout your current subscription first.', 'coinsub'), 'error');
+            return false;
+        }
+        
         return $passed;
+    }
+    
+    /**
+     * Remove regular products from cart when subscription is present
+     */
+    private function remove_regular_products_from_cart() {
+        $cart = WC()->cart;
+        $cart_items = $cart->get_cart();
+        
+        foreach ($cart_items as $cart_item_key => $cart_item) {
+            $product = $cart_item['data'];
+            $is_subscription = $product->get_meta('_coinsub_subscription') === 'yes';
+            
+            if (!$is_subscription) {
+                $cart->remove_cart_item($cart_item_key);
+                error_log('🛒 Removed regular product from cart: ' . $product->get_name());
+            }
+        }
     }
     
     /**
