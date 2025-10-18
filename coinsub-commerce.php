@@ -318,24 +318,19 @@ function coinsub_ajax_process_payment() {
         wp_send_json_error('Failed to initialize payment gateway');
     }
     
-    // Create a new order to process
-    error_log('CoinSub AJAX: Creating new order...');
+    // Create order using WooCommerce's standard method
+    error_log('CoinSub AJAX: Creating WooCommerce order...');
     
-    // Create a temporary order to process
-    $order_data = array(
-        'billing_first_name' => sanitize_text_field($_POST['billing_first_name']),
-        'billing_last_name' => sanitize_text_field($_POST['billing_last_name']),
-        'billing_email' => sanitize_email($_POST['billing_email']),
-        'billing_phone' => sanitize_text_field($_POST['billing_phone']),
-        'billing_address_1' => sanitize_text_field($_POST['billing_address_1']),
-        'billing_city' => sanitize_text_field($_POST['billing_city']),
-        'billing_state' => sanitize_text_field($_POST['billing_state']),
-        'billing_postcode' => sanitize_text_field($_POST['billing_postcode']),
-        'billing_country' => sanitize_text_field($_POST['billing_country']),
-    );
-    
-    // Create order
+    // Create order using wc_create_order() which is the correct method
     $order = wc_create_order();
+    
+    if (!$order || is_wp_error($order)) {
+        error_log('CoinSub AJAX: Failed to create order');
+        wp_send_json_error('Failed to create order');
+    }
+    
+    $order_id = $order->get_id();
+    error_log('CoinSub AJAX: Order created with ID: ' . $order_id);
     
     // Add cart items to order
     foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
@@ -343,30 +338,28 @@ function coinsub_ajax_process_payment() {
         $order->add_product($product, $cart_item['quantity']);
     }
     
-    // Set billing address
-    $order->set_billing_first_name($order_data['billing_first_name']);
-    $order->set_billing_last_name($order_data['billing_last_name']);
-    $order->set_billing_email($order_data['billing_email']);
-    $order->set_billing_phone($order_data['billing_phone']);
-    $order->set_billing_address_1($order_data['billing_address_1']);
-    $order->set_billing_city($order_data['billing_city']);
-    $order->set_billing_state($order_data['billing_state']);
-    $order->set_billing_postcode($order_data['billing_postcode']);
-    $order->set_billing_country($order_data['billing_country']);
+    // Set billing address from form data
+    $order->set_billing_first_name(sanitize_text_field($_POST['billing_first_name']));
+    $order->set_billing_last_name(sanitize_text_field($_POST['billing_last_name']));
+    $order->set_billing_email(sanitize_email($_POST['billing_email']));
+    $order->set_billing_phone(sanitize_text_field($_POST['billing_phone']));
+    $order->set_billing_address_1(sanitize_text_field($_POST['billing_address_1']));
+    $order->set_billing_city(sanitize_text_field($_POST['billing_city']));
+    $order->set_billing_state(sanitize_text_field($_POST['billing_state']));
+    $order->set_billing_postcode(sanitize_text_field($_POST['billing_postcode']));
+    $order->set_billing_country(sanitize_text_field($_POST['billing_country']));
     
     // Set payment method
     $order->set_payment_method('coinsub');
     $order->set_payment_method_title('CoinSub');
     
-    // Calculate totals
+    // Calculate totals and save
     $order->calculate_totals();
     $order->save();
     
     error_log('CoinSub AJAX: Order created with ID: ' . $order->get_id());
-    error_log('CoinSub AJAX: Order status: ' . $order->get_status());
-    error_log('CoinSub AJAX: Order meta data: ' . json_encode($order->get_meta_data()));
     
-    // Process payment
+    // Process payment - this will create the purchase session
     $result = $gateway->process_payment($order->get_id());
     
     error_log('CoinSub AJAX: Payment result: ' . json_encode($result));

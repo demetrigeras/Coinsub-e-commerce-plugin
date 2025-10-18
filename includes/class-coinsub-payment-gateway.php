@@ -195,26 +195,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('✅ CoinSub - Order found. Starting payment process...');
         
         try {
-            // Get CoinSub order ID from session (created by cart sync)
-            $coinsub_order_id = WC()->session->get('coinsub_order_id');
+            // Get cart data from session (calculated by cart sync)
+            $cart_data = WC()->session->get('coinsub_cart_data');
             
-            if (!$coinsub_order_id) {
-                error_log('⚠️ CoinSub - No order from cart sync, creating now...');
-                $order_data = $this->prepare_order_data($order);
-                $coinsub_order = $this->api_client->create_order($order_data);
-                
-                if (is_wp_error($coinsub_order)) {
-                    throw new Exception($coinsub_order->get_error_message());
-                }
-                
-                $coinsub_order_id = $coinsub_order['id'];
-            } else {
-                error_log('✅ CoinSub - Using existing order from cart: ' . $coinsub_order_id);
+            if (!$cart_data) {
+                error_log('⚠️ CoinSub - No cart data from session, calculating now...');
+                $cart_data = $this->calculate_cart_totals();
             }
             
-            // Create purchase session with order details
-            error_log('💳 CoinSub - Step 2: Creating purchase session...');
-            $purchase_session_data = $this->prepare_purchase_session_data($order, array('id' => $coinsub_order_id));
+            error_log('✅ CoinSub - Using cart data from session:');
+            error_log('  Total: $' . $cart_data['total']);
+            error_log('  Currency: ' . $cart_data['currency']);
+            error_log('  Has Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
+            
+            // Create purchase session directly with cart totals
+            error_log('💳 CoinSub - Creating purchase session...');
+            $purchase_session_data = $this->prepare_purchase_session_from_cart($order, $cart_data);
             error_log('CoinSub - Session data: ' . json_encode(['amount' => $purchase_session_data['amount'], 'currency' => $purchase_session_data['currency']]));
             $purchase_session = $this->api_client->create_purchase_session($purchase_session_data);
             error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
@@ -223,33 +219,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 throw new Exception($purchase_session->get_error_message());
             }
             
-            // Update commerce order status to pending_checkout
-            error_log('🔗 CoinSub - Step 3: Updating order status to pending_checkout...');
-            $status_update = $this->api_client->update_order_status($coinsub_order_id, 'pending_checkout');
-            
-            if (is_wp_error($status_update)) {
-                error_log('⚠️ Failed to update status (non-critical): ' . $status_update->get_error_message());
-            } else {
-                error_log('✅ Commerce order status updated to pending_checkout');
-            }
-            
-            // Check if this is a subscription order
-            $is_subscription = false;
-            foreach ($order->get_items() as $item) {
-                $product = $item->get_product();
-                if ($product && $product->get_meta('_coinsub_subscription') === 'yes') {
-                    $is_subscription = true;
-                    error_log('✅ CoinSub - This is a SUBSCRIPTION order');
-                    break;
-                }
-            }
-            
             // Store CoinSub data in order meta
-            $order->update_meta_data('_coinsub_order_id', $coinsub_order_id);
             $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session['purchase_session_id']);
             $order->update_meta_data('_coinsub_checkout_url', $purchase_session['checkout_url']);
             $order->update_meta_data('_coinsub_merchant_id', $this->get_option('merchant_id'));
-            $order->update_meta_data('_coinsub_is_subscription', $is_subscription ? 'yes' : 'no');
+            $order->update_meta_data('_coinsub_environment', $this->environment);
+            
+            // Store subscription data if applicable
+            if ($cart_data['has_subscription']) {
+                $order->update_meta_data('_coinsub_is_subscription', 'yes');
+                $order->update_meta_data('_coinsub_subscription_data', $cart_data['subscription_data']);
+            } else {
+                $order->update_meta_data('_coinsub_is_subscription', 'no');
+            }
+            
+            // Store cart items in order meta
+            $order->update_meta_data('_coinsub_cart_items', $cart_data['items']);
             $order->save();
             
             error_log('🔗 CoinSub - Checkout URL stored: ' . $purchase_session['checkout_url']);
@@ -320,36 +305,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
     }
     
-    /**
-     * Prepare order data for CoinSub
-     */
-    private function prepare_order_data($order) {
-        $items = array();
-        
-        foreach ($order->get_items() as $item) {
-            $product = $item->get_product();
-            if (!$product) continue;
-            
-            // Merchant should map WooCommerce products to CoinSub products in their dashboard
-            // We send WooCommerce product ID and the merchant's CoinSub system will map it
-            $items[] = array(
-                'product_id' => (string) $product->get_id(), // WooCommerce product ID
-                'name' => $item->get_name(), // Product name
-                'quantity' => (int) $item->get_quantity(),
-                'price' => (float) $item->get_total() / $item->get_quantity() // Price per unit
-            );
-        }
-        
-        return array(
-            'items' => $items,
-            'subtotal' => (float) $order->get_subtotal(),
-            'shipping' => (float) $order->get_shipping_total(),
-            'tax' => (float) $order->get_total_tax(),
-            'total' => (float) $order->get_total(),
-            'currency' => $order->get_currency(),
-            'commerce_company_type' => 'woocommerce'
-        );
-    }
+    // REMOVED: prepare_order_data - using WooCommerce-only approach
     
     /**
      * Prepare purchase session data
@@ -905,5 +861,145 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         } else {
             wp_send_json_error($result);
         }
+    }
+    
+    /**
+     * Calculate cart totals from WooCommerce cart
+     */
+    private function calculate_cart_totals() {
+        $cart = WC()->cart;
+        
+        $subtotal = (float) $cart->get_subtotal();
+        $shipping = (float) $cart->get_shipping_total();
+        $tax = (float) $cart->get_total_tax();
+        $total = (float) $cart->get_total('edit');
+        
+        // Ensure total is never 0
+        if ($total <= 0) {
+            $total = $subtotal > 0 ? $subtotal : 0.01; // Minimum $0.01
+        }
+        
+        // Check if cart contains subscription
+        $has_subscription = false;
+        $subscription_data = null;
+        
+        foreach ($cart->get_cart() as $cart_item) {
+            $product = $cart_item['data'];
+            $is_sub = $product->get_meta('_coinsub_subscription') === 'yes';
+            
+            if ($is_sub) {
+                $has_subscription = true;
+                $subscription_data = array(
+                    'frequency' => $product->get_meta('_coinsub_frequency'),
+                    'interval' => $product->get_meta('_coinsub_interval'),
+                    'duration' => $product->get_meta('_coinsub_duration')
+                );
+                break;
+            }
+        }
+        
+        return array(
+            'subtotal' => $subtotal,
+            'shipping' => $shipping,
+            'tax' => $tax,
+            'total' => $total,
+            'currency' => get_woocommerce_currency(),
+            'has_subscription' => $has_subscription,
+            'subscription_data' => $subscription_data,
+            'items' => $this->get_cart_items_data()
+        );
+    }
+    
+    /**
+     * Get cart items data for purchase session
+     */
+    private function get_cart_items_data() {
+        $items = array();
+        
+        foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+            $product = $cart_item['data'];
+            $items[] = array(
+                'name' => $product->get_name(),
+                'quantity' => $cart_item['quantity'],
+                'price' => (float) $product->get_price(),
+                'total' => (float) $cart_item['line_total']
+            );
+        }
+        
+        return $items;
+    }
+    
+    /**
+     * Prepare purchase session data from cart (WooCommerce-only approach)
+     */
+    private function prepare_purchase_session_from_cart($order, $cart_data) {
+        // Store purchase session ID in order meta for webhook matching
+        $purchase_session_id = 'wc_' . $order->get_id() . '_' . time();
+        $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session_id);
+        $order->save();
+        
+        // Store subscription info in order meta
+        if ($cart_data['has_subscription']) {
+            $order->update_meta_data('_coinsub_is_subscription', 'yes');
+            $order->update_meta_data('_coinsub_subscription_data', $cart_data['subscription_data']);
+        } else {
+            $order->update_meta_data('_coinsub_is_subscription', 'no');
+        }
+        
+        // Store cart items in order meta
+        $order->update_meta_data('_coinsub_cart_items', $cart_data['items']);
+        $order->save();
+        
+        // Prepare purchase session data
+        $session_data = array(
+            'name' => 'Order #' . $order->get_id(),
+            'details' => $this->get_order_details_text($order, $cart_data),
+            'currency' => $cart_data['currency'],
+            'amount' => $cart_data['total'],
+            'recurring' => $cart_data['has_subscription'],
+            'metadata' => array(
+                'woocommerce_order_id' => $order->get_id(),
+                'purchase_session_id' => $purchase_session_id,
+                'cart_items' => $cart_data['items'],
+                'subtotal' => $cart_data['subtotal'],
+                'shipping' => $cart_data['shipping'],
+                'tax' => $cart_data['tax'],
+                'total' => $cart_data['total']
+            ),
+            'success_url' => $this->get_return_url($order),
+            'cancel_url' => wc_get_checkout_url(),
+            'failure_url' => wc_get_checkout_url()
+        );
+        
+        // Add subscription fields if recurring
+        if ($cart_data['has_subscription'] && $cart_data['subscription_data']) {
+            $session_data['frequency'] = $cart_data['subscription_data']['frequency'];
+            $session_data['interval'] = $cart_data['subscription_data']['interval'];
+            $session_data['duration'] = $cart_data['subscription_data']['duration'];
+            $session_data['metadata']['subscription_data'] = $cart_data['subscription_data'];
+        }
+        
+        return $session_data;
+    }
+    
+    /**
+     * Get order details text for purchase session
+     */
+    private function get_order_details_text($order, $cart_data) {
+        $details = array();
+        
+        foreach ($cart_data['items'] as $item) {
+            $details[] = $item['quantity'] . 'x ' . $item['name'] . ' ($' . number_format($item['price'], 2) . ')';
+        }
+        
+        if ($cart_data['shipping'] > 0) {
+            $details[] = 'Shipping: $' . number_format($cart_data['shipping'], 2);
+        }
+        
+        if ($cart_data['tax'] > 0) {
+            $details[] = 'Tax: $' . number_format($cart_data['tax'], 2);
+        }
+        
+        return implode(', ', $details);
     }
 }
