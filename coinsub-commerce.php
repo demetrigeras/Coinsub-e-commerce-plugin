@@ -353,6 +353,21 @@ function coinsub_ajax_process_payment() {
     $order->set_payment_method('coinsub');
     $order->set_payment_method_title('CoinSub');
     
+    // Set customer ID if user is logged in
+    if (is_user_logged_in()) {
+        $order->set_customer_id(get_current_user_id());
+        error_log('CoinSub AJAX: Set customer ID to: ' . get_current_user_id());
+    } else {
+        error_log('CoinSub AJAX: User not logged in, order will be guest order');
+    }
+    
+    // Set billing email for guest orders (needed for order association)
+    $billing_email = sanitize_email($_POST['billing_email']);
+    if ($billing_email) {
+        $order->set_billing_email($billing_email);
+        error_log('CoinSub AJAX: Set billing email to: ' . $billing_email);
+    }
+    
     // Calculate totals and save
     $order->calculate_totals();
     $order->save();

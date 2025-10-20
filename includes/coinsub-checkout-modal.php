@@ -159,12 +159,6 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Add a way to show payment button again (for debugging or if needed)
-    function showPaymentButton() {
-        $('.woocommerce-checkout .form-row.place-order').show();
-        $('#coinsub-checkout-container').remove();
-    }
-    
     // Set up iframe redirect detection
     function setupIframeRedirectDetection() {
         console.log('🔄 Setting up iframe redirect detection...');
@@ -215,14 +209,9 @@ jQuery(document).ready(function($) {
                         
                         // Check for various payment completion indicators
                         var completionIndicators = [
-                            'Payment Complete',
-                            'Payment Completed',
-                            'Purchase Complete',
-                            'Purchase Completed',
-                            'Transaction Complete',
-                            'Transaction Completed',
-                            'Payment successful',
-                            'Payment Successful'
+                            'Payment Complete', 'Payment Completed', 'Purchase Complete', 'Purchase Completed',
+                            'Transaction Complete', 'Transaction Completed', 'Order Complete', 'Order Completed',
+                            'Success', 'Thank you', 'Payment successful', 'Payment Successful'
                         ];
                         
                         for (var i = 0; i < completionIndicators.length; i++) {
@@ -255,7 +244,6 @@ jQuery(document).ready(function($) {
                 }
             } catch(e) {
                 // Cross-origin restrictions - this is expected
-                // The iframe might have redirected to a different domain
                 console.log('🔄 Iframe may have redirected to different domain or cross-origin restrictions');
             }
         }, 1000);
@@ -266,16 +254,20 @@ jQuery(document).ready(function($) {
         }, 300000);
     }
     
-    // Handle iframe load and redirects
+    // Handle iframe load
     function handleIframeLoad() {
-        console.log('🔄 Iframe loaded, setting up redirect detection...');
+        console.log('🔄 CoinSub iframe loaded');
         setupIframeRedirectDetection();
     }
     
-    // Make functions available globally for debugging
-    window.showPaymentButton = showPaymentButton;
-    window.handleIframeLoad = handleIframeLoad;
+    // Check for checkout URL on page load
+    checkForCoinSubCheckout();
     
-    console.log('✅ CoinSub checkout integration loaded');
+    // Make functions available globally for debugging
+    window.showPaymentButton = function() {
+        $('.woocommerce-checkout .form-row.place-order').show();
+        $('#coinsub-checkout-container').remove();
+    };
+    window.handleIframeLoad = handleIframeLoad;
 });
 </script>

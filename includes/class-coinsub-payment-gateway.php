@@ -225,6 +225,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $order->update_meta_data('_coinsub_merchant_id', $this->get_option('merchant_id'));
             $order->update_meta_data('_coinsub_environment', $this->environment);
             
+            error_log('✅ CoinSub - Stored purchase session ID: ' . $purchase_session['purchase_session_id']);
+            
             // Store subscription data if applicable
             if ($cart_data['has_subscription']) {
                 $order->update_meta_data('_coinsub_is_subscription', 'yes');
@@ -249,11 +251,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $checkout_url = $purchase_session['checkout_url'];
             error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
             
-            // Redirect directly to CoinSub checkout page
-            // Order stays "pending-coinsub" until webhook confirms payment
+            // Return checkout URL for iframe display
             return array(
                 'result' => 'success',
-                'redirect' => $checkout_url
+                'redirect' => $checkout_url,
+                'coinsub_checkout_url' => $checkout_url
             );
             
         } catch (Exception $e) {
@@ -933,10 +935,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Prepare purchase session data from cart (WooCommerce-only approach)
      */
     private function prepare_purchase_session_from_cart($order, $cart_data) {
-        // Store purchase session ID in order meta for webhook matching
-        $purchase_session_id = 'wc_' . $order->get_id() . '_' . time();
-        $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session_id);
-        $order->save();
+        // We'll store the purchase session ID after we get it from CoinSub API
+        // For now, just prepare the session data
         
         // Store subscription info in order meta
         if ($cart_data['has_subscription']) {
@@ -959,7 +959,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'recurring' => $cart_data['has_subscription'],
             'metadata' => array(
                 'woocommerce_order_id' => $order->get_id(),
-                'purchase_session_id' => $purchase_session_id,
                 'cart_items' => $cart_data['items'],
                 'subtotal' => $cart_data['subtotal'],
                 'shipping' => $cart_data['shipping'],

@@ -20,6 +20,14 @@ class CoinSub_Order_Manager {
         add_action('woocommerce_email_after_order_table', array($this, 'add_coinsub_info_to_email'), 10, 4);
         add_action('woocommerce_order_item_add_action_buttons', array($this, 'add_cancel_subscription_button'));
         add_action('wp_ajax_coinsub_admin_cancel_subscription', array($this, 'ajax_admin_cancel_subscription'));
+        
+        // Refund functionality
+        add_action('woocommerce_order_details_after_order_table', array($this, 'add_refund_request_button'));
+        add_action('wp_ajax_coinsub_request_refund', array($this, 'ajax_request_refund'));
+        add_action('wp_ajax_nopriv_coinsub_request_refund', array($this, 'ajax_request_refund'));
+        add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_refund_info'));
+        add_action('wp_ajax_coinsub_admin_process_refund', array($this, 'ajax_admin_process_refund'));
+        add_action('wp_ajax_coinsub_admin_cancel_refund', array($this, 'ajax_admin_cancel_refund'));
     }
     
     /**
@@ -335,5 +343,363 @@ class CoinSub_Order_Manager {
                 }
                 break;
         }
+    }
+    
+    /**
+     * Add refund request button for customers
+     */
+    public function add_refund_request_button($order) {
+        // Only show for CoinSub orders
+        $purchase_session_id = $order->get_meta('_coinsub_purchase_session_id');
+        if (empty($purchase_session_id)) {
+            return;
+        }
+        
+        // Only show for completed orders
+        if ($order->get_status() !== 'completed') {
+            return;
+        }
+        
+        // Check if refund already requested
+        $refund_requested = $order->get_meta('_coinsub_refund_requested');
+        if ($refund_requested === 'yes') {
+            echo '<div class="coinsub-refund-info" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin: 20px 0; border-radius: 5px;">';
+            echo '<h3>Refund Requested</h3>';
+            echo '<p>You have requested a refund for this order. We will process it within 1-2 business days.</p>';
+            echo '</div>';
+            return;
+        }
+        
+        // Check if refund already processed
+        $refund_processed = $order->get_meta('_coinsub_refund_processed');
+        if ($refund_processed === 'yes') {
+            $refund_amount = $order->get_meta('_coinsub_refund_amount') ?: $order->get_total();
+            $processed_date = $order->get_meta('_coinsub_refund_processed_date');
+            echo '<div class="coinsub-refund-info" style="background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; margin: 20px 0; border-radius: 5px;">';
+            echo '<h3>Refund Processed</h3>';
+            echo '<p>Your refund of ' . wc_price($refund_amount) . ' has been processed and sent to your wallet on ' . $processed_date . '.</p>';
+            echo '</div>';
+            return;
+        }
+        
+        ?>
+        <div class="coinsub-refund-section" style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; margin: 20px 0; border-radius: 8px;">
+            <h3>Request Refund</h3>
+            <p>If you need to request a refund for this order, please click the button below. Refunds will be processed within 1-2 business days.</p>
+            
+            <button type="button" id="coinsub-request-refund" class="button" 
+                    data-order-id="<?php echo esc_attr($order->get_id()); ?>"
+                    data-purchase-session="<?php echo esc_attr($purchase_session_id); ?>">
+                Request Refund
+            </button>
+            
+            <div id="coinsub-refund-message" style="margin-top: 10px; display: none;"></div>
+        </div>
+        
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            $('#coinsub-request-refund').on('click', function() {
+                var orderId = $(this).data('order-id');
+                var purchaseSession = $(this).data('purchase-session');
+                var button = $(this);
+                var messageDiv = $('#coinsub-refund-message');
+                
+                button.prop('disabled', true).text('Processing...');
+                messageDiv.hide();
+                
+                $.ajax({
+                    url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                    type: 'POST',
+                    data: {
+                        action: 'coinsub_request_refund',
+                        order_id: orderId,
+                        purchase_session_id: purchaseSession,
+                        nonce: '<?php echo wp_create_nonce('coinsub_refund_nonce'); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            messageDiv.removeClass('error').addClass('success').html('<p style="color: green;">' + response.data.message + '</p>').show();
+                            button.text('Refund Requested').prop('disabled', true);
+                            location.reload(); // Refresh to show updated status
+                        } else {
+                            messageDiv.removeClass('success').addClass('error').html('<p style="color: red;">' + response.data + '</p>').show();
+                            button.prop('disabled', false).text('Request Refund');
+                        }
+                    },
+                    error: function() {
+                        messageDiv.removeClass('success').addClass('error').html('<p style="color: red;">An error occurred. Please try again.</p>').show();
+                        button.prop('disabled', false).text('Request Refund');
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+    
+    /**
+     * AJAX handler for refund requests
+     */
+    public function ajax_request_refund() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'coinsub_refund_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        $order_id = intval($_POST['order_id']);
+        $order = wc_get_order($order_id);
+        
+        if (!$order) {
+            wp_send_json_error('Order not found');
+        }
+        
+        // Check if user owns this order
+        if (is_user_logged_in()) {
+            $current_user_id = get_current_user_id();
+            if ($order->get_customer_id() !== $current_user_id) {
+                wp_send_json_error('You do not have permission to request a refund for this order');
+            }
+        }
+        
+        // Mark refund as requested
+        $order->update_meta_data('_coinsub_refund_requested', 'yes');
+        $order->update_meta_data('_coinsub_refund_requested_date', current_time('mysql'));
+        $order->add_order_note('Customer requested refund via CoinSub');
+        $order->save();
+        
+        // Send notification to admin
+        $this->send_refund_notification($order, $_POST['purchase_session_id']);
+        
+        wp_send_json_success(array(
+            'message' => 'Refund request submitted. We will process it within 1-2 business days.'
+        ));
+    }
+    
+    /**
+     * Send refund notification to admin
+     */
+    private function send_refund_notification($order, $purchase_session_id) {
+        $admin_email = get_option('admin_email');
+        $subject = 'CoinSub Refund Request - Order #' . $order->get_id();
+        $message = 'A customer has requested a refund for order #' . $order->get_id() . "\n\n";
+        $message .= 'Customer: ' . $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() . "\n";
+        $message .= 'Email: ' . $order->get_billing_email() . "\n";
+        $message .= 'Amount: ' . wc_price($order->get_total()) . "\n";
+        $message .= 'Purchase Session ID: ' . $purchase_session_id . "\n\n";
+        $message .= 'Please process this refund in the WooCommerce admin panel.';
+        
+        wp_mail($admin_email, $subject, $message);
+    }
+    
+    /**
+     * Display refund information in admin
+     */
+    public function display_refund_info($order) {
+        // Only show for CoinSub orders
+        $purchase_session_id = $order->get_meta('_coinsub_purchase_session_id');
+        if (empty($purchase_session_id)) {
+            return;
+        }
+        
+        $refund_requested = $order->get_meta('_coinsub_refund_requested');
+        $refund_processed = $order->get_meta('_coinsub_refund_processed');
+        $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
+        $order_total = $order->get_total();
+        
+        if ($refund_requested === 'yes' || $refund_processed === 'yes') {
+            echo '<h3>CoinSub Refund Status</h3>';
+            echo '<table class="form-table">';
+            
+            if ($refund_requested === 'yes') {
+                $requested_date = $order->get_meta('_coinsub_refund_requested_date');
+                echo '<tr><th>Refund Requested:</th><td>Yes (' . $requested_date . ')</td></tr>';
+            }
+            
+            if ($refund_processed === 'yes') {
+                $processed_date = $order->get_meta('_coinsub_refund_processed_date');
+                $refund_amount = $order->get_meta('_coinsub_refund_amount') ?: $order_total;
+                $tx_hash = $order->get_meta('_coinsub_refund_tx_hash');
+                echo '<tr><th>Refund Processed:</th><td>Yes (' . $processed_date . ')</td></tr>';
+                echo '<tr><th>Refund Amount:</th><td>' . wc_price($refund_amount) . '</td></tr>';
+                if ($tx_hash) {
+                    echo '<tr><th>Transaction Hash:</th><td>' . esc_html($tx_hash) . '</td></tr>';
+                }
+            } elseif ($refund_requested === 'yes') {
+                // Show process refund form
+                echo '<tr><th>Action:</th><td>';
+                echo '<div id="coinsub-refund-form" style="background: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">';
+                
+                if ($is_subscription) {
+                    echo '<h4>Process Subscription Refund</h4>';
+                    echo '<p><strong>Original Amount:</strong> ' . wc_price($order_total) . '</p>';
+                    echo '<p><strong>Enter refund amount:</strong></p>';
+                    echo '<input type="number" id="refund-amount" step="0.01" min="0" max="' . $order_total . '" value="' . $order_total . '" style="width: 150px; margin-right: 10px;">';
+                    echo '<span style="color: #666;">(' . get_woocommerce_currency_symbol() . ')</span>';
+                } else {
+                    echo '<h4>Process Refund</h4>';
+                    echo '<p><strong>Amount:</strong> ' . wc_price($order_total) . '</p>';
+                    echo '<input type="hidden" id="refund-amount" value="' . $order_total . '">';
+                }
+                
+                echo '<br><br>';
+                echo '<button type="button" class="button button-primary" id="coinsub-process-refund" data-order-id="' . $order->get_id() . '">Process Refund</button>';
+                echo '<button type="button" class="button" id="coinsub-cancel-refund" data-order-id="' . $order->get_id() . '" style="margin-left: 10px;">Cancel Request</button>';
+                echo '</div>';
+                echo '</td></tr>';
+            }
+            
+            echo '</table>';
+            
+            // Add JavaScript for admin refund processing
+            if ($refund_requested === 'yes' && $refund_processed !== 'yes') {
+                ?>
+                <script type="text/javascript">
+                jQuery(document).ready(function($) {
+                    $('#coinsub-process-refund').on('click', function() {
+                        var orderId = $(this).data('order-id');
+                        var refundAmount = $('#refund-amount').val();
+                        var button = $(this);
+                        
+                        if (!refundAmount || refundAmount <= 0) {
+                            alert('Please enter a valid refund amount');
+                            return;
+                        }
+                        
+                        button.prop('disabled', true).text('Processing...');
+                        
+                        $.ajax({
+                            url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                            type: 'POST',
+                            data: {
+                                action: 'coinsub_admin_process_refund',
+                                order_id: orderId,
+                                refund_amount: refundAmount,
+                                nonce: '<?php echo wp_create_nonce('coinsub_admin_refund_nonce'); ?>'
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    alert('Refund processed: ' + response.data.message);
+                                    location.reload();
+                                } else {
+                                    alert('Error: ' + response.data);
+                                    button.prop('disabled', false).text('Process Refund');
+                                }
+                            },
+                            error: function() {
+                                alert('An error occurred. Please try again.');
+                                button.prop('disabled', false).text('Process Refund');
+                            }
+                        });
+                    });
+                    
+                    $('#coinsub-cancel-refund').on('click', function() {
+                        if (confirm('Are you sure you want to cancel this refund request?')) {
+                            var orderId = $(this).data('order-id');
+                            var button = $(this);
+                            
+                            button.prop('disabled', true).text('Cancelling...');
+                            
+                            $.ajax({
+                                url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                                type: 'POST',
+                                data: {
+                                    action: 'coinsub_admin_cancel_refund',
+                                    order_id: orderId,
+                                    nonce: '<?php echo wp_create_nonce('coinsub_admin_refund_nonce'); ?>'
+                                },
+                                success: function(response) {
+                                    if (response.success) {
+                                        alert('Refund request cancelled');
+                                        location.reload();
+                                    } else {
+                                        alert('Error: ' + response.data);
+                                        button.prop('disabled', false).text('Cancel Request');
+                                    }
+                                },
+                                error: function() {
+                                    alert('An error occurred. Please try again.');
+                                    button.prop('disabled', false).text('Cancel Request');
+                                }
+                            });
+                        }
+                    });
+                });
+                </script>
+                <?php
+            }
+        }
+    }
+    
+    /**
+     * AJAX handler for admin refund processing
+     */
+    public function ajax_admin_process_refund() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'coinsub_admin_refund_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        // Check admin permissions
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+        
+        $order_id = intval($_POST['order_id']);
+        $refund_amount = floatval($_POST['refund_amount']);
+        $order = wc_get_order($order_id);
+        
+        if (!$order) {
+            wp_send_json_error('Order not found');
+        }
+        
+        if ($refund_amount <= 0) {
+            wp_send_json_error('Invalid refund amount');
+        }
+        
+        // Store refund amount
+        $order->update_meta_data('_coinsub_refund_amount', $refund_amount);
+        $order->save();
+        
+        // Mark as processed (simplified for now)
+        $order->update_meta_data('_coinsub_refund_processed', 'yes');
+        $order->update_meta_data('_coinsub_refund_processed_date', current_time('mysql'));
+        $order->add_order_note('Refund processed via CoinSub admin panel');
+        $order->save();
+        
+        wp_send_json_success(array(
+            'message' => 'Refund processed successfully'
+        ));
+    }
+    
+    /**
+     * AJAX handler for admin refund cancellation
+     */
+    public function ajax_admin_cancel_refund() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'coinsub_admin_refund_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        // Check admin permissions
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+        
+        $order_id = intval($_POST['order_id']);
+        $order = wc_get_order($order_id);
+        
+        if (!$order) {
+            wp_send_json_error('Order not found');
+        }
+        
+        // Remove refund metadata
+        $order->delete_meta_data('_coinsub_refund_requested');
+        $order->delete_meta_data('_coinsub_refund_requested_date');
+        $order->add_order_note('Refund request cancelled by admin');
+        $order->save();
+        
+        wp_send_json_success(array(
+            'message' => 'Refund request cancelled successfully'
+        ));
     }
 }
