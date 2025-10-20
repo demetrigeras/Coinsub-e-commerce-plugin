@@ -40,13 +40,13 @@ class CoinSub_API_Client {
         // Try to get settings from payment gateway first, then fallback to global options
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
-        // CoinSub API base URL - using development environment
-        $this->api_base_url = 'https://test-api.coinsub.io/v1/commerce'; // Test API with v1/commerce prefix
-        // For production, use: 'https://api.coinsub.io/v1/commerce'
+        // CoinSub API base URL - use test by default
+        $this->api_base_url = isset($gateway_settings['refunds_api_base']) ? rtrim($gateway_settings['refunds_api_base'], '/') : 'https://test-api.coinsub.io/v1';
+        // For production, use: 'https://api.coinsub.io/v1'
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
-        $this->api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
+        $this->api_key = isset($gateway_settings['refunds_api_key']) && !empty($gateway_settings['refunds_api_key']) ? $gateway_settings['refunds_api_key'] : (isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '');
     }
     
     /**
@@ -62,8 +62,8 @@ class CoinSub_API_Client {
      * Create a purchase session
      */
     public function create_purchase_session($order_data) {
-        // Purchase session uses base v1 URL, not /commerce
-        $endpoint = 'https://test-api.coinsub.io/v1/purchase/session/start';
+        // Purchase session uses base v1 URL
+        $endpoint = rtrim($this->api_base_url, '/') . '/purchase/session/start';
         error_log('🌐 CoinSub API - Calling: ' . $endpoint);
         error_log('🌐 CoinSub API - Amount: ' . $order_data['amount']);
         
@@ -149,7 +149,7 @@ class CoinSub_API_Client {
      * Get purchase session status
      */
     public function get_purchase_session_status($purchase_session_id) {
-        $endpoint = $this->api_base_url . '/purchase/status/' . $purchase_session_id;
+        $endpoint = $this->api_base_url . '/v1/purchase/status/' . $purchase_session_id;
         
         $headers = array(
             'Content-Type' => 'application/json',
@@ -191,7 +191,7 @@ class CoinSub_API_Client {
      * Test API connection
      */
     public function test_connection() {
-        $endpoint = $this->api_base_url . '/purchase/status/test';
+        $endpoint = rtrim($this->api_base_url, '/') . '/purchase/status/test';
         
         $headers = array(
             'Content-Type' => 'application/json',
@@ -219,12 +219,11 @@ class CoinSub_API_Client {
      */
     public function cancel_agreement($agreement_id) {
         // Agreements endpoint is at /v1/agreements, not /v1/commerce
-        $endpoint = 'https://test-api.coinsub.io/v1/agreements/cancel/' . $agreement_id;
+        $endpoint = rtrim($this->api_base_url, '/') . '/v1/agreements/cancel/' . $agreement_id;
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id,
-            'API-Key' => $this->api_key
+            'Authorization' => 'Bearer ' . $this->api_key
         );
         
         $response = wp_remote_post($endpoint, array(
@@ -243,6 +242,76 @@ class CoinSub_API_Client {
             return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'Failed to cancel subscription');
         }
         
+        return $data;
+    }
+
+    /**
+     * Retrieve agreement data
+     */
+    public function retrieve_agreement($agreement_id) {
+        $endpoint = rtrim($this->api_base_url, '/') . '/v1/agreements/' . $agreement_id . '/retrieve_agreement';
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->api_key
+        );
+        $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        if (wp_remote_retrieve_response_code($response) !== 200) {
+            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        }
+        return $data;
+    }
+
+    /**
+     * Initiate a refund transfer request
+     */
+    public function refund_transfer_request($to_address, $amount, $chain_id, $token_symbol) {
+        $endpoint = rtrim($this->api_base_url, '/') . '/v1/merchants/transfer/request';
+        
+        error_log('🌐 CoinSub Refund API - Calling: ' . $endpoint);
+        error_log('🌐 CoinSub Refund API - To Address: ' . $to_address);
+        error_log('🌐 CoinSub Refund API - Amount: ' . $amount);
+        error_log('🌐 CoinSub Refund API - Chain ID: ' . $chain_id);
+        error_log('🌐 CoinSub Refund API - Token: ' . $token_symbol);
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->api_key
+        );
+        $payload = array(
+            'to_address' => $to_address,
+            'amount' => (float)$amount,
+            'chainId' => (int)$chain_id,
+            'token' => $token_symbol
+        );
+        
+        error_log('🌐 CoinSub Refund API - Headers: ' . json_encode($headers));
+        error_log('🌐 CoinSub Refund API - Payload: ' . json_encode($payload));
+        $response = wp_remote_post($endpoint, array('headers' => $headers, 'body' => json_encode($payload), 'timeout' => 30));
+        
+        if (is_wp_error($response)) {
+            error_log('🌐 CoinSub Refund API - Error: ' . $response->get_error_message());
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        $response_code = wp_remote_retrieve_response_code($response);
+        
+        error_log('🌐 CoinSub Refund API - Response Code: ' . $response_code);
+        error_log('🌐 CoinSub Refund API - Response Body: ' . $body);
+        error_log('🌐 CoinSub Refund API - Decoded Data: ' . json_encode($data));
+        
+        if ($response_code !== 200) {
+            error_log('🌐 CoinSub Refund API - Error Response: ' . (isset($data['error']) ? $data['error'] : 'API request failed'));
+            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        }
+        
+        error_log('🌐 CoinSub Refund API - Success! Transfer request completed');
         return $data;
     }
     

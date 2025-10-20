@@ -16,6 +16,8 @@ class CoinSub_Subscriptions {
     public function __construct() {
         // Cart validation
         add_filter('woocommerce_add_to_cart_validation', array($this, 'validate_cart_items'), 10, 3);
+        // Enforce subscription quantity limits during cart checks/updates
+        add_action('woocommerce_check_cart_items', array($this, 'enforce_subscription_quantities'));
         
         // Add subscription tab to My Account
         add_filter('woocommerce_account_menu_items', array($this, 'add_subscriptions_menu'));
@@ -54,14 +56,30 @@ class CoinSub_Subscriptions {
         $cart = WC()->cart->get_cart();
         $has_subscription = false;
         $has_regular = false;
+        $has_same_subscription = false;
         
         foreach ($cart as $cart_item) {
             $cart_product = $cart_item['data'];
             if ($cart_product->get_meta('_coinsub_subscription') === 'yes') {
                 $has_subscription = true;
+                if ((int)$cart_product->get_id() === (int)$product_id) {
+                    $has_same_subscription = true;
+                }
             } else {
                 $has_regular = true;
             }
+        }
+        
+        // Subscriptions limited to quantity 1
+        if ($is_subscription && (int)$quantity > 1) {
+            wc_add_notice(__('You can only purchase one of a subscription at a time.', 'coinsub'), 'error');
+            return false;
+        }
+        
+        // Prevent adding the same subscription product twice
+        if ($is_subscription && $has_same_subscription) {
+            wc_add_notice(__('This subscription is already in your cart.', 'coinsub'), 'error');
+            return false;
         }
         
         // Enforce rules - prevent mixing subscriptions and regular products
@@ -83,6 +101,25 @@ class CoinSub_Subscriptions {
         }
         
         return $passed;
+    }
+
+    /**
+     * Ensure any subscription line items are clamped to quantity 1
+     */
+    public function enforce_subscription_quantities() {
+        $cart = WC()->cart;
+        if (!$cart) {
+            return;
+        }
+        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+            $product = $cart_item['data'];
+            if ($product && $product->get_meta('_coinsub_subscription') === 'yes') {
+                if ((int)$cart_item['quantity'] !== 1) {
+                    $cart->set_quantity($cart_item_key, 1, true);
+                    wc_add_notice(__('Subscription quantity has been set to 1.', 'coinsub'), 'notice');
+                }
+            }
+        }
     }
     
     /**

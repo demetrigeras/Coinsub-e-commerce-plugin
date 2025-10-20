@@ -213,6 +213,7 @@ function coinsub_force_availability($gateways) {
     return $gateways;
 }
 
+
 // Debug payment processing
 add_action('woocommerce_checkout_process', 'coinsub_debug_checkout_process');
 function coinsub_debug_checkout_process() {

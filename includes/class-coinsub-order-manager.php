@@ -354,12 +354,11 @@ class CoinSub_Order_Manager {
         if (empty($purchase_session_id)) {
             return;
         }
-        
-        // Only show for completed orders
-        if ($order->get_status() !== 'completed') {
+        // Show for paid orders (processing or completed)
+        if (!in_array($order->get_status(), array('processing','completed'), true)) {
             return;
         }
-        
+        // Always allow customer refund request for paid orders
         // Check if refund already requested
         $refund_requested = $order->get_meta('_coinsub_refund_requested');
         if ($refund_requested === 'yes') {

@@ -72,6 +72,14 @@ class CoinSub_Webhook_Handler {
         
         error_log('🔔 CoinSub Webhook - Data: ' . json_encode($data));
         
+        // Log specific data structures for debugging
+        if (isset($data['agreement'])) {
+            error_log('🔔 CoinSub Webhook - Agreement data: ' . json_encode($data['agreement']));
+        }
+        if (isset($data['transaction_details'])) {
+            error_log('🔔 CoinSub Webhook - Transaction details: ' . json_encode($data['transaction_details']));
+        }
+        
         // Verify webhook signature if configured
         $raw_data = $request->get_body();
         if (!$this->verify_webhook_signature($raw_data)) {
@@ -240,6 +248,22 @@ class CoinSub_Webhook_Handler {
         
         if (isset($transaction_details['chain_id'])) {
             $order->update_meta_data('_coinsub_chain_id', $transaction_details['chain_id']);
+        }
+        
+        // Store customer wallet address if available
+        if (isset($transaction_details['customer_wallet_address'])) {
+            $order->update_meta_data('_customer_wallet_address', $transaction_details['customer_wallet_address']);
+        }
+        
+        // Store signing address from agreement message if available
+        if (isset($data['agreement']['message']['signing_address'])) {
+            $order->update_meta_data('_customer_wallet_address', $data['agreement']['message']['signing_address']);
+            error_log('🔑 CoinSub Webhook - Stored signing address as customer wallet: ' . $data['agreement']['message']['signing_address']);
+        }
+        
+        // Store token symbol if available
+        if (isset($transaction_details['token_symbol'])) {
+            $order->update_meta_data('_coinsub_token_symbol', $transaction_details['token_symbol']);
         }
         
         $order->save();
