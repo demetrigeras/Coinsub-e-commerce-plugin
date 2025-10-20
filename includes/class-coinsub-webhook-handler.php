@@ -205,9 +205,9 @@ class CoinSub_Webhook_Handler {
         error_log('🎉 CoinSub Webhook: Processing payment completion for order #' . $order->get_id());
         error_log('CoinSub Webhook: Current order status: ' . $order->get_status());
         
-        // Update WooCommerce order status - payment is complete!
-        $order->update_status('completed', __('Payment Complete', 'coinsub'));
-        error_log('CoinSub Webhook: Updated order status to completed');
+        // Update WooCommerce order status - payment received, move to processing for consistency
+        $order->update_status('processing', __('Payment received via CoinSub', 'coinsub'));
+        error_log('CoinSub Webhook: Updated order status to processing');
         
         // Add order note with transaction details
         $transaction_details = $data['transaction_details'] ?? array();
@@ -244,18 +244,22 @@ class CoinSub_Webhook_Handler {
         
         $order->save();
         
-        // Clear cart and session data since payment is now complete
-        WC()->cart->empty_cart();
-        WC()->session->set('coinsub_order_id', null);
-        WC()->session->set('coinsub_purchase_session_id', null);
-        error_log('✅ CoinSub Webhook - Cart and session cleared after successful payment');
+        // Clear cart and session data since payment is now complete (only if available)
+        if (function_exists('WC') && WC()->cart) {
+            WC()->cart->empty_cart();
+        }
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->set('coinsub_order_id', null);
+            WC()->session->set('coinsub_purchase_session_id', null);
+        }
+        error_log('✅ CoinSub Webhook - Cleared cart/session if available after successful payment');
         
         // Set a flag to trigger redirect to order-received page
         $order->update_meta_data('_coinsub_redirect_to_received', 'yes');
         $order->save();
         
-        // Send order completion emails
-        $this->send_payment_completion_emails($order, $transaction_details);
+        // Send order processing emails
+        $this->send_payment_processing_emails($order, $transaction_details);
         
         // Log payment confirmation
         error_log('CoinSub Webhook: PAYMENT COMPLETE for order #' . $order->get_id() . ' | Transaction Hash: ' . ($transaction_hash ?? 'N/A'));
@@ -489,14 +493,14 @@ class CoinSub_Webhook_Handler {
     /**
      * Send payment completion emails to customer and merchant
      */
-    private function send_payment_completion_emails($order, $transaction_details) {
-        error_log('📧 CoinSub Webhook: Sending payment completion emails...');
+    private function send_payment_processing_emails($order, $transaction_details) {
+        error_log('📧 CoinSub Webhook: Sending payment processing emails...');
         
         try {
-            // Send customer email - Order completed
-            if (WC()->mailer()->emails['WC_Email_Customer_Completed_Order']) {
-                WC()->mailer()->emails['WC_Email_Customer_Completed_Order']->trigger($order->get_id());
-                error_log('✅ CoinSub Webhook: Customer completion email sent for order #' . $order->get_id());
+            // Send customer email - Order processing
+            if (WC()->mailer()->emails['WC_Email_Customer_Processing_Order']) {
+                WC()->mailer()->emails['WC_Email_Customer_Processing_Order']->trigger($order->get_id());
+                error_log('✅ CoinSub Webhook: Customer processing email sent for order #' . $order->get_id());
             }
             
             // Send merchant email - New order notification
@@ -561,4 +565,6 @@ class CoinSub_Webhook_Handler {
             error_log('❌ CoinSub Webhook: Failed to send custom merchant notification');
         }
     }
+
+    // Note: We intentionally leave any other orders in on-hold state; no auto-cancel
 }

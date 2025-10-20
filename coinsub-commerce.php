@@ -309,6 +309,60 @@ function coinsub_ajax_process_payment() {
     
     error_log('CoinSub AJAX: Cart has ' . WC()->cart->get_cart_contents_count() . ' items');
     
+    // Check for an existing in-progress CoinSub order in session to prevent duplicates
+    $existing_order_id = WC()->session->get('coinsub_order_id');
+    if ($existing_order_id) {
+        $existing_order = wc_get_order($existing_order_id);
+        if ($existing_order && !is_wp_error($existing_order)) {
+            $status = $existing_order->get_status();
+            $pm = $existing_order->get_payment_method();
+            error_log('CoinSub AJAX: Found existing order in session #' . $existing_order_id . ' status=' . $status . ' pm=' . $pm);
+            // Reuse only if it's our gateway and still pending/on-hold
+            if ($pm === 'coinsub' && in_array($status, array('pending','on-hold'))) {
+                $existing_checkout = $existing_order->get_meta('_coinsub_checkout_url');
+                if ($existing_checkout) {
+                    error_log('CoinSub AJAX: Reusing existing order checkout URL: ' . $existing_checkout);
+                    wp_send_json_success(array(
+                        'result' => 'success',
+                        'redirect' => $existing_checkout,
+                        'order_id' => $existing_order_id,
+                        'reused' => true
+                    ));
+                }
+            }
+        }
+    }
+
+    // Add a short-lived lock to prevent concurrent requests from creating duplicates
+    $lock_key = 'coinsub_order_lock';
+    $lock_time = time();
+    $existing_lock = WC()->session->get($lock_key);
+    if ($existing_lock && ($lock_time - intval($existing_lock)) < 5) { // 5-second window
+        error_log('CoinSub AJAX: Duplicate click detected within 5s, waiting and reusing existing order if any');
+        // Try to find the most recent CoinSub order for this session/customer
+        $orders = wc_get_orders(array(
+            'limit' => 1,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'payment_method' => 'coinsub'
+        ));
+    if (!empty($orders)) {
+        $o = $orders[0];
+        if (in_array($o->get_status(), array('pending','on-hold'))) {
+            $url = $o->get_meta('_coinsub_checkout_url');
+            if ($url) {
+                WC()->session->set('coinsub_order_id', $o->get_id());
+                wp_send_json_success(array('result' => 'success', 'redirect' => $url, 'order_id' => $o->get_id(), 'reused' => true));
+            }
+        } elseif (in_array($o->get_status(), array('processing','completed'))) {
+            // If the most recent order is already paid, send user to order received page
+            wp_send_json_success(array('result' => 'success', 'redirect' => $o->get_checkout_order_received_url(), 'order_id' => $o->get_id(), 'already_paid' => true));
+        }
+    }
+        // If none found, continue to create a new one
+    }
+    WC()->session->set($lock_key, $lock_time);
+
     // Get the payment gateway instance
     try {
         $gateway = new WC_Gateway_CoinSub();
@@ -331,6 +385,9 @@ function coinsub_ajax_process_payment() {
     
     $order_id = $order->get_id();
     error_log('CoinSub AJAX: Order created with ID: ' . $order_id);
+
+    // Store order id in session to prevent duplicates on repeated clicks
+    WC()->session->set('coinsub_order_id', $order_id);
     
     // Add cart items to order
     foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
@@ -374,8 +431,15 @@ function coinsub_ajax_process_payment() {
     
     error_log('CoinSub AJAX: Order created with ID: ' . $order->get_id());
     
-    // Process payment - this will create the purchase session
-    $result = $gateway->process_payment($order->get_id());
+    // If this order already has a checkout URL (rare race), reuse it
+    $existing_checkout = $order->get_meta('_coinsub_checkout_url');
+    if (!empty($existing_checkout)) {
+        error_log('CoinSub AJAX: Order already has checkout URL, skipping process_payment');
+        $result = array('result' => 'success', 'redirect' => $existing_checkout);
+    } else {
+        // Process payment - this will create the purchase session
+        $result = $gateway->process_payment($order->get_id());
+    }
     
     error_log('CoinSub AJAX: Payment result: ' . json_encode($result));
     
