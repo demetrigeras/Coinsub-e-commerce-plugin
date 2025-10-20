@@ -359,7 +359,8 @@ function coinsub_ajax_process_payment() {
             wp_send_json_success(array('result' => 'success', 'redirect' => $o->get_checkout_order_received_url(), 'order_id' => $o->get_id(), 'already_paid' => true));
         }
     }
-        // If none found, continue to create a new one
+        // If none found, tell client to wait and retry
+        wp_send_json_error('Another payment attempt is already in progress. Please wait a moment...');
     }
     WC()->session->set($lock_key, $lock_time);
 

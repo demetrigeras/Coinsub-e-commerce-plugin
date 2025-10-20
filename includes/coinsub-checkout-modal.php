@@ -42,6 +42,10 @@ if (!defined('ABSPATH')) {
 <!-- CoinSub Checkout JavaScript -->
 <script type="text/javascript">
 jQuery(document).ready(function($) {
+    // Prevent double submission
+    if (typeof window.coinsubSubmitting === 'undefined') {
+        window.coinsubSubmitting = false;
+    }
     // Override the place order button for CoinSub
     $('body').on('click', '#place_order', function(e) {
         var paymentMethod = $('input[name="payment_method"]:checked').val();
@@ -49,6 +53,10 @@ jQuery(document).ready(function($) {
         if (paymentMethod === 'coinsub') {
             e.preventDefault();
             e.stopPropagation();
+            if (window.coinsubSubmitting) {
+                return false;
+            }
+            window.coinsubSubmitting = true;
             
             // Show loading state
             $(this).prop('disabled', true).text('Processing...');
@@ -130,6 +138,7 @@ jQuery(document).ready(function($) {
                         }
                         alert(errorMsg);
                         $('#place_order').prop('disabled', false).text('Place order');
+                        window.coinsubSubmitting = false;
                     }
                 },
                 error: function(xhr, status, error) {
@@ -152,6 +161,7 @@ jQuery(document).ready(function($) {
                     
                     alert(errorMsg);
                     $('#place_order').prop('disabled', false).text('Place order');
+                    window.coinsubSubmitting = false;
                 }
             });
             
