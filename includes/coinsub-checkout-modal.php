@@ -77,7 +77,15 @@ jQuery(document).ready(function($) {
                     billing_city: $('input[name="billing_city"]').val(),
                     billing_state: $('select[name="billing_state"]').val(),
                     billing_postcode: $('input[name="billing_postcode"]').val(),
-                    billing_country: $('select[name="billing_country"]').val()
+                    billing_country: $('select[name="billing_country"]').val(),
+                    // Shipping address fields
+                    shipping_first_name: $('input[name="shipping_first_name"]').val(),
+                    shipping_last_name: $('input[name="shipping_last_name"]').val(),
+                    shipping_address_1: $('input[name="shipping_address_1"]').val(),
+                    shipping_city: $('input[name="shipping_city"]').val(),
+                    shipping_state: $('select[name="shipping_state"]').val(),
+                    shipping_postcode: $('input[name="shipping_postcode"]').val(),
+                    shipping_country: $('select[name="shipping_country"]').val()
                 },
                 success: function(response) {
                     console.log('AJAX Success Response:', response);

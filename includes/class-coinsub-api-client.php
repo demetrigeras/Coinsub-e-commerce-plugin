@@ -149,7 +149,7 @@ class CoinSub_API_Client {
      * Get purchase session status
      */
     public function get_purchase_session_status($purchase_session_id) {
-        $endpoint = $this->api_base_url . '/v1/purchase/status/' . $purchase_session_id;
+        $endpoint = $this->api_base_url . '/purchase/status/' . $purchase_session_id;
         
         $headers = array(
             'Content-Type' => 'application/json',
@@ -191,7 +191,7 @@ class CoinSub_API_Client {
      * Test API connection
      */
     public function test_connection() {
-        $endpoint = rtrim($this->api_base_url, '/') . '/purchase/status/test';
+        $endpoint = $this->api_base_url . '/purchase/status/test';
         
         $headers = array(
             'Content-Type' => 'application/json',
@@ -219,11 +219,12 @@ class CoinSub_API_Client {
      */
     public function cancel_agreement($agreement_id) {
         // Agreements endpoint is at /v1/agreements, not /v1/commerce
-        $endpoint = rtrim($this->api_base_url, '/') . '/v1/agreements/cancel/' . $agreement_id;
+        $endpoint = rtrim($this->api_base_url, '/') . '/agreements/cancel/' . $agreement_id;
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer ' . $this->api_key
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
         );
         
         $response = wp_remote_post($endpoint, array(
@@ -249,10 +250,11 @@ class CoinSub_API_Client {
      * Retrieve agreement data
      */
     public function retrieve_agreement($agreement_id) {
-        $endpoint = rtrim($this->api_base_url, '/') . '/v1/agreements/' . $agreement_id . '/retrieve_agreement';
+        $endpoint = rtrim($this->api_base_url, '/') . '/agreements/' . $agreement_id . '/retrieve_agreement';
         $headers = array(
             'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer ' . $this->api_key
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
         );
         $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
         if (is_wp_error($response)) {
@@ -270,17 +272,16 @@ class CoinSub_API_Client {
      * Initiate a refund transfer request
      */
     public function refund_transfer_request($to_address, $amount, $chain_id, $token_symbol) {
-        $endpoint = rtrim($this->api_base_url, '/') . '/v1/merchants/transfer/request';
+        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/transfer/request';
         
-        error_log('🌐 CoinSub Refund API - Calling: ' . $endpoint);
-        error_log('🌐 CoinSub Refund API - To Address: ' . $to_address);
-        error_log('🌐 CoinSub Refund API - Amount: ' . $amount);
-        error_log('🌐 CoinSub Refund API - Chain ID: ' . $chain_id);
-        error_log('🌐 CoinSub Refund API - Token: ' . $token_symbol);
+        // Debug API key
+        error_log('🔑 CoinSub Refund API - API Key: ' . ($this->api_key ? 'SET' : 'NOT SET'));
+        error_log('🔑 CoinSub Refund API - Merchant ID: ' . ($this->merchant_id ?: 'NOT SET'));
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer ' . $this->api_key
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
         );
         $payload = array(
             'to_address' => $to_address,
@@ -288,32 +289,73 @@ class CoinSub_API_Client {
             'chainId' => (int)$chain_id,
             'token' => $token_symbol
         );
-        
-        error_log('🌐 CoinSub Refund API - Headers: ' . json_encode($headers));
-        error_log('🌐 CoinSub Refund API - Payload: ' . json_encode($payload));
         $response = wp_remote_post($endpoint, array('headers' => $headers, 'body' => json_encode($payload), 'timeout' => 30));
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        if (wp_remote_retrieve_response_code($response) !== 200) {
+            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        }
+        return $data;
+    }
+    
+    /**
+     * Get all payments for a merchant
+     */
+    public function get_all_payments() {
+        $endpoint = rtrim($this->api_base_url, '/') . '/payments/all';
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
+        );
+        
+        $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
         
         if (is_wp_error($response)) {
-            error_log('🌐 CoinSub Refund API - Error: ' . $response->get_error_message());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
-        $response_code = wp_remote_retrieve_response_code($response);
         
-        error_log('🌐 CoinSub Refund API - Response Code: ' . $response_code);
-        error_log('🌐 CoinSub Refund API - Response Body: ' . $body);
-        error_log('🌐 CoinSub Refund API - Decoded Data: ' . json_encode($data));
-        
-        if ($response_code !== 200) {
-            error_log('🌐 CoinSub Refund API - Error Response: ' . (isset($data['error']) ? $data['error'] : 'API request failed'));
+        if (wp_remote_retrieve_response_code($response) !== 200) {
             return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
         }
         
-        error_log('🌐 CoinSub Refund API - Success! Transfer request completed');
         return $data;
     }
     
+    /**
+     * Get payment details for a specific payment
+     */
+    public function get_payment_details($payment_id) {
+        $endpoint = rtrim($this->api_base_url, '/') . '/payments/' . $payment_id;
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
+        );
+        
+        $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
+        
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (wp_remote_retrieve_response_code($response) !== 200) {
+            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        }
+        
+        return $data;
+    }
+
     // REMOVED: update_commerce_order_from_webhook - using WooCommerce-only approach
 }

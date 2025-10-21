@@ -214,6 +214,18 @@ function coinsub_force_availability($gateways) {
 }
 
 
+// Always show refund buttons for CoinSub orders
+add_filter('woocommerce_can_refund_order', 'coinsub_always_show_refund_button', 10, 2);
+function coinsub_always_show_refund_button($can_refund, $order) {
+    if ($order->get_payment_method() === 'coinsub') {
+        $paid_statuses = array('processing', 'completed', 'on-hold');
+        if (in_array($order->get_status(), $paid_statuses)) {
+            return true;
+        }
+    }
+    return $can_refund;
+}
+
 // Debug payment processing
 add_action('woocommerce_checkout_process', 'coinsub_debug_checkout_process');
 function coinsub_debug_checkout_process() {

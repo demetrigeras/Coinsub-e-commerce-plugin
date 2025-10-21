@@ -577,23 +577,64 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Process refunds (Automatic API refund for single payments)
      */
     public function process_refund($order_id, $amount = null, $reason = '') {
+        error_log('🔄 CoinSub Refund - process_refund called');
+        error_log('🔄 CoinSub Refund - Order ID: ' . $order_id);
+        error_log('🔄 CoinSub Refund - Amount parameter: ' . ($amount ?? 'NULL'));
+        error_log('🔄 CoinSub Refund - Reason: ' . $reason);
+        
         $order = wc_get_order($order_id);
         
         if (!$order) {
+            error_log('❌ CoinSub Refund - Order not found: ' . $order_id);
             return new WP_Error('invalid_order', __('Invalid order.', 'coinsub'));
         }
         
-        // Check if this is a subscription order - skip automatic refund for subscriptions
+        error_log('🔄 CoinSub Refund - Order total: ' . $order->get_total());
+        error_log('🔄 CoinSub Refund - Order status: ' . $order->get_status());
+        error_log('🔄 CoinSub Refund - Payment method: ' . $order->get_payment_method());
+        
+        // If amount is null or 0, use the order total
+        if ($amount === null || $amount == 0) {
+            $amount = $order->get_total();
+            error_log('🔄 CoinSub Refund - Using order total as refund amount: ' . $amount);
+        }
+        
+        // Check if this is a subscription order - use manual refund for subscriptions
         $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
         if ($is_subscription) {
-            $refund_note = sprintf(
-                __('SUBSCRIPTION REFUND REQUIRES MANUAL PROCESSING: %s. Reason: %s. Please cancel the subscription agreement and process refund manually.', 'coinsub'),
-                wc_price($amount),
-                $reason
-            );
+            // Manual refund for subscriptions
+            $customer_wallet = $order->get_meta('_customer_wallet_address');
+            $chain_id = $order->get_meta('_coinsub_chain_id');
+            $token_symbol = $order->get_meta('_coinsub_token_symbol') ?: 'USDC';
+            
+            if (empty($customer_wallet)) {
+                $refund_note = sprintf(
+                    __('SUBSCRIPTION MANUAL REFUND: %s. Reason: %s. Customer wallet address not found. Please contact customer for their wallet address.', 'coinsub'),
+                    wc_price($amount),
+                    $reason
+                );
+            } else {
+                $refund_note = sprintf(
+                    __('SUBSCRIPTION MANUAL REFUND: %s. Reason: %s. Customer wallet: %s. Please send %s %s from your merchant wallet to customer wallet.', 'coinsub'),
+                    wc_price($amount),
+                    $reason,
+                    $customer_wallet,
+                    $amount,
+                    $token_symbol
+                );
+            }
+            
+            // Add instructions for manual refund
+            $refund_note .= '<br><br><strong>Manual Refund Instructions:</strong><br>';
+            $refund_note .= '1. Go to your crypto wallet<br>';
+            $refund_note .= '2. Send ' . $amount . ' ' . $token_symbol . ' to: ' . $customer_wallet . '<br>';
+            $refund_note .= '3. Update order status to "Refunded" when complete';
+            
             $order->add_order_note($refund_note);
             $order->update_status('refund-pending', __('Subscription refund pending - manual processing required.', 'coinsub'));
-            return new WP_Error('manual_refund_required', __('Subscription refunds require manual processing. Please cancel the subscription agreement first.', 'coinsub'));
+            
+            // Return success for manual refund (WooCommerce will show the refund as processed)
+            return true;
         }
         
         // Get required payment details from order meta
@@ -601,25 +642,56 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $chain_id = $order->get_meta('_coinsub_chain_id');
         $transaction_hash = $order->get_meta('_coinsub_transaction_hash');
         
-        // Validate required data
-        if (empty($customer_wallet)) {
+        // Get customer email address for refund
+        $customer_email = $order->get_billing_email();
+        
+        // Get agreement message data (stored from webhook)
+        $agreement_message_json = $order->get_meta('_coinsub_agreement_message');
+        $agreement_message = $agreement_message_json ? json_decode($agreement_message_json, true) : null;
+        
+        error_log('🔄 CoinSub Refund - Customer wallet: ' . ($customer_wallet ?: 'NOT FOUND'));
+        error_log('🔄 CoinSub Refund - Customer email: ' . ($customer_email ?: 'NOT FOUND'));
+        error_log('🔄 CoinSub Refund - Chain ID: ' . ($chain_id ?: 'NOT FOUND'));
+        error_log('🔄 CoinSub Refund - Agreement message: ' . ($agreement_message_json ?: 'NOT FOUND'));
+        
+        // Debug: Show all order meta
+        $all_meta = $order->get_meta_data();
+        error_log('🔄 CoinSub Refund - All order meta keys: ' . implode(', ', array_map(function($meta) { return $meta->key; }, $all_meta)));
+        
+        // Use customer email as to_address (preferred) or fallback to wallet address
+        $to_address = $customer_email ?: $customer_wallet;
+        
+        // Validate required data for automatic refund
+        if (empty($to_address)) {
+            error_log('🔄 CoinSub Refund - No customer email or wallet found, falling back to manual refund');
+            
+            // Fallback to manual refund for single payments without customer data
             $refund_note = sprintf(
-                __('REFUND FAILED: %s. Reason: %s. Customer wallet address not found in order data.', 'coinsub'),
+                __('AUTOMATIC REFUND FAILED - MANUAL REFUND REQUIRED: %s. Reason: %s. Customer email or wallet address not found. Please contact customer and process refund manually.', 'coinsub'),
                 wc_price($amount),
                 $reason
             );
             $order->add_order_note($refund_note);
-            return new WP_Error('missing_wallet', __('Customer wallet address not found. Cannot process automatic refund.', 'coinsub'));
+            $order->update_status('refund-pending', __('Refund pending - manual processing required.', 'coinsub'));
+            
+            // Return success for manual refund (WooCommerce will show the refund as processed)
+            return true;
         }
         
         if (empty($chain_id)) {
+            error_log('🔄 CoinSub Refund - Chain ID not found, falling back to manual refund');
+            
+            // Fallback to manual refund for single payments without chain ID
             $refund_note = sprintf(
-                __('REFUND FAILED: %s. Reason: %s. Chain ID not found in order data.', 'coinsub'),
+                __('AUTOMATIC REFUND FAILED - MANUAL REFUND REQUIRED: %s. Reason: %s. Chain ID not found. Please process refund manually.', 'coinsub'),
                 wc_price($amount),
                 $reason
             );
             $order->add_order_note($refund_note);
-            return new WP_Error('missing_chain_id', __('Chain ID not found. Cannot process automatic refund.', 'coinsub'));
+            $order->update_status('refund-pending', __('Refund pending - manual processing required.', 'coinsub'));
+            
+            // Return success for manual refund (WooCommerce will show the refund as processed)
+            return true;
         }
         
         // Get token symbol from order meta if available, otherwise determine from currency
@@ -631,16 +703,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         error_log('🔄 CoinSub Refund - Processing automatic refund for order #' . $order_id);
         error_log('🔄 CoinSub Refund - Amount: ' . $amount);
-        error_log('🔄 CoinSub Refund - Customer Wallet: ' . $customer_wallet);
+        error_log('🔄 CoinSub Refund - To Address (email/wallet): ' . $to_address);
         error_log('🔄 CoinSub Refund - Chain ID: ' . $chain_id);
         error_log('🔄 CoinSub Refund - Token: ' . $token_symbol);
         
         // Initialize API client
         $api_client = new CoinSub_API_Client();
         
-        // Call refund API
+        // Call refund API using customer email or wallet address
         $refund_result = $api_client->refund_transfer_request(
-            $customer_wallet,
+            $to_address,
             $amount,
             $chain_id,
             $token_symbol
@@ -648,6 +720,33 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         if (is_wp_error($refund_result)) {
             $error_message = $refund_result->get_error_message();
+            
+            // Check for insufficient funds error
+            if (strpos(strtolower($error_message), 'insufficient') !== false || 
+                strpos(strtolower($error_message), 'balance') !== false) {
+                
+                $insufficient_funds_note = sprintf(
+                    __('REFUND FAILED - INSUFFICIENT FUNDS: %s. Reason: %s. Error: %s', 'coinsub'),
+                    wc_price($amount),
+                    $reason,
+                    $error_message
+                );
+                
+                $insufficient_funds_note .= '<br><br><strong>🔧 Action Required:</strong><br>';
+                $insufficient_funds_note .= '1. Go to <a href="https://app.coinsub.io" target="_blank">app.coinsub.io</a><br>';
+                $insufficient_funds_note .= '2. Sign in with your merchant email' . '<br>';
+                $insufficient_funds_note .= '3. Navigate to the <strong>Wallet</strong> tab<br>';
+                $insufficient_funds_note .= '4. Onramp ' . $amount . ' ' . $token_symbol . ' to your wallet on ' . $this->get_network_name($chain_id) . '<br>';
+                $insufficient_funds_note .= '5. Retry the refund once funds are available';
+                
+                $order->add_order_note($insufficient_funds_note);
+                $order->update_status('refund-pending', __('Refund pending - insufficient funds. Please add funds to merchant wallet.', 'coinsub'));
+                
+                error_log('❌ CoinSub Refund - Insufficient funds: ' . $error_message);
+                return new WP_Error('insufficient_funds', $error_message);
+            }
+            
+            // Other API errors
             $refund_note = sprintf(
                 __('REFUND FAILED: %s. Reason: %s. API Error: %s', 'coinsub'),
                 wc_price($amount),
@@ -698,6 +797,28 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         );
         
         return isset($currency_token_map[$currency]) ? $currency_token_map[$currency] : 'USDC';
+    }
+    
+    /**
+     * Get network name for chain ID
+     */
+    private function get_network_name($chain_id) {
+        $networks = array(
+            '1' => 'Ethereum Mainnet',
+            '137' => 'Polygon',
+            '80002' => 'Polygon Amoy Testnet',
+            '11155111' => 'Sepolia Testnet',
+            '56' => 'BSC',
+            '97' => 'BSC Testnet',
+            '42161' => 'Arbitrum One',
+            '421614' => 'Arbitrum Sepolia',
+            '10' => 'Optimism',
+            '420' => 'Optimism Sepolia',
+            '8453' => 'Base',
+            '84532' => 'Base Sepolia'
+        );
+        
+        return isset($networks[$chain_id]) ? $networks[$chain_id] : 'Chain ID ' . $chain_id;
     }
 
     /**
@@ -1071,7 +1192,27 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'subtotal' => $cart_data['subtotal'],
                 'shipping' => $cart_data['shipping'],
                 'tax' => $cart_data['tax'],
-                'total' => $cart_data['total']
+                'total' => $cart_data['total'],
+                'billing_address' => array(
+                    'first_name' => $order->get_billing_first_name(),
+                    'last_name' => $order->get_billing_last_name(),
+                    'email' => $order->get_billing_email(),
+                    'phone' => $order->get_billing_phone(),
+                    'address_1' => $order->get_billing_address_1(),
+                    'city' => $order->get_billing_city(),
+                    'state' => $order->get_billing_state(),
+                    'postcode' => $order->get_billing_postcode(),
+                    'country' => $order->get_billing_country()
+                ),
+                'shipping_address' => array(
+                    'first_name' => $order->get_shipping_first_name(),
+                    'last_name' => $order->get_shipping_last_name(),
+                    'address_1' => $order->get_shipping_address_1(),
+                    'city' => $order->get_shipping_city(),
+                    'state' => $order->get_shipping_state(),
+                    'postcode' => $order->get_shipping_postcode(),
+                    'country' => $order->get_shipping_country()
+                )
             ),
             'success_url' => $this->get_return_url($order),
             'cancel_url' => wc_get_checkout_url(),

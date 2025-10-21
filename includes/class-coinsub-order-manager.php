@@ -26,6 +26,7 @@ class CoinSub_Order_Manager {
         add_action('wp_ajax_coinsub_request_refund', array($this, 'ajax_request_refund'));
         add_action('wp_ajax_nopriv_coinsub_request_refund', array($this, 'ajax_request_refund'));
         add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_refund_info'));
+        add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_subscription_status'));
         add_action('wp_ajax_coinsub_admin_process_refund', array($this, 'ajax_admin_process_refund'));
         add_action('wp_ajax_coinsub_admin_cancel_refund', array($this, 'ajax_admin_cancel_refund'));
     }
@@ -134,9 +135,10 @@ class CoinSub_Order_Manager {
     public function add_cancel_subscription_button($order) {
         $agreement_id = $order->get_meta('_coinsub_agreement_id');
         $subscription_status = $order->get_meta('_coinsub_subscription_status');
+        $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
         
-        // Only show if this is an active subscription
-        if (empty($agreement_id) || $subscription_status === 'cancelled') {
+        // Only show if this is an active recurring subscription
+        if (empty($agreement_id) || $subscription_status === 'cancelled' || !$is_subscription) {
             return;
         }
         
@@ -223,9 +225,166 @@ class CoinSub_Order_Manager {
         $order->add_order_note(__('Subscription cancelled by merchant', 'coinsub'));
         $order->save();
         
+        // Add HTML message to order details
+        $this->add_subscription_cancelled_message($order);
+        
+        // Fetch and display payments for this subscription
+        $this->add_subscription_payments_section($order, $agreement_id);
+        
         wp_send_json_success(array('message' => __('Subscription cancelled successfully', 'coinsub')));
     }
     
+    /**
+     * Add subscription cancelled message to order details
+     */
+    private function add_subscription_cancelled_message($order) {
+        $cancelled_message = $order->get_meta('_coinsub_cancelled_message');
+        if (empty($cancelled_message)) {
+            $html_message = '<div class="coinsub-subscription-cancelled" style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; margin: 10px 0; border-radius: 5px;">
+                <h4 style="margin: 0 0 10px 0; color: #721c24;">📋 Subscription Status</h4>
+                <p style="margin: 0; font-weight: bold;">❌ SUBSCRIPTION CANCELLED</p>
+                <p style="margin: 5px 0 0 0; font-size: 14px;">This subscription has been cancelled and will not process future payments.</p>
+            </div>';
+            
+            $order->update_meta_data('_coinsub_cancelled_message', $html_message);
+            $order->save();
+        }
+    }
+    
+    /**
+     * Add subscription payments section to order details
+     */
+    private function add_subscription_payments_section($order, $agreement_id) {
+        $api_client = new CoinSub_API_Client();
+        $payments = $api_client->get_all_payments();
+        
+        if (is_wp_error($payments)) {
+            error_log('❌ CoinSub - Failed to fetch payments: ' . $payments->get_error_message());
+            return;
+        }
+        
+        // Filter payments for this agreement (if agreement_id is available in payment data)
+        $agreement_payments = array();
+        if (is_array($payments)) {
+            foreach ($payments as $payment) {
+                // Check if this payment belongs to the cancelled agreement
+                if (isset($payment['agreement_id']) && $payment['agreement_id'] === $agreement_id) {
+                    $agreement_payments[] = $payment;
+                }
+            }
+        }
+        
+        if (!empty($agreement_payments)) {
+            $payments_html = $this->generate_payments_html($agreement_payments);
+            $order->update_meta_data('_coinsub_payments_display', $payments_html);
+            $order->save();
+        }
+    }
+    
+    /**
+     * Generate HTML for payments display
+     */
+    private function generate_payments_html($payments) {
+        $html = '<div class="coinsub-payments-section" style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="margin: 0 0 15px 0; color: #495057;">💳 Subscription Payments</h4>
+            <div class="payments-table" style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <thead>
+                        <tr style="background: #e9ecef;">
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Payment ID</th>
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Amount</th>
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Status</th>
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+        
+        foreach ($payments as $payment) {
+            $status_color = $payment['status'] === 'completed' ? '#28a745' : ($payment['status'] === 'failed' ? '#dc3545' : '#ffc107');
+            $amount = isset($payment['amount']) ? '$' . number_format($payment['amount'], 2) : 'N/A';
+            $date = isset($payment['created_at']) ? date('M j, Y g:i A', strtotime($payment['created_at'])) : 'N/A';
+            
+            $html .= '<tr>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">' . esc_html($payment['id'] ?? 'N/A') . '</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">' . esc_html($amount) . '</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6; color: ' . $status_color . '; font-weight: bold;">' . esc_html(ucfirst($payment['status'] ?? 'Unknown')) . '</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">' . esc_html($date) . '</td>
+            </tr>';
+        }
+        
+        $html .= '</tbody>
+                </table>
+            </div>
+        </div>';
+        
+        return $html;
+    }
+    
+    /**
+     * Display subscription status and payments in order details
+     */
+    public function display_subscription_status($order) {
+        if ($order->get_payment_method() !== 'coinsub') {
+            return;
+        }
+        
+        // Display cancelled message if exists
+        $cancelled_message = $order->get_meta('_coinsub_cancelled_message');
+        if (!empty($cancelled_message)) {
+            echo $cancelled_message;
+        }
+        
+        // Display payments if exists
+        $payments_display = $order->get_meta('_coinsub_payments_display');
+        if (!empty($payments_display)) {
+            echo $payments_display;
+        } else {
+            // For active subscriptions, try to fetch and display payments
+            $this->maybe_display_subscription_payments($order);
+        }
+    }
+
+    /**
+     * Maybe display subscription payments for active subscriptions
+     */
+    private function maybe_display_subscription_payments($order) {
+        $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
+        $agreement_id = $order->get_meta('_coinsub_agreement_id');
+        
+        if (!$is_subscription || empty($agreement_id)) {
+            return;
+        }
+        
+        // Only fetch once per page load to avoid multiple API calls
+        static $fetched_orders = array();
+        if (in_array($order->get_id(), $fetched_orders)) {
+            return;
+        }
+        $fetched_orders[] = $order->get_id();
+        
+        $api_client = new CoinSub_API_Client();
+        $payments = $api_client->get_all_payments();
+        
+        if (is_wp_error($payments)) {
+            return;
+        }
+        
+        // Filter payments for this agreement
+        $agreement_payments = array();
+        if (is_array($payments)) {
+            foreach ($payments as $payment) {
+                if (isset($payment['agreement_id']) && $payment['agreement_id'] === $agreement_id) {
+                    $agreement_payments[] = $payment;
+                }
+            }
+        }
+        
+        if (!empty($agreement_payments)) {
+            $payments_html = $this->generate_payments_html($agreement_payments);
+            echo $payments_html;
+        }
+    }
+
     /**
      * Get blockchain explorer URL using OKLink (supports all networks)
      */
@@ -241,6 +400,8 @@ class CoinSub_Order_Manager {
             '42161' => 'arbitrum',  // Arbitrum One
             '10' => 'optimism',     // Optimism
             '8453' => 'base',       // Base
+            '421613' => 'sepolia',  // Sepolia Testnet
+            
         );
         
         // Get network name or default to polygon
@@ -364,7 +525,7 @@ class CoinSub_Order_Manager {
         if ($refund_requested === 'yes') {
             echo '<div class="coinsub-refund-info" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin: 20px 0; border-radius: 5px;">';
             echo '<h3>Refund Requested</h3>';
-            echo '<p>You have requested a refund for this order. We will process it within 1-2 business days.</p>';
+            echo '<p>You have requested a refund for this order.</p>';
             echo '</div>';
             return;
         }
@@ -384,7 +545,7 @@ class CoinSub_Order_Manager {
         ?>
         <div class="coinsub-refund-section" style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; margin: 20px 0; border-radius: 8px;">
             <h3>Request Refund</h3>
-            <p>If you need to request a refund for this order, please click the button below. Refunds will be processed within 1-2 business days.</p>
+            <p>If you need to request a refund for this order, please click the button below.</p>
             
             <button type="button" id="coinsub-request-refund" class="button" 
                     data-order-id="<?php echo esc_attr($order->get_id()); ?>"
@@ -470,7 +631,7 @@ class CoinSub_Order_Manager {
         $this->send_refund_notification($order, $_POST['purchase_session_id']);
         
         wp_send_json_success(array(
-            'message' => 'Refund request submitted. We will process it within 1-2 business days.'
+            'message' => 'Refund request submitted.'
         ));
     }
     
@@ -505,200 +666,8 @@ class CoinSub_Order_Manager {
         $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
         $order_total = $order->get_total();
         
-        if ($refund_requested === 'yes' || $refund_processed === 'yes') {
-            echo '<h3>CoinSub Refund Status</h3>';
-            echo '<table class="form-table">';
-            
-            if ($refund_requested === 'yes') {
-                $requested_date = $order->get_meta('_coinsub_refund_requested_date');
-                echo '<tr><th>Refund Requested:</th><td>Yes (' . $requested_date . ')</td></tr>';
-            }
-            
-            if ($refund_processed === 'yes') {
-                $processed_date = $order->get_meta('_coinsub_refund_processed_date');
-                $refund_amount = $order->get_meta('_coinsub_refund_amount') ?: $order_total;
-                $tx_hash = $order->get_meta('_coinsub_refund_tx_hash');
-                echo '<tr><th>Refund Processed:</th><td>Yes (' . $processed_date . ')</td></tr>';
-                echo '<tr><th>Refund Amount:</th><td>' . wc_price($refund_amount) . '</td></tr>';
-                if ($tx_hash) {
-                    echo '<tr><th>Transaction Hash:</th><td>' . esc_html($tx_hash) . '</td></tr>';
-                }
-            } elseif ($refund_requested === 'yes') {
-                // Show process refund form
-                echo '<tr><th>Action:</th><td>';
-                echo '<div id="coinsub-refund-form" style="background: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">';
-                
-                if ($is_subscription) {
-                    echo '<h4>Process Subscription Refund</h4>';
-                    echo '<p><strong>Original Amount:</strong> ' . wc_price($order_total) . '</p>';
-                    echo '<p><strong>Enter refund amount:</strong></p>';
-                    echo '<input type="number" id="refund-amount" step="0.01" min="0" max="' . $order_total . '" value="' . $order_total . '" style="width: 150px; margin-right: 10px;">';
-                    echo '<span style="color: #666;">(' . get_woocommerce_currency_symbol() . ')</span>';
-                } else {
-                    echo '<h4>Process Refund</h4>';
-                    echo '<p><strong>Amount:</strong> ' . wc_price($order_total) . '</p>';
-                    echo '<input type="hidden" id="refund-amount" value="' . $order_total . '">';
-                }
-                
-                echo '<br><br>';
-                echo '<button type="button" class="button button-primary" id="coinsub-process-refund" data-order-id="' . $order->get_id() . '">Process Refund</button>';
-                echo '<button type="button" class="button" id="coinsub-cancel-refund" data-order-id="' . $order->get_id() . '" style="margin-left: 10px;">Cancel Request</button>';
-                echo '</div>';
-                echo '</td></tr>';
-            }
-            
-            echo '</table>';
-            
-            // Add JavaScript for admin refund processing
-            if ($refund_requested === 'yes' && $refund_processed !== 'yes') {
-                ?>
-                <script type="text/javascript">
-                jQuery(document).ready(function($) {
-                    $('#coinsub-process-refund').on('click', function() {
-                        var orderId = $(this).data('order-id');
-                        var refundAmount = $('#refund-amount').val();
-                        var button = $(this);
-                        
-                        if (!refundAmount || refundAmount <= 0) {
-                            alert('Please enter a valid refund amount');
-                            return;
-                        }
-                        
-                        button.prop('disabled', true).text('Processing...');
-                        
-                        $.ajax({
-                            url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                            type: 'POST',
-                            data: {
-                                action: 'coinsub_admin_process_refund',
-                                order_id: orderId,
-                                refund_amount: refundAmount,
-                                nonce: '<?php echo wp_create_nonce('coinsub_admin_refund_nonce'); ?>'
-                            },
-                            success: function(response) {
-                                if (response.success) {
-                                    alert('Refund processed: ' + response.data.message);
-                                    location.reload();
-                                } else {
-                                    alert('Error: ' + response.data);
-                                    button.prop('disabled', false).text('Process Refund');
-                                }
-                            },
-                            error: function() {
-                                alert('An error occurred. Please try again.');
-                                button.prop('disabled', false).text('Process Refund');
-                            }
-                        });
-                    });
-                    
-                    $('#coinsub-cancel-refund').on('click', function() {
-                        if (confirm('Are you sure you want to cancel this refund request?')) {
-                            var orderId = $(this).data('order-id');
-                            var button = $(this);
-                            
-                            button.prop('disabled', true).text('Cancelling...');
-                            
-                            $.ajax({
-                                url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                                type: 'POST',
-                                data: {
-                                    action: 'coinsub_admin_cancel_refund',
-                                    order_id: orderId,
-                                    nonce: '<?php echo wp_create_nonce('coinsub_admin_refund_nonce'); ?>'
-                                },
-                                success: function(response) {
-                                    if (response.success) {
-                                        alert('Refund request cancelled');
-                                        location.reload();
-                                    } else {
-                                        alert('Error: ' + response.data);
-                                        button.prop('disabled', false).text('Cancel Request');
-                                    }
-                                },
-                                error: function() {
-                                    alert('An error occurred. Please try again.');
-                                    button.prop('disabled', false).text('Cancel Request');
-                                }
-                            });
-                        }
-                    });
-                });
-                </script>
-                <?php
-            }
-        }
+        // Custom refund status section removed - using WooCommerce standard refund interface
     }
     
-    /**
-     * AJAX handler for admin refund processing
-     */
-    public function ajax_admin_process_refund() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['nonce'], 'coinsub_admin_refund_nonce')) {
-            wp_die('Security check failed');
-        }
-        
-        // Check admin permissions
-        if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('Insufficient permissions');
-        }
-        
-        $order_id = intval($_POST['order_id']);
-        $refund_amount = floatval($_POST['refund_amount']);
-        $order = wc_get_order($order_id);
-        
-        if (!$order) {
-            wp_send_json_error('Order not found');
-        }
-        
-        if ($refund_amount <= 0) {
-            wp_send_json_error('Invalid refund amount');
-        }
-        
-        // Store refund amount
-        $order->update_meta_data('_coinsub_refund_amount', $refund_amount);
-        $order->save();
-        
-        // Mark as processed (simplified for now)
-        $order->update_meta_data('_coinsub_refund_processed', 'yes');
-        $order->update_meta_data('_coinsub_refund_processed_date', current_time('mysql'));
-        $order->add_order_note('Refund processed via CoinSub admin panel');
-        $order->save();
-        
-        wp_send_json_success(array(
-            'message' => 'Refund processed successfully'
-        ));
-    }
-    
-    /**
-     * AJAX handler for admin refund cancellation
-     */
-    public function ajax_admin_cancel_refund() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['nonce'], 'coinsub_admin_refund_nonce')) {
-            wp_die('Security check failed');
-        }
-        
-        // Check admin permissions
-        if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('Insufficient permissions');
-        }
-        
-        $order_id = intval($_POST['order_id']);
-        $order = wc_get_order($order_id);
-        
-        if (!$order) {
-            wp_send_json_error('Order not found');
-        }
-        
-        // Remove refund metadata
-        $order->delete_meta_data('_coinsub_refund_requested');
-        $order->delete_meta_data('_coinsub_refund_requested_date');
-        $order->add_order_note('Refund request cancelled by admin');
-        $order->save();
-        
-        wp_send_json_success(array(
-            'message' => 'Refund request cancelled successfully'
-        ));
-    }
+    // AJAX handlers removed - using WooCommerce standard refund system
 }
