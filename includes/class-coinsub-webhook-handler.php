@@ -284,6 +284,7 @@ class CoinSub_Webhook_Handler {
         $order->save();
         
         // Send order confirmation email to customer
+        error_log('📧 CoinSub Webhook: About to send customer email for order #' . $order->get_id());
         $this->send_order_confirmation_email($order);
         
         // Clear cart and session data since payment is now complete (only if available)
@@ -589,53 +590,66 @@ class CoinSub_Webhook_Handler {
         foreach ($order->get_items() as $item_id => $item) {
             $product_name = $item->get_name();
             $quantity = $item->get_quantity();
-            $total = $order->get_formatted_line_subtotal($item);
-            $items_list .= sprintf("• %s × %d - %s\n", $product_name, $quantity, $total);
+            $line_total = $order->get_line_total($item);
+            $items_list .= sprintf("• %s × %d - $%s\n", $product_name, $quantity, number_format($line_total, 2));
         }
         
         // Get shipping address
         $shipping_address = $order->get_formatted_shipping_address();
         
         $message = sprintf(
-            "A new payment has been received via Coinsub!\n\n" .
-            "Order Details:\n" .
+            "🚨 NEW PAYMENT RECEIVED" .
+            "==========================================\n\n" .
+            "A customer has successfully completed a payment via Coinsub.\n\n" .
+            "📋 ORDER INFORMATION:\n" .
             "Order ID: #%s\n" .
-            "Customer: %s %s (%s)\n" .
-            "Amount: %s\n\n" .
-            "Items Ordered%s:\n" .
+            "Customer: %s %s\n" .
+            "Email: %s\n" .
+            "Payment Amount: %s\n" .
+            "Order Type: %s\n\n" .
+            "🛍️ ITEMS PURCHASED:\n" .
             "%s\n" .
-            "Price Breakdown:\n" .
+            "💰 FINANCIAL BREAKDOWN:\n" .
             "Subtotal: %s\n" .
-            "Shipping: %s\n" .
-            "Tax: %s\n" .
-            "Total: %s\n\n" .
-            "Shipping Address:\n" .
+            "Shipping Cost: %s\n" .
+            "Tax Amount: %s\n" .
+            "TOTAL RECEIVED: %s\n\n" .
+            "📍 SHIPPING INFORMATION:\n" .
             "%s\n\n" .
-            "Transaction Details:\n" .
+            "🔗 CRYPTO TRANSACTION:\n" .
             "Transaction Hash: %s\n" .
             "Transaction ID: %s\n" .
-            "Chain ID: %s\n\n" .
-            "View Order: %s\n\n" .
-            "This is an automated notification from your Coinsub payment gateway.",
+            "Blockchain: %s (Chain ID: %s)\n\n" .
+            "⚡ NEXT STEPS:\n" .
+            "1. Review order details\n" .
+            "2. Prepare items for shipping\n" .
+            "3. Update order status when shipped\n\n" .
+            "🔗 VIEW ORDER: %s\n\n" .
+            "---\n" .
+            "This is an automated notification from your Coinsub payment gateway.\n" .
+            "Please process this order promptly to maintain customer satisfaction.",
             $order->get_id(),
             $order->get_billing_first_name(),
             $order->get_billing_last_name(),
             $order->get_billing_email(),
             $order->get_formatted_order_total(),
-            $subscription_text,
+            $is_subscription ? 'SUBSCRIPTION' : 'ONE-TIME',
             $items_list,
-            wc_price($subtotal),
-            wc_price($shipping_total),
-            wc_price($tax_total),
-            wc_price($total),
+            '$' . number_format($subtotal, 2),
+            '$' . number_format($shipping_total, 2),
+            '$' . number_format($tax_total, 2),
+            '$' . number_format($total, 2),
             $shipping_address ?: 'No shipping address provided',
             $transaction_hash,
             $transaction_id,
+            $this->get_network_name($chain_id),
             $chain_id,
             admin_url('post.php?post=' . $order->get_id() . '&action=edit')
         );
         
         $headers = array('Content-Type: text/plain; charset=UTF-8');
+        
+        error_log('📧 CoinSub Webhook: Sending merchant email to: ' . $merchant_email);
         
         if (wp_mail($merchant_email, $subject, $message, $headers)) {
             error_log('✅ CoinSub Webhook: Custom merchant notification sent to: ' . $merchant_email);
@@ -644,22 +658,29 @@ class CoinSub_Webhook_Handler {
         }
     }
     
+    
     /**
      * Send order confirmation email to customer
      */
     private function send_order_confirmation_email($order) {
+        error_log('📧 CoinSub Webhook: Starting customer email process for order #' . $order->get_id());
+        
         // Get email from the logged-in user account, not billing email
         $customer_email = null;
         $customer_name = 'Customer';
         
         // First try to get from the WordPress user account
         $user_id = $order->get_user_id();
+        error_log('📧 CoinSub Webhook: Order user ID: ' . ($user_id ?: 'No user ID'));
+        
         if ($user_id) {
             $user = get_user_by('id', $user_id);
             if ($user) {
                 $customer_email = $user->user_email;
                 $customer_name = $user->display_name ?: $user->first_name ?: 'Customer';
-                error_log('✅ CoinSub Webhook: Using account holder email: ' . $customer_email);
+                error_log('✅ CoinSub Webhook: Using account holder email: ' . $customer_email . ' (Name: ' . $customer_name . ')');
+            } else {
+                error_log('❌ CoinSub Webhook: User not found for ID: ' . $user_id);
             }
         }
         
@@ -667,7 +688,7 @@ class CoinSub_Webhook_Handler {
         if (empty($customer_email)) {
             $customer_email = $order->get_billing_email();
             $customer_name = $order->get_billing_first_name() ?: 'Customer';
-            error_log('⚠️ CoinSub Webhook: No user account, using billing email: ' . $customer_email);
+            error_log('⚠️ CoinSub Webhook: No user account, using billing email: ' . $customer_email . ' (Name: ' . $customer_name . ')');
         }
         
         if (empty($customer_email)) {
@@ -691,12 +712,12 @@ class CoinSub_Webhook_Handler {
         foreach ($order->get_items() as $item_id => $item) {
             $product_name = $item->get_name();
             $quantity = $item->get_quantity();
-            $total = $order->get_formatted_line_subtotal($item);
+            $line_total = $order->get_line_total($item);
             $items_html .= sprintf(
-                '<p>• %s × %d - %s</p>',
+                '<p>• %s × %d - $%s</p>',
                 esc_html($product_name),
                 $quantity,
-                $total
+                number_format($line_total, 2)
             );
         }
         
@@ -721,62 +742,64 @@ class CoinSub_Webhook_Handler {
         $message = sprintf(
             '<html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">Order Confirmation</h2>
+                <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">🎉 Thank You for Your Order!</h2>
                 
-                <p>Hello %s,</p>
+                <p>Hi %s,</p>
                 
-                <p>A new payment has been received via Coinsub!</p>
+                <p>Great news! Your payment has been successfully processed and your order is confirmed.</p>
                 
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #2c3e50;">Order Details:</h3>
-                    <p><strong>Order ID:</strong> #%s</p>
-                    <p><strong>Customer:</strong> %s (%s)</p>
-                    <p><strong>Amount:</strong> %s</p>
+                <div style="background: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #27ae60;">
+                    <h3 style="margin-top: 0; color: #27ae60;">✅ Order Confirmed</h3>
+                    <p><strong>Order #%s</strong></p>
+                    <p><strong>Total Paid:</strong> %s</p>
+                    <p><strong>Payment Method:</strong> Coinsub (Crypto)</p>
                 </div>
                 
                 <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #2c3e50;">Items Ordered%s:</h3>
+                    <h3 style="margin-top: 0; color: #2c3e50;">📦 What You Ordered%s:</h3>
                     %s
                 </div>
                 
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #2c3e50;">Price Breakdown:</h3>
-                    <p><strong>Subtotal:</strong> %s</p>
-                    <p><strong>Shipping:</strong> %s</p>
-                    <p><strong>Tax:</strong> %s</p>
-                    <p><strong>Total:</strong> %s</p>
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
+                    <h3 style="margin-top: 0; color: #856404;">💰 Order Summary:</h3>
+                    <p>Subtotal: %s</p>
+                    <p>Shipping: %s</p>
+                    <p>Tax: %s</p>
+                    <p><strong>Total: %s</strong></p>
                 </div>
                 
                 <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #2c3e50;">Shipping Address:</h3>
+                    <h3 style="margin-top: 0; color: #2c3e50;">📍 Delivery Address:</h3>
                     %s
                 </div>
                 
-                <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #27ae60;">Transaction Details:</h3>
-                    <p><strong>Transaction Hash:</strong> %s</p>
-                    <p><strong>Transaction ID:</strong> %s</p>
-                    <p><strong>Chain ID:</strong> %s</p>
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h3 style="margin-top: 0; color: #1976d2;">🔗 Transaction Details:</h3>
+                    <p><strong>Transaction Hash:</strong> <code style="background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 12px;">%s</code></p>
+                    <p><strong>Network:</strong> %s</p>
                 </div>
                 
-                <p>This is an automated notification from your Coinsub payment gateway.</p>
+                <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h3 style="margin-top: 0; color: #1976d2;">📧 What\'s Next?</h3>
+                    <p>You\'ll receive another email when your order ships. If you have any questions, feel free to contact us!</p>
+                </div>
+                
+                <p>Thanks for choosing us!</p>
+                <p><strong>The Team</strong></p>
             </div>
             </body></html>',
             esc_html($customer_name),
             $order_id,
-            esc_html($customer_name),
-            $customer_email,
             $order_total,
             $subscription_text,
             $items_html,
-            wc_price($subtotal),
-            wc_price($shipping_total),
-            wc_price($tax_total),
-            wc_price($total),
+            '$' . number_format($subtotal, 2),
+            '$' . number_format($shipping_total, 2),
+            '$' . number_format($tax_total, 2),
+            '$' . number_format($total, 2),
             $shipping_address ?: '<em>No shipping address provided</em>',
             $transaction_hash ?: 'N/A',
-            $order->get_meta('_coinsub_transaction_id') ?: 'N/A',
-            $chain_id ?: 'N/A'
+            $this->get_network_name($chain_id)
         );
         
         // Email headers
@@ -786,14 +809,12 @@ class CoinSub_Webhook_Handler {
         );
         
         // Send email
-        error_log('📧 CoinSub Webhook: Sending order confirmation email to account holder: ' . $customer_email . ' (Name: ' . $customer_name . ')');
+        error_log('📧 CoinSub Webhook: Sending order confirmation email to: ' . $customer_email);
         
         if (wp_mail($customer_email, $subject, $message, $headers)) {
             error_log('✅ CoinSub Webhook: Order confirmation email sent successfully to: ' . $customer_email);
         } else {
-            error_log('❌ CoinSub Webhook: Failed to send custom order confirmation email, trying WooCommerce default');
-            
-            // Fallback to WooCommerce's built-in email system
+            error_log('❌ CoinSub Webhook: Failed to send customer email, trying WooCommerce fallback');
             $this->send_woocommerce_order_email($order);
         }
     }
@@ -832,7 +853,8 @@ class CoinSub_Webhook_Handler {
             '10' => 'Optimism',
             '420' => 'Optimism Sepolia',
             '8453' => 'Base',
-            '84532' => 'Base Sepolia'
+            '84532' => 'Base Sepolia',
+            '421613' => 'Arbitrum Nova'
         );
         
         return isset($networks[$chain_id]) ? $networks[$chain_id] : 'Chain ID ' . $chain_id;
