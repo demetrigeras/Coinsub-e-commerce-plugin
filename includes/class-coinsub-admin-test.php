@@ -33,10 +33,14 @@ class CoinSub_Admin_Test {
      * Display API test page
      */
     public function display_test_page() {
-        // Handle test action
+        // Handle test actions
         $test_result = null;
         if (isset($_POST['run_test']) && check_admin_referer('coinsub-api-test')) {
             $test_result = $this->run_api_test();
+        }
+        
+        if (isset($_POST['test_email']) && check_admin_referer('coinsub-api-test')) {
+            $test_result = $this->test_email_system();
         }
         
         ?>
@@ -47,9 +51,14 @@ class CoinSub_Admin_Test {
                 <h2>Test Your CoinSub API Connection</h2>
                 <p>This will create a test product and order in your <strong>DEV</strong> environment.</p>
                 
-                <form method="post">
+                <form method="post" style="display: inline-block; margin-right: 10px;">
                     <?php wp_nonce_field('coinsub-api-test'); ?>
                     <input type="submit" name="run_test" class="button button-primary button-large" value="🚀 Run API Test" />
+                </form>
+                
+                <form method="post" style="display: inline-block;">
+                    <?php wp_nonce_field('coinsub-api-test'); ?>
+                    <input type="submit" name="test_email" class="button button-secondary button-large" value="📧 Test Email System" />
                 </form>
                 
                 <?php if ($test_result): ?>
@@ -178,6 +187,58 @@ class CoinSub_Admin_Test {
         $output .= '• Order linked to session ✅<br>';
         $output .= '<br>🔗 Test checkout URL: <a href="' . esc_url($checkout_url) . '" target="_blank" style="color: #00ff00;">' . esc_html($checkout_url) . '</a>';
         $output .= '</div>';
+        
+        $output .= '</div>';
+        return $output;
+    }
+    
+    /**
+     * Test email system
+     */
+    private function test_email_system() {
+        $admin_email = get_option('admin_email');
+        $site_name = get_bloginfo('name');
+        
+        $output = '<div style="background: #1e1e1e; color: #00ff00; padding: 20px; border-radius: 5px; font-family: monospace; font-size: 13px; max-height: 500px; overflow-y: scroll;">';
+        
+        if (empty($admin_email)) {
+            $output .= '<div style="color: #ff5555;">❌ FAILED: No admin email configured</div>';
+            $output .= '</div>';
+            return $output;
+        }
+        
+        $output .= '<div style="color: #ffff00;">📧 TESTING EMAIL SYSTEM...</div>';
+        $output .= '<div style="color: #00ff00;">Admin Email: ' . esc_html($admin_email) . '</div>';
+        $output .= '<div style="color: #00ff00;">Site Name: ' . esc_html($site_name) . '</div>';
+        
+        $subject = '[CoinSub Test] Email System Test';
+        $message = "This is a test email from CoinSub plugin.\n\n";
+        $message .= "Site: " . $site_name . "\n";
+        $message .= "Admin Email: " . $admin_email . "\n";
+        $message .= "Time: " . current_time('mysql') . "\n\n";
+        $message .= "If you receive this email, the email system is working correctly.";
+        
+        $headers = array(
+            'Content-Type' => 'text/plain; charset=UTF-8',
+            'From: ' . $site_name . ' <' . $admin_email . '>',
+            'Reply-To: ' . $admin_email,
+            'X-Mailer: CoinSub WooCommerce Plugin v' . COINSUB_VERSION
+        );
+        
+        error_log('📧 CoinSub Test: Sending test email to: ' . $admin_email);
+        
+        $result = wp_mail($admin_email, $subject, $message, $headers);
+        
+        if ($result) {
+            $output .= '<div style="color: #00ff00; margin-top: 10px;">✅ SUCCESS! Test email sent to ' . esc_html($admin_email) . '</div>';
+            $output .= '<div style="color: #00ff00;">Check your email inbox for the test message.</div>';
+        } else {
+            global $phpmailer;
+            $error_info = isset($phpmailer) && !empty($phpmailer->ErrorInfo) ? $phpmailer->ErrorInfo : 'Unknown error';
+            
+            $output .= '<div style="color: #ff5555; margin-top: 10px;">❌ FAILED: ' . esc_html($error_info) . '</div>';
+            $output .= '<div style="color: #ff5555;">Check your WordPress email configuration.</div>';
+        }
         
         $output .= '</div>';
         return $output;

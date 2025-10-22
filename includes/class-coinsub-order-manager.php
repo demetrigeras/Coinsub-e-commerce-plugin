@@ -218,34 +218,9 @@ class CoinSub_Order_Manager {
         $message .= "This is an automated notification from your Coinsub payment gateway.\n";
         $message .= "Please process this order promptly to maintain customer satisfaction.";
         
-        // Use WooCommerce API for order management and email delivery
-        $wc_credentials = $this->get_wc_api_credentials();
-        
-        if ($wc_credentials && !empty($wc_credentials['key']) && !empty($wc_credentials['secret'])) {
-            error_log('📧 CoinSub Order Manager: Using WooCommerce API for order management and email delivery');
-            
-            // Get order details via API
-            $order_data = $this->get_order_via_api($order->get_id(), $wc_credentials);
-            
-            if ($order_data) {
-                error_log('✅ CoinSub Order Manager: Order #' . $order->get_id() . ' retrieved via WooCommerce API');
-                error_log('📊 Order Status: ' . $order_data['status']);
-                error_log('📊 Payment Method: ' . $order_data['payment_method']);
-                error_log('📊 Total: ' . $order_data['total']);
-            }
-            
-            // Send email via WooCommerce API
-            $success = $this->send_email_via_wc_api($merchant_email, $subject, $message, $wc_credentials);
-            
-            if (!$success) {
-                error_log('❌ CoinSub Order Manager: WooCommerce API email failed, using wp_mail fallback');
-                $this->send_email_via_wp_mail($merchant_email, $subject, $message);
-            }
-        } else {
-            // No WooCommerce API credentials, use wp_mail directly
-            error_log('📧 CoinSub Order Manager: No WooCommerce API credentials configured, using wp_mail');
-            $this->send_email_via_wp_mail($merchant_email, $subject, $message);
-        }
+        // Use simple wp_mail for email delivery
+        error_log('📧 CoinSub Order Manager: Using wp_mail for email delivery');
+        $this->send_email_via_wp_mail($merchant_email, $subject, $message);
     }
     
     /**
