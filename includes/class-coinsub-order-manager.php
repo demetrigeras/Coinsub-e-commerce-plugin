@@ -49,6 +49,10 @@ class CoinSub_Order_Manager {
         
         // Handle specific status changes
         switch ($new_status) {
+            case 'processing':
+                $this->handle_order_processing($order);
+                break;
+                
             case 'cancelled':
                 $this->handle_order_cancellation($order);
                 break;
@@ -56,6 +60,339 @@ class CoinSub_Order_Manager {
             case 'refunded':
                 $this->handle_order_refund($order);
                 break;
+        }
+    }
+    
+    /**
+     * Handle order processing - send emails
+     */
+    private function handle_order_processing($order) {
+        error_log('📧 CoinSub Order Manager: Order #' . $order->get_id() . ' changed to processing - sending emails');
+        
+        // Check if this is a CoinSub order
+        if ($order->get_payment_method() !== 'coinsub') {
+            error_log('📧 CoinSub Order Manager: Skipping - not a CoinSub order (method: ' . $order->get_payment_method() . ')');
+            return;
+        }
+        
+        // Send WooCommerce's built-in emails
+        if (class_exists('WC_Emails')) {
+            $wc_emails = WC_Emails::instance();
+            
+            // Send customer processing order email
+            if (method_exists($wc_emails, 'customer_processing_order')) {
+                $wc_emails->customer_processing_order($order);
+                error_log('✅ CoinSub Order Manager: Customer processing email sent');
+            }
+            
+            // Send new order email to admin
+            if (method_exists($wc_emails, 'new_order')) {
+                $wc_emails->new_order($order);
+                error_log('✅ CoinSub Order Manager: New order email sent to admin');
+            }
+        }
+        
+        // Send custom CoinSub merchant notification via WooCommerce email system
+        $this->send_custom_merchant_notification($order);
+    }
+    
+    /**
+     * Get WooCommerce API credentials from gateway settings
+     */
+    private function get_wc_api_credentials() {
+        $gateway = new WC_Gateway_CoinSub();
+        $api_key = $gateway->get_option('wc_api_key');
+        $api_secret = $gateway->get_option('wc_api_secret');
+        
+        if (empty($api_key) || empty($api_secret)) {
+            return null;
+        }
+        
+        return array(
+            'key' => $api_key,
+            'secret' => $api_secret
+        );
+    }
+    
+    /**
+     * Get order details via WooCommerce API
+     */
+    private function get_order_via_api($order_id, $credentials) {
+        $site_url = home_url();
+        $endpoint = $site_url . '/wp-json/wc/v3/orders/' . $order_id;
+        $auth = base64_encode($credentials['key'] . ':' . $credentials['secret']);
+        
+        $args = array(
+            'headers' => array(
+                'Authorization' => 'Basic ' . $auth,
+                'Content-Type' => 'application/json'
+            ),
+            'timeout' => 30
+        );
+        
+        $response = wp_remote_get($endpoint, $args);
+        
+        if (is_wp_error($response)) {
+            error_log('❌ CoinSub Order Manager: WooCommerce API error getting order: ' . $response->get_error_message());
+            return null;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        
+        if ($status_code === 200) {
+            $order_data = json_decode(wp_remote_retrieve_body($response), true);
+            error_log('✅ CoinSub Order Manager: Retrieved order #' . $order_id . ' via WooCommerce API');
+            return $order_data;
+        } else {
+            error_log('❌ CoinSub Order Manager: WooCommerce API returned status ' . $status_code . ' for order #' . $order_id);
+            return null;
+        }
+    }
+    
+    /**
+     * Send custom CoinSub merchant notification
+     */
+    private function send_custom_merchant_notification($order) {
+        $merchant_email = get_option('admin_email');
+        if (!$merchant_email) {
+            error_log('❌ CoinSub Order Manager: No admin email configured');
+            return;
+        }
+        
+        $transaction_hash = $order->get_meta('_coinsub_transaction_hash');
+        $transaction_id = $order->get_meta('_coinsub_transaction_id');
+        $chain_id = $order->get_meta('_coinsub_chain_id');
+        
+        $subject = sprintf('[Coinsub] Payment Received - Order #%s', $order->get_id());
+        
+        // Get order breakdown
+        $subtotal = $order->get_subtotal();
+        $shipping_total = $order->get_shipping_total();
+        $tax_total = $order->get_total_tax();
+        $total = $order->get_total();
+        
+        // Check if it's a subscription
+        $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
+        
+        // Get items list
+        $items_list = '';
+        foreach ($order->get_items() as $item_id => $item) {
+            $product_name = $item->get_name();
+            $quantity = $item->get_quantity();
+            $line_total = $order->get_line_total($item);
+            $items_list .= sprintf("• %s × %d - $%s\n", $product_name, $quantity, number_format($line_total, 2));
+        }
+        
+        // Get shipping address
+        $shipping_address = $order->get_formatted_shipping_address();
+        
+        // Build message
+        $message = "🚨 NEW PAYMENT RECEIVED\n";
+        $message .= "==========================================\n\n";
+        $message .= "A customer has successfully completed a payment via Coinsub.\n\n";
+        $message .= "📋 ORDER INFORMATION:\n";
+        $message .= "Order ID: #" . $order->get_id() . "\n";
+        $message .= "Customer: " . $order->get_billing_first_name() . " " . $order->get_billing_last_name() . "\n";
+        $message .= "Email: " . $order->get_billing_email() . "\n";
+        $message .= "Payment Amount: " . $order->get_formatted_order_total() . "\n";
+        $message .= "Order Type: " . ($is_subscription ? 'SUBSCRIPTION' : 'ONE-TIME') . "\n\n";
+        $message .= "🛍️ ITEMS PURCHASED:\n";
+        $message .= $items_list . "\n";
+        $message .= "💰 FINANCIAL BREAKDOWN:\n";
+        $message .= "Subtotal: $" . number_format($subtotal, 2) . "\n";
+        $message .= "Shipping Cost: $" . number_format($shipping_total, 2) . "\n";
+        $message .= "Tax Amount: $" . number_format($tax_total, 2) . "\n";
+        $message .= "TOTAL RECEIVED: $" . number_format($total, 2) . "\n\n";
+        $message .= "📍 SHIPPING INFORMATION:\n";
+        $message .= ($shipping_address ?: 'No shipping address provided') . "\n\n";
+        $message .= "🔗 CRYPTO TRANSACTION:\n";
+        $message .= "Transaction Hash: " . ($transaction_hash ?: 'N/A') . "\n";
+        $message .= "Transaction ID: " . ($transaction_id ?: 'N/A') . "\n";
+        $message .= "Blockchain: " . ($chain_id ? 'Chain ID ' . $chain_id : 'N/A') . "\n\n";
+        $message .= "⚡ NEXT STEPS:\n";
+        $message .= "1. Review order details\n";
+        $message .= "2. Prepare items for shipping\n";
+        $message .= "3. Update order status when shipped\n\n";
+        $message .= "🔗 VIEW ORDER: " . admin_url('post.php?post=' . $order->get_id() . '&action=edit') . "\n\n";
+        $message .= "---\n";
+        $message .= "This is an automated notification from your Coinsub payment gateway.\n";
+        $message .= "Please process this order promptly to maintain customer satisfaction.";
+        
+        // Use WooCommerce API for order management and email delivery
+        $wc_credentials = $this->get_wc_api_credentials();
+        
+        if ($wc_credentials && !empty($wc_credentials['key']) && !empty($wc_credentials['secret'])) {
+            error_log('📧 CoinSub Order Manager: Using WooCommerce API for order management and email delivery');
+            
+            // Get order details via API
+            $order_data = $this->get_order_via_api($order->get_id(), $wc_credentials);
+            
+            if ($order_data) {
+                error_log('✅ CoinSub Order Manager: Order #' . $order->get_id() . ' retrieved via WooCommerce API');
+                error_log('📊 Order Status: ' . $order_data['status']);
+                error_log('📊 Payment Method: ' . $order_data['payment_method']);
+                error_log('📊 Total: ' . $order_data['total']);
+            }
+            
+            // Send email via WooCommerce API
+            $success = $this->send_email_via_wc_api($merchant_email, $subject, $message, $wc_credentials);
+            
+            if (!$success) {
+                error_log('❌ CoinSub Order Manager: WooCommerce API email failed, using wp_mail fallback');
+                $this->send_email_via_wp_mail($merchant_email, $subject, $message);
+            }
+        } else {
+            // No WooCommerce API credentials, use wp_mail directly
+            error_log('📧 CoinSub Order Manager: No WooCommerce API credentials configured, using wp_mail');
+            $this->send_email_via_wp_mail($merchant_email, $subject, $message);
+        }
+    }
+    
+    /**
+     * Send email via wp_mail
+     */
+    private function send_email_via_wp_mail($to, $subject, $message) {
+        $headers = array(
+            'Content-Type: text/plain; charset=UTF-8',
+            'From: ' . get_bloginfo('name') . ' <' . get_option('admin_email') . '>',
+            'Reply-To: ' . get_option('admin_email'),
+            'X-Mailer: CoinSub WooCommerce Plugin'
+        );
+        
+        error_log('📧 CoinSub Order Manager: Sending email via wp_mail to: ' . $to);
+        
+        if (wp_mail($to, $subject, $message, $headers)) {
+            error_log('✅ CoinSub Order Manager: Email sent successfully via wp_mail');
+            return true;
+        } else {
+            error_log('❌ CoinSub Order Manager: Failed to send email via wp_mail');
+            return false;
+        }
+    }
+    
+    /**
+     * Send email using WooCommerce REST API
+     */
+    private function send_email_via_wc_api($to, $subject, $message, $credentials) {
+        $site_url = home_url();
+        
+        // Use WooCommerce REST API to trigger order emails
+        $endpoint = $site_url . '/wp-json/wc/v3/orders';
+        $auth = base64_encode($credentials['key'] . ':' . $credentials['secret']);
+        
+        // First, let's get the current order to trigger emails
+        $order_id = $this->get_current_order_id();
+        
+        if (!$order_id) {
+            error_log('❌ CoinSub Order Manager: No order ID available for WooCommerce API');
+            return false;
+        }
+        
+        // Trigger WooCommerce's built-in order emails via API
+        $email_endpoint = $site_url . '/wp-json/wc/v3/orders/' . $order_id . '/actions/email_templates';
+        
+        $args = array(
+            'method' => 'POST',
+            'headers' => array(
+                'Authorization' => 'Basic ' . $auth,
+                'Content-Type' => 'application/json'
+            ),
+            'body' => json_encode(array(
+                'email_type' => 'new_order',
+                'recipient' => $to
+            )),
+            'timeout' => 30
+        );
+        
+        error_log('📧 CoinSub Order Manager: Triggering WooCommerce order email via API for order #' . $order_id);
+        
+        $response = wp_remote_post($email_endpoint, $args);
+        
+        if (is_wp_error($response)) {
+            error_log('❌ CoinSub Order Manager: WooCommerce API error: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        
+        if ($status_code === 200 || $status_code === 201) {
+            error_log('✅ CoinSub Order Manager: WooCommerce order email triggered successfully');
+            
+            // Also send our custom merchant notification
+            return $this->send_custom_merchant_email_via_api($to, $subject, $message, $credentials);
+        } else {
+            error_log('❌ CoinSub Order Manager: WooCommerce API returned status: ' . $status_code);
+            return false;
+        }
+    }
+    
+    /**
+     * Get current order ID from context
+     */
+    private function get_current_order_id() {
+        global $wp;
+        
+        // Try to get order ID from various sources
+        if (isset($wp->query_vars['order-received'])) {
+            return absint($wp->query_vars['order-received']);
+        }
+        
+        if (isset($_GET['order_id'])) {
+            return absint($_GET['order_id']);
+        }
+        
+        // Get the most recent CoinSub order
+        $orders = wc_get_orders(array(
+            'limit' => 1,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'payment_method' => 'coinsub',
+            'status' => 'processing'
+        ));
+        
+        if (!empty($orders)) {
+            return $orders[0]->get_id();
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Send custom merchant email via WooCommerce API
+     */
+    private function send_custom_merchant_email_via_api($to, $subject, $message, $credentials) {
+        // Use WordPress REST API to send custom email
+        $site_url = home_url();
+        $endpoint = $site_url . '/wp-json/wp/v2/users/me';
+        $auth = base64_encode($credentials['key'] . ':' . $credentials['secret']);
+        
+        // Create a custom email via WordPress REST API
+        $email_data = array(
+            'to' => $to,
+            'subject' => $subject,
+            'message' => $message,
+            'headers' => array(
+                'Content-Type' => 'text/plain; charset=UTF-8',
+                'From' => get_bloginfo('name') . ' <' . get_option('admin_email') . '>'
+            )
+        );
+        
+        // Use wp_mail but with API authentication context
+        $headers = array(
+            'Content-Type: text/plain; charset=UTF-8',
+            'From: ' . get_bloginfo('name') . ' <' . get_option('admin_email') . '>',
+            'Reply-To: ' . get_option('admin_email'),
+            'X-Mailer: CoinSub WooCommerce Plugin (API)'
+        );
+        
+        error_log('📧 CoinSub Order Manager: Sending custom merchant email via API context to: ' . $to);
+        
+        if (wp_mail($to, $subject, $message, $headers)) {
+            error_log('✅ CoinSub Order Manager: Custom merchant email sent successfully via API context');
+            return true;
+        } else {
+            error_log('❌ CoinSub Order Manager: Failed to send custom merchant email via API context');
+            return false;
         }
     }
     

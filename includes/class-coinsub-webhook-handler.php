@@ -219,6 +219,18 @@ class CoinSub_Webhook_Handler {
         $order->update_status('processing', __('Payment received via CoinSub', 'coinsub'));
         error_log('CoinSub Webhook: Updated order status to processing');
         
+        // Debug: Check payment method
+        $payment_method = $order->get_payment_method();
+        error_log('CoinSub Webhook: Order payment method: ' . $payment_method);
+        
+        // Ensure payment method is set to coinsub
+        if ($payment_method !== 'coinsub') {
+            $order->set_payment_method('coinsub');
+            $order->set_payment_method_title('Pay with Coinsub');
+            $order->save();
+            error_log('CoinSub Webhook: Set payment method to coinsub');
+        }
+        
         // Add order note with transaction details
         $transaction_details = $data['transaction_details'] ?? array();
         $transaction_id = $transaction_details['transaction_id'] ?? 'N/A';

@@ -95,7 +95,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 <li><em>This is essential - without this, orders won't update when payments complete!</em></li>
             </ol>
             
-            <h4>Step 3: Fix WordPress Checkout Page</h4>
+            <h4>Step 3: Get WooCommerce API Keys (RECOMMENDED)</h4>
+            <ol style="line-height: 1.8;">
+                <li>Go to <strong>WooCommerce > Settings > Advanced > REST API</strong></li>
+                <li>Click <strong>"Add Key"</strong></li>
+                <li>Description: <code>CoinSub Integration</code></li>
+                <li>User: Select your admin user</li>
+                <li>Permissions: <strong>Read/Write</strong></li>
+                <li>Click <strong>"Generate API Key"</strong></li>
+                <li>Copy the <strong>Consumer Key</strong> and <strong>Consumer Secret</strong></li>
+                <li>Paste them into the fields below</li>
+            </ol>
+            
+            <h4>Step 4: Fix WordPress Checkout Page</h4>
             <ol style="line-height: 1.8;">
                 <li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong></li>
                 <li>In the page editor, click the <strong>⋮</strong> (three vertical dots) in the top right</li>
@@ -163,6 +175,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'default' => home_url('/wp-json/coinsub/v1/webhook'),
                 'custom_attributes' => array('readonly' => 'readonly'),
                 'css' => 'background: #f0f0f0;',
+            ),
+            'wc_api_section' => array(
+                'title' => __('WooCommerce API Settings', 'coinsub'),
+                'type' => 'title',
+                'description' => __('These are optional but recommended for better email delivery and order management.', 'coinsub'),
+            ),
+            'wc_api_key' => array(
+                'title' => __('WooCommerce API Key', 'coinsub'),
+                'type' => 'text',
+                'description' => __('Get this from WooCommerce > Settings > Advanced > REST API. Create a new key with Read/Write permissions.', 'coinsub'),
+                'default' => '',
+                'placeholder' => 'ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            ),
+            'wc_api_secret' => array(
+                'title' => __('WooCommerce API Secret', 'coinsub'),
+                'type' => 'password',
+                'description' => __('Get this from WooCommerce > Settings > Advanced > REST API. Copy the Consumer Secret.', 'coinsub'),
+                'default' => '',
+                'placeholder' => 'cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
             ),
             
         );

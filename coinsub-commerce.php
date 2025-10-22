@@ -65,8 +65,7 @@ function coinsub_commerce_init() {
     new CoinSub_Webhook_Handler();
     new CoinSub_Order_Manager();
     
-    // Add email hooks for CoinSub orders
-    add_action('woocommerce_order_status_processing', 'coinsub_send_payment_emails', 10, 1);
+    // Email hooks are handled by CoinSub_Order_Manager class
     
     // Initialize cart sync (tracks cart changes in real-time)
     if (!is_admin()) {
@@ -625,14 +624,21 @@ function coinsub_heartbeat_received($response, $data, $screen_id) {
  * Send CoinSub payment emails when order status changes to processing
  */
 function coinsub_send_payment_emails($order_id) {
+    error_log('📧 CoinSub Email Hook: Triggered for order #' . $order_id);
+    
     $order = wc_get_order($order_id);
     
     if (!$order) {
+        error_log('❌ CoinSub Email Hook: Order not found for ID: ' . $order_id);
         return;
     }
     
+    $payment_method = $order->get_payment_method();
+    error_log('📧 CoinSub Email Hook: Order payment method: ' . $payment_method);
+    
     // Only send emails for CoinSub orders
-    if ($order->get_payment_method() !== 'coinsub') {
+    if ($payment_method !== 'coinsub') {
+        error_log('📧 CoinSub Email Hook: Skipping - not a CoinSub order (method: ' . $payment_method . ')');
         return;
     }
     
@@ -658,6 +664,23 @@ function coinsub_send_payment_emails($order_id) {
     // Send custom CoinSub merchant notification
     coinsub_send_custom_merchant_notification($order);
 }
+
+/**
+ * Send CoinSub payment emails when order status changes (any status change)
+ */
+function coinsub_send_payment_emails_on_status_change($order_id, $old_status, $new_status) {
+    error_log('📧 CoinSub Status Change Hook: Order #' . $order_id . ' changed from ' . $old_status . ' to ' . $new_status);
+    
+    // Only trigger for processing status
+    if ($new_status !== 'processing') {
+        return;
+    }
+    
+    // Call the main email function
+    coinsub_send_payment_emails($order_id);
+}
+
+// Duplicate function removed
 
 /**
  * Send custom CoinSub merchant notification
