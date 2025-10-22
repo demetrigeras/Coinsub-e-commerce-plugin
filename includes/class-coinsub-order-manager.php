@@ -92,67 +92,25 @@ class CoinSub_Order_Manager {
             }
         }
         
-        // Send custom CoinSub merchant notification via WooCommerce email system
+        // Send custom CoinSub merchant notification
         $this->send_custom_merchant_notification($order);
-    }
-    
-    /**
-     * Get WooCommerce API credentials from gateway settings
-     */
-    private function get_wc_api_credentials() {
-        $gateway = new WC_Gateway_CoinSub();
-        $api_key = $gateway->get_option('wc_api_key');
-        $api_secret = $gateway->get_option('wc_api_secret');
-        
-        if (empty($api_key) || empty($api_secret)) {
-            return null;
-        }
-        
-        return array(
-            'key' => $api_key,
-            'secret' => $api_secret
-        );
-    }
-    
-    /**
-     * Get order details via WooCommerce API
-     */
-    private function get_order_via_api($order_id, $credentials) {
-        $site_url = home_url();
-        $endpoint = $site_url . '/wp-json/wc/v3/orders/' . $order_id;
-        $auth = base64_encode($credentials['key'] . ':' . $credentials['secret']);
-        
-        $args = array(
-            'headers' => array(
-                'Authorization' => 'Basic ' . $auth,
-                'Content-Type' => 'application/json'
-            ),
-            'timeout' => 30
-        );
-        
-        $response = wp_remote_get($endpoint, $args);
-        
-        if (is_wp_error($response)) {
-            error_log('❌ CoinSub Order Manager: WooCommerce API error getting order: ' . $response->get_error_message());
-            return null;
-        }
-        
-        $status_code = wp_remote_retrieve_response_code($response);
-        
-        if ($status_code === 200) {
-            $order_data = json_decode(wp_remote_retrieve_body($response), true);
-            error_log('✅ CoinSub Order Manager: Retrieved order #' . $order_id . ' via WooCommerce API');
-            return $order_data;
-        } else {
-            error_log('❌ CoinSub Order Manager: WooCommerce API returned status ' . $status_code . ' for order #' . $order_id);
-            return null;
-        }
     }
     
     /**
      * Send custom CoinSub merchant notification
      */
     private function send_custom_merchant_notification($order) {
+        // Prevent duplicate calls
+        static $processed_orders = array();
+        $order_id = $order->get_id();
+        
+        if (in_array($order_id, $processed_orders)) {
+            error_log('📧 CoinSub Order Manager: Order #' . $order_id . ' already processed, skipping duplicate');
+            return;
+        }
+        
+        $processed_orders[] = $order_id;
+        
         $merchant_email = get_option('admin_email');
         if (!$merchant_email) {
             error_log('❌ CoinSub Order Manager: No admin email configured');
@@ -218,118 +176,333 @@ class CoinSub_Order_Manager {
         $message .= "This is an automated notification from your Coinsub payment gateway.\n";
         $message .= "Please process this order promptly to maintain customer satisfaction.";
         
-        // Use simple wp_mail for email delivery
-        error_log('📧 CoinSub Order Manager: Using wp_mail for email delivery');
-        $this->send_email_via_wp_mail($merchant_email, $subject, $message);
+        // Send the email with multiple fallback methods
+        $email_sent = $this->send_email_via_wp_mail($merchant_email, $subject, $message);
+        
+        // If wp_mail fails, try a simple approach
+        if (!$email_sent) {
+            $this->send_simple_email($merchant_email, $subject, $message);
+        }
     }
     
     /**
-     * Send email via wp_mail
+     * Send email via wp_mail with robust error handling
      */
     private function send_email_via_wp_mail($to, $subject, $message) {
-        $headers = array(
-            'Content-Type: text/plain; charset=UTF-8',
-            'From: ' . get_bloginfo('name') . ' <' . get_option('admin_email') . '>',
-            'Reply-To: ' . get_option('admin_email'),
-            'X-Mailer: CoinSub WooCommerce Plugin'
-        );
+        // Validate email addresses
+        $admin_email = get_option('admin_email');
+        if (empty($admin_email) || !is_email($admin_email)) {
+            error_log('❌ CoinSub Order Manager: Invalid admin email: ' . $admin_email);
+            return false;
+        }
+        
+        if (empty($to) || !is_email($to)) {
+            error_log('❌ CoinSub Order Manager: Invalid recipient email: ' . $to);
+            return false;
+        }
         
         error_log('📧 CoinSub Order Manager: Sending email via wp_mail to: ' . $to);
+        error_log('📧 CoinSub Order Manager: From: ' . get_bloginfo('name') . ' <' . $admin_email . '>');
+        error_log('📧 CoinSub Order Manager: Subject: ' . $subject);
         
-        if (wp_mail($to, $subject, $message, $headers)) {
+        // Configure PHPMailer to use SMTP if available, fallback to mail()
+        $this->configure_phpmailer();
+        
+        $headers = array(
+            'Content-Type' => 'text/plain; charset=UTF-8',
+            'From' => get_bloginfo('name') . ' <' . $admin_email . '>',
+            'Reply-To' => $admin_email,
+            'X-Mailer' => 'CoinSub WooCommerce Plugin'
+        );
+        
+        // Try to send the email
+        $result = wp_mail($to, $subject, $message, $headers);
+        
+        if ($result) {
             error_log('✅ CoinSub Order Manager: Email sent successfully via wp_mail');
             return true;
         } else {
             error_log('❌ CoinSub Order Manager: Failed to send email via wp_mail');
-            return false;
+            
+            // Try alternative method
+            return $this->send_email_alternative($to, $subject, $message, $admin_email);
         }
     }
     
     /**
-     * Send email using WooCommerce REST API
+     * Configure PHPMailer for better email delivery
      */
-    private function send_email_via_wc_api($to, $subject, $message, $credentials) {
-        $site_url = home_url();
+    private function configure_phpmailer() {
+        add_action('phpmailer_init', function($phpmailer) {
+            // Try to use SMTP if available
+            if (function_exists('mail') && !$phpmailer->isSMTP()) {
+                // Use mail() function as fallback
+                $phpmailer->isMail();
+            }
+            
+            // Set additional headers for better delivery
+            $phpmailer->addCustomHeader('X-Mailer', 'CoinSub WooCommerce Plugin');
+            $phpmailer->addCustomHeader('X-Priority', '3');
+        });
+    }
+    
+    /**
+     * Alternative email sending method
+     */
+    private function send_email_alternative($to, $subject, $message, $from_email) {
+        error_log('📧 CoinSub Order Manager: Trying alternative email method');
         
-        // Use WooCommerce REST API to trigger order emails
-        $endpoint = $site_url . '/wp-json/wc/v3/orders';
-        $auth = base64_encode($credentials['key'] . ':' . $credentials['secret']);
-        
-        // First, let's get the current order to trigger emails
-        $order_id = $this->get_current_order_id();
-        
-        if (!$order_id) {
-            error_log('❌ CoinSub Order Manager: No order ID available for WooCommerce API');
-            return false;
+        // Try using mail() function directly
+        if (function_exists('mail')) {
+            $headers = "From: " . get_bloginfo('name') . " <" . $from_email . ">\r\n";
+            $headers .= "Reply-To: " . $from_email . "\r\n";
+            $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+            $headers .= "X-Mailer: CoinSub WooCommerce Plugin\r\n";
+            
+            $result = mail($to, $subject, $message, $headers);
+            
+            if ($result) {
+                error_log('✅ CoinSub Order Manager: Email sent successfully via mail() function');
+                return true;
+            } else {
+                error_log('❌ CoinSub Order Manager: Failed to send email via mail() function');
+            }
         }
         
-        // Trigger WooCommerce's built-in order emails via API
-        $email_endpoint = $site_url . '/wp-json/wc/v3/orders/' . $order_id . '/actions/email_templates';
+        // If all else fails, log the order details for manual processing
+        error_log('📧 CoinSub Order Manager: All email methods failed. Order details logged for manual processing:');
+        error_log('📧 CoinSub Order Manager: To: ' . $to);
+        error_log('📧 CoinSub Order Manager: Subject: ' . $subject);
+        error_log('📧 CoinSub Order Manager: Message: ' . substr($message, 0, 200) . '...');
         
-        $args = array(
-            'method' => 'POST',
-            'headers' => array(
-                'Authorization' => 'Basic ' . $auth,
-                'Content-Type' => 'application/json'
-            ),
-            'body' => json_encode(array(
-                'email_type' => 'new_order',
-                'recipient' => $to
-            )),
-            'timeout' => 30
+        return false;
+    }
+    
+    /**
+     * Simple email sending method as final fallback
+     */
+    private function send_simple_email($to, $subject, $message) {
+        error_log('📧 CoinSub Order Manager: Trying simple email method as final fallback');
+        
+        // Run server diagnostics first
+        $this->run_server_mail_diagnostics();
+        
+        // Try the most basic mail() function
+        if (function_exists('mail')) {
+            $from_email = get_option('admin_email');
+            $site_name = get_bloginfo('name');
+            
+            $headers = "From: {$site_name} <{$from_email}>\r\n";
+            $headers .= "Reply-To: {$from_email}\r\n";
+            $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+            
+            $result = @mail($to, $subject, $message, $headers);
+            
+            if ($result) {
+                error_log('✅ CoinSub Order Manager: Email sent successfully via simple mail() method');
+                return true;
+            } else {
+                error_log('❌ CoinSub Order Manager: Simple mail() method also failed');
+            }
+        }
+        
+        // Try alternative notification methods
+        $this->send_alternative_notification($to, $subject, $message);
+        
+        // If everything fails, at least log the important details
+        error_log('🚨 CoinSub Order Manager: CRITICAL - All email methods failed!');
+        error_log('🚨 CoinSub Order Manager: Manual notification required for order details');
+        error_log('🚨 CoinSub Order Manager: Recipient: ' . $to);
+        error_log('🚨 CoinSub Order Manager: Subject: ' . $subject);
+        
+        // Add admin notice for email failure
+        $this->add_email_failure_notice($to, $subject);
+        
+        // Log to database for manual review
+        $this->log_failed_email_to_database($to, $subject, $message);
+        
+        return false;
+    }
+    
+    /**
+     * Run server mail diagnostics
+     */
+    private function run_server_mail_diagnostics() {
+        error_log('🔍 CoinSub Order Manager: Running server mail diagnostics...');
+        
+        // Check if mail function exists
+        $mail_function_exists = function_exists('mail');
+        error_log('🔍 CoinSub Order Manager: mail() function exists: ' . ($mail_function_exists ? 'YES' : 'NO'));
+        
+        // Check if sendmail is available
+        $sendmail_path = ini_get('sendmail_path');
+        error_log('🔍 CoinSub Order Manager: sendmail_path: ' . ($sendmail_path ?: 'NOT SET'));
+        
+        // Check SMTP settings
+        $smtp_host = ini_get('SMTP');
+        $smtp_port = ini_get('smtp_port');
+        error_log('🔍 CoinSub Order Manager: SMTP host: ' . ($smtp_host ?: 'NOT SET'));
+        error_log('🔍 CoinSub Order Manager: SMTP port: ' . ($smtp_port ?: 'NOT SET'));
+        
+        // Check if we can create a simple test
+        if ($mail_function_exists) {
+            $test_result = @mail('test@example.com', 'Test', 'Test message', 'From: test@example.com');
+            error_log('🔍 CoinSub Order Manager: Basic mail() test result: ' . ($test_result ? 'SUCCESS' : 'FAILED'));
+        }
+        
+        // Check WordPress mail configuration
+        global $phpmailer;
+        if (isset($phpmailer)) {
+            error_log('🔍 CoinSub Order Manager: PHPMailer class: ' . get_class($phpmailer));
+            error_log('🔍 CoinSub Order Manager: PHPMailer is SMTP: ' . ($phpmailer->isSMTP() ? 'YES' : 'NO'));
+        }
+    }
+    
+    /**
+     * Send alternative notification methods
+     */
+    private function send_alternative_notification($to, $subject, $message) {
+        error_log('📧 CoinSub Order Manager: Trying alternative notification methods...');
+        
+        // Method 1: Log to a file
+        $this->log_to_file($to, $subject, $message);
+        
+        // Method 2: Store in WordPress options for admin review
+        $this->store_in_admin_options($to, $subject, $message);
+        
+        // Method 3: Try to send via external service (if configured)
+        $this->try_external_notification($to, $subject, $message);
+    }
+    
+    /**
+     * Log email to file
+     */
+    private function log_to_file($to, $subject, $message) {
+        $log_file = WP_CONTENT_DIR . '/coinsub-email-failures.log';
+        $log_entry = date('Y-m-d H:i:s') . " | TO: {$to} | SUBJECT: {$subject}\n";
+        $log_entry .= "MESSAGE:\n" . $message . "\n";
+        $log_entry .= str_repeat('-', 80) . "\n\n";
+        
+        file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+        error_log('📧 CoinSub Order Manager: Email details logged to file: ' . $log_file);
+    }
+    
+    /**
+     * Store email details in WordPress options
+     */
+    private function store_in_admin_options($to, $subject, $message) {
+        $failed_emails = get_option('coinsub_failed_emails', array());
+        
+        $failed_emails[] = array(
+            'timestamp' => current_time('mysql'),
+            'to' => $to,
+            'subject' => $subject,
+            'message' => substr($message, 0, 500) . '...', // Truncate for storage
+            'order_id' => $this->extract_order_id_from_subject($subject)
         );
         
-        error_log('📧 CoinSub Order Manager: Triggering WooCommerce order email via API for order #' . $order_id);
-        
-        $response = wp_remote_post($email_endpoint, $args);
-        
-        if (is_wp_error($response)) {
-            error_log('❌ CoinSub Order Manager: WooCommerce API error: ' . $response->get_error_message());
-            return false;
+        // Keep only last 10 failed emails
+        if (count($failed_emails) > 10) {
+            $failed_emails = array_slice($failed_emails, -10);
         }
         
-        $status_code = wp_remote_retrieve_response_code($response);
-        
-        if ($status_code === 200 || $status_code === 201) {
-            error_log('✅ CoinSub Order Manager: WooCommerce order email triggered successfully');
-            
-            // Also send our custom merchant notification
-            return $this->send_custom_merchant_email_via_api($to, $subject, $message, $credentials);
-        } else {
-            error_log('❌ CoinSub Order Manager: WooCommerce API returned status: ' . $status_code);
-            return false;
-        }
+        update_option('coinsub_failed_emails', $failed_emails);
+        error_log('📧 CoinSub Order Manager: Email details stored in WordPress options');
     }
     
     /**
-     * Get current order ID from context
+     * Try external notification service
      */
-    private function get_current_order_id() {
-        global $wp;
-        
-        // Try to get order ID from various sources
-        if (isset($wp->query_vars['order-received'])) {
-            return absint($wp->query_vars['order-received']);
+    private function try_external_notification($to, $subject, $message) {
+        // This could be extended to use services like Slack, Discord, etc.
+        // For now, just log that we would try external service
+        error_log('📧 CoinSub Order Manager: External notification service not configured');
+    }
+    
+    /**
+     * Extract order ID from subject
+     */
+    private function extract_order_id_from_subject($subject) {
+        if (preg_match('/Order #(\d+)/', $subject, $matches)) {
+            return $matches[1];
         }
-        
-        if (isset($_GET['order_id'])) {
-            return absint($_GET['order_id']);
-        }
-        
-        // Get the most recent CoinSub order
-        $orders = wc_get_orders(array(
-            'limit' => 1,
-            'orderby' => 'date',
-            'order' => 'DESC',
-            'payment_method' => 'coinsub',
-            'status' => 'processing'
-        ));
-        
-        if (!empty($orders)) {
-            return $orders[0]->get_id();
-        }
-        
         return null;
+    }
+    
+    /**
+     * Log failed email to database
+     */
+    private function log_failed_email_to_database($to, $subject, $message) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'coinsub_failed_emails';
+        
+        // Create table if it doesn't exist
+        $charset_collate = $wpdb->get_charset_collate();
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            recipient_email varchar(255) NOT NULL,
+            subject varchar(255) NOT NULL,
+            message text,
+            order_id varchar(50),
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
+        ) $charset_collate;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+        
+        // Insert the failed email record
+        $wpdb->insert(
+            $table_name,
+            array(
+                'recipient_email' => $to,
+                'subject' => $subject,
+                'message' => substr($message, 0, 1000), // Limit message length
+                'order_id' => $this->extract_order_id_from_subject($subject),
+                'created_at' => current_time('mysql')
+            )
+        );
+        
+        error_log('📧 CoinSub Order Manager: Failed email logged to database');
+    }
+    
+    /**
+     * Add admin notice for email failure
+     */
+    private function add_email_failure_notice($to, $subject) {
+        // Store the failure in a transient for display in admin
+        $failure_data = array(
+            'to' => $to,
+            'subject' => $subject,
+            'time' => current_time('mysql'),
+            'message' => 'CoinSub email notification failed to send. Check server mail configuration.'
+        );
+        
+        set_transient('coinsub_email_failure', $failure_data, 3600); // Store for 1 hour
+        
+        // Add admin notice hook
+        add_action('admin_notices', array($this, 'display_email_failure_notice'));
+    }
+    
+    /**
+     * Display email failure notice in admin
+     */
+    public function display_email_failure_notice() {
+        $failure_data = get_transient('coinsub_email_failure');
+        
+        if ($failure_data) {
+            echo '<div class="notice notice-error is-dismissible">';
+            echo '<p><strong>CoinSub Email Error:</strong> Failed to send merchant notification email.</p>';
+            echo '<p>Recipient: ' . esc_html($failure_data['to']) . '</p>';
+            echo '<p>Subject: ' . esc_html($failure_data['subject']) . '</p>';
+            echo '<p>Time: ' . esc_html($failure_data['time']) . '</p>';
+            echo '<p>Please check your server mail configuration or contact your hosting provider.</p>';
+            echo '</div>';
+            
+            // Clear the transient after displaying
+            delete_transient('coinsub_email_failure');
+        }
     }
     
     /**

@@ -1,8 +1,6 @@
 <?php
 /**
- * CoinSub API Test Page
- * 
- * Test API connectivity directly from WordPress admin
+ * CoinSub Admin Test Page
  */
 
 if (!defined('ABSPATH')) {
@@ -16,7 +14,7 @@ class CoinSub_Admin_Test {
     }
     
     /**
-     * Add menu under WooCommerce
+     * Add admin menu
      */
     public function add_admin_menu() {
         add_submenu_page(
@@ -27,13 +25,22 @@ class CoinSub_Admin_Test {
             'coinsub-api-test',
             array($this, 'display_test_page')
         );
+        
+        add_submenu_page(
+            'woocommerce',
+            'CoinSub Email Status',
+            'CoinSub Email Status',
+            'manage_woocommerce',
+            'coinsub-email-status',
+            array($this, 'display_email_status_page')
+        );
     }
     
     /**
      * Display API test page
      */
     public function display_test_page() {
-        // Handle test actions
+        // Handle test action
         $test_result = null;
         if (isset($_POST['run_test']) && check_admin_referer('coinsub-api-test')) {
             $test_result = $this->run_api_test();
@@ -67,17 +74,6 @@ class CoinSub_Admin_Test {
                 </div>
                 <?php endif; ?>
             </div>
-            
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0073aa;">
-                <h3>What This Tests:</h3>
-                <ul>
-                    <li>✅ Can connect to <code>https://test-api.coinsub.io/v1</code></li>
-                    <li>✅ Can create products in <code>commerce_products</code> table</li>
-                    <li>✅ Can create orders in <code>commerce_orders</code> table</li>
-                    <li>✅ Can create purchase sessions</li>
-                    <li>✅ Can link orders to sessions</li>
-                </ul>
-            </div>
         </div>
         <?php
     }
@@ -86,107 +82,58 @@ class CoinSub_Admin_Test {
      * Run API test
      */
     private function run_api_test() {
-        $api_client = new CoinSub_API_Client();
-        
         $output = '<div style="background: #1e1e1e; color: #00ff00; padding: 20px; border-radius: 5px; font-family: monospace; font-size: 13px; max-height: 500px; overflow-y: scroll;">';
         
-        // Test 1: Create Product
-        $output .= '<div style="color: #ffff00;">📦 TEST 1: Creating test product...</div>';
-        $product_data = array(
-            'name' => 'API Test Product ' . time(),
-            'description' => 'Test product from WordPress admin',
-            'price' => 0.01,
-            'currency' => 'USD',
-            'metadata' => array(
-                'test' => true,
-                'source' => 'wordpress_admin_test'
-            )
-        );
+        $output .= '<div style="color: #ffff00;">🚀 RUNNING COINSUB API TEST...</div>';
         
-        $product_result = $api_client->create_product($product_data);
+        // Test API connection
+        $api_client = new CoinSub_API_Client();
+        $test_result = $api_client->test_connection();
         
-        if (is_wp_error($product_result)) {
-            $output .= '<div style="color: #ff5555;">❌ FAILED: ' . esc_html($product_result->get_error_message()) . '</div>';
-            $output .= '</div>';
-            return $output;
-        } else {
-            $product_id = $product_result['id'] ?? 'unknown';
-            $output .= '<div style="color: #00ff00;">✅ SUCCESS! Product ID: ' . esc_html($product_id) . '</div>';
-        }
-        
-        // Test 2: Create Order
-        $output .= '<div style="color: #ffff00; margin-top: 10px;">🛒 TEST 2: Creating test order...</div>';
-        $order_data = array(
-            'items' => array(
-                array(
-                    'product_id' => $product_id,
+        if ($test_result) {
+            $output .= '<div style="color: #00ff00;">✅ API Connection: SUCCESS</div>';
+            
+            // Create test product
+            $product_data = array(
+                'name' => 'Test Product - ' . current_time('Y-m-d H:i:s'),
+                'price' => 0.01,
+                'description' => 'Test product created by CoinSub plugin',
+                'type' => 'simple'
+            );
+            
+            $product_result = $api_client->create_test_product($product_data);
+            
+            if ($product_result && isset($product_result['id'])) {
+                $output .= '<div style="color: #00ff00;">✅ Test Product Created: ID ' . $product_result['id'] . '</div>';
+                
+                // Create test order
+                $order_data = array(
+                    'product_id' => $product_result['id'],
                     'quantity' => 1,
-                    'price' => '0.01'
-                )
-            ),
-            'total' => '0.01',
-            'currency' => 'USD'
-        );
-        
-        $order_result = $api_client->create_order($order_data);
-        
-        if (is_wp_error($order_result)) {
-            $output .= '<div style="color: #ff5555;">❌ FAILED: ' . esc_html($order_result->get_error_message()) . '</div>';
-            $output .= '</div>';
-            return $output;
+                    'customer_email' => 'test@example.com'
+                );
+                
+                $order_result = $api_client->create_test_order($order_data);
+                
+                if ($order_result && isset($order_result['id'])) {
+                    $output .= '<div style="color: #00ff00;">✅ Test Order Created: ID ' . $order_result['id'] . '</div>';
+                    
+                    // Generate checkout URL
+                    $checkout_url = $api_client->get_checkout_url($order_result['id']);
+                    if ($checkout_url) {
+                        $output .= '<div style="color: #00ff00;">✅ Checkout URL Generated</div>';
+                        $output .= '<br>🔗 Test checkout URL: <a href="' . esc_url($checkout_url) . '" target="_blank" style="color: #00ff00;">' . esc_html($checkout_url) . '</a>';
+                    }
+                } else {
+                    $output .= '<div style="color: #ff5555;">❌ Failed to create test order</div>';
+                }
+            } else {
+                $output .= '<div style="color: #ff5555;">❌ Failed to create test product</div>';
+            }
         } else {
-            $order_id = $order_result['id'] ?? 'unknown';
-            $output .= '<div style="color: #00ff00;">✅ SUCCESS! Order ID: ' . esc_html($order_id) . '</div>';
+            $output .= '<div style="color: #ff5555;">❌ API Connection: FAILED</div>';
+            $output .= '<div style="color: #ffaa00;">Check your API credentials in WooCommerce > Settings > Payments > Coinsub</div>';
         }
-        
-        // Test 3: Create Purchase Session
-        $output .= '<div style="color: #ffff00; margin-top: 10px;">💳 TEST 3: Creating purchase session...</div>';
-        $session_data = array(
-            'name' => 'Admin API Test',
-            'details' => 'Testing from WordPress admin',
-            'currency' => 'USD',
-            'amount' => 0.01,
-            'recurring' => false,
-            'metadata' => array(
-                'test' => true,
-                'source' => 'admin_test'
-            ),
-            'success_url' => '',
-            'cancel_url' => ''
-        );
-        
-        $session_result = $api_client->create_purchase_session($session_data);
-        
-        if (is_wp_error($session_result)) {
-            $output .= '<div style="color: #ff5555;">❌ FAILED: ' . esc_html($session_result->get_error_message()) . '</div>';
-            $output .= '</div>';
-            return $output;
-        } else {
-            $session_id = $session_result['purchase_session_id'] ?? 'unknown';
-            $checkout_url = $session_result['checkout_url'] ?? 'unknown';
-            $output .= '<div style="color: #00ff00;">✅ SUCCESS! Session ID: ' . esc_html($session_id) . '</div>';
-            $output .= '<div style="color: #00ff00;">🔗 Checkout URL: ' . esc_html($checkout_url) . '</div>';
-        }
-        
-        // Test 4: Link Order to Session
-        $output .= '<div style="color: #ffff00; margin-top: 10px;">🔗 TEST 4: Linking order to session...</div>';
-        $checkout_result = $api_client->checkout_order($order_id, $session_id);
-        
-        if (is_wp_error($checkout_result)) {
-            $output .= '<div style="color: #ff5555;">❌ FAILED: ' . esc_html($checkout_result->get_error_message()) . '</div>';
-        } else {
-            $output .= '<div style="color: #00ff00;">✅ SUCCESS! Order linked to session!</div>';
-        }
-        
-        $output .= '<div style="color: #00ff00; margin-top: 20px; padding: 15px; background: #2d5016; border-radius: 5px;">';
-        $output .= '🎉 ALL TESTS PASSED! Your API is working correctly!<br>';
-        $output .= '<br><strong>Test Results:</strong><br>';
-        $output .= '• Product created in commerce_products ✅<br>';
-        $output .= '• Order created in commerce_orders ✅<br>';
-        $output .= '• Purchase session created ✅<br>';
-        $output .= '• Order linked to session ✅<br>';
-        $output .= '<br>🔗 Test checkout URL: <a href="' . esc_url($checkout_url) . '" target="_blank" style="color: #00ff00;">' . esc_html($checkout_url) . '</a>';
-        $output .= '</div>';
         
         $output .= '</div>';
         return $output;
@@ -219,28 +166,165 @@ class CoinSub_Admin_Test {
         $message .= "If you receive this email, the email system is working correctly.";
         
         $headers = array(
-            'Content-Type' => 'text/plain; charset=UTF-8',
+            'Content-Type: text/plain; charset=UTF-8',
             'From: ' . $site_name . ' <' . $admin_email . '>',
             'Reply-To: ' . $admin_email,
-            'X-Mailer: CoinSub WooCommerce Plugin v' . COINSUB_VERSION
         );
         
         error_log('📧 CoinSub Test: Sending test email to: ' . $admin_email);
         
-        $result = wp_mail($admin_email, $subject, $message, $headers);
+        // Test the robust email system
+        $order_manager = new CoinSub_Order_Manager();
+        $result = $this->test_robust_email_system($admin_email, $subject, $message);
         
         if ($result) {
             $output .= '<div style="color: #00ff00; margin-top: 10px;">✅ SUCCESS! Test email sent to ' . esc_html($admin_email) . '</div>';
             $output .= '<div style="color: #00ff00;">Check your email inbox for the test message.</div>';
         } else {
-            global $phpmailer;
-            $error_info = isset($phpmailer) && !empty($phpmailer->ErrorInfo) ? $phpmailer->ErrorInfo : 'Unknown error';
-            
-            $output .= '<div style="color: #ff5555; margin-top: 10px;">❌ FAILED: ' . esc_html($error_info) . '</div>';
-            $output .= '<div style="color: #ff5555;">Check your WordPress email configuration.</div>';
+            $output .= '<div style="color: #ff5555; margin-top: 10px;">❌ FAILED: Could not send email</div>';
+            $output .= '<div style="color: #ffaa00;">This might be due to server email configuration or credits.</div>';
+            $output .= '<div style="color: #ffaa00;">Check the debug log for detailed error information.</div>';
         }
         
         $output .= '</div>';
         return $output;
+    }
+    
+    /**
+     * Test the robust email system
+     */
+    private function test_robust_email_system($to, $subject, $message) {
+        // Test wp_mail first
+        $result = wp_mail($to, $subject, $message, array(
+            'Content-Type' => 'text/plain; charset=UTF-8',
+            'From: ' . get_bloginfo('name') . ' <' . get_option('admin_email') . '>',
+            'Reply-To: ' . get_option('admin_email'),
+        ));
+        
+        if ($result) {
+            error_log('📧 CoinSub Test: wp_mail succeeded');
+            return true;
+        }
+        
+        // Test alternative method
+        error_log('📧 CoinSub Test: wp_mail failed, trying alternative method');
+        
+        if (function_exists('mail')) {
+            $from_email = get_option('admin_email');
+            $site_name = get_bloginfo('name');
+            
+            $headers = "From: {$site_name} <{$from_email}>\r\n";
+            $headers .= "Reply-To: {$from_email}\r\n";
+            $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+            
+            $result = @mail($to, $subject, $message, $headers);
+            
+            if ($result) {
+                error_log('📧 CoinSub Test: Alternative mail() method succeeded');
+                return true;
+            } else {
+                error_log('📧 CoinSub Test: Alternative mail() method also failed');
+            }
+        }
+        
+        error_log('📧 CoinSub Test: All email methods failed');
+        return false;
+    }
+    
+    /**
+     * Display email status page
+     */
+    public function display_email_status_page() {
+        $failed_emails = get_option('coinsub_failed_emails', array());
+        $log_file = WP_CONTENT_DIR . '/coinsub-email-failures.log';
+        $log_file_exists = file_exists($log_file);
+        $log_content = $log_file_exists ? file_get_contents($log_file) : '';
+        
+        ?>
+        <div class="wrap">
+            <h1>📧 CoinSub Email Status</h1>
+            
+            <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                <div style="flex: 1; background: #fff; padding: 20px; border: 1px solid #ccd0d4; border-radius: 4px;">
+                    <h2>📊 Email Statistics</h2>
+                    <p><strong>Failed Emails (Last 10):</strong> <?php echo count($failed_emails); ?></p>
+                    <p><strong>Log File Status:</strong> 
+                        <?php if ($log_file_exists): ?>
+                            <span style="color: green;">✅ Exists</span>
+                        <?php else: ?>
+                            <span style="color: red;">❌ Not Found</span>
+                        <?php endif; ?>
+                    </p>
+                    <p><strong>Log File Size:</strong> 
+                        <?php echo $log_file_exists ? size_format(filesize($log_file)) : 'N/A'; ?>
+                    </p>
+                </div>
+                
+                <div style="flex: 1; background: #fff; padding: 20px; border: 1px solid #ccd0d4; border-radius: 4px;">
+                    <h2>🔧 Server Mail Configuration</h2>
+                    <p><strong>mail() Function:</strong> 
+                        <?php echo function_exists('mail') ? '<span style="color: green;">✅ Available</span>' : '<span style="color: red;">❌ Not Available</span>'; ?>
+                    </p>
+                    <p><strong>Sendmail Path:</strong> <?php echo ini_get('sendmail_path') ?: 'Not Set'; ?></p>
+                    <p><strong>SMTP Host:</strong> <?php echo ini_get('SMTP') ?: 'Not Set'; ?></p>
+                    <p><strong>SMTP Port:</strong> <?php echo ini_get('smtp_port') ?: 'Not Set'; ?></p>
+                </div>
+            </div>
+            
+            <?php if (!empty($failed_emails)): ?>
+            <div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; border-radius: 4px; margin-bottom: 20px;">
+                <h2>📋 Recent Failed Emails</h2>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Recipient</th>
+                            <th>Subject</th>
+                            <th>Order ID</th>
+                            <th>Message Preview</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach (array_reverse($failed_emails) as $email): ?>
+                        <tr>
+                            <td><?php echo esc_html($email['timestamp']); ?></td>
+                            <td><?php echo esc_html($email['to']); ?></td>
+                            <td><?php echo esc_html($email['subject']); ?></td>
+                            <td><?php echo esc_html($email['order_id'] ?: 'N/A'); ?></td>
+                            <td><?php echo esc_html(substr($email['message'], 0, 100) . '...'); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+            
+            <?php if ($log_file_exists && !empty($log_content)): ?>
+            <div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; border-radius: 4px;">
+                <h2>📄 Email Failure Log</h2>
+                <div style="background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto;">
+                    <pre><?php echo esc_html($log_content); ?></pre>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; border-radius: 4px; margin-top: 20px;">
+                <h2>🛠️ Troubleshooting</h2>
+                <p><strong>If emails are failing, try these solutions:</strong></p>
+                <ul>
+                    <li>Contact your hosting provider to enable the mail() function</li>
+                    <li>Configure SMTP settings in wp-config.php or use an SMTP plugin</li>
+                    <li>Check if your server has sendmail or postfix installed</li>
+                    <li>Verify that your domain has proper SPF/DKIM records</li>
+                </ul>
+                
+                <p><strong>Quick Test:</strong></p>
+                <form method="post">
+                    <?php wp_nonce_field('coinsub-api-test'); ?>
+                    <input type="submit" name="test_email" class="button button-primary" value="📧 Test Email System" />
+                </form>
+            </div>
+        </div>
+        <?php
     }
 }
