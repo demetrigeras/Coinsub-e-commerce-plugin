@@ -55,6 +55,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Add hooks
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
+        add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'update_api_client_settings'));
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
         add_action('wp_head', array($this, 'add_payment_button_styles'));
@@ -77,9 +78,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         <div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;">
             <h3 style="margin-top: 0;">📋 Setup Instructions</h3>
             
-            <h4>Step 1: Get Your Coinsub Credentials</h4>
+            <h4>Step 1: Select Environment & Get Your Coinsub Credentials</h4>
             <ol style="line-height: 1.8;">
-                <li>Go to <a href="https://coinsub.io" target="_blank">coinsub.io</a> and sign up or log in</li>
+                <li>Select your <strong>Environment</strong> from the dropdown below (Development, Test, Staging, or Production)</li>
+                <li>Go to the appropriate Coinsub environment URL and sign up or log in</li>
                 <li>Navigate to <strong>Settings</strong> in your Coinsub dashboard</li>
                 <li>Copy your <strong>Merchant ID</strong></li>
                 <li>Create and copy your <strong>API Key</strong></li>
@@ -141,6 +143,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'label' => __('Enable Coinsub Crypto Payments', 'coinsub'),
                 'default' => 'no'
             ),
+            'environment' => array(
+                'title' => __('Environment', 'coinsub'),
+                'type' => 'select',
+                'description' => __('Select the CoinSub environment to use', 'coinsub'),
+                'default' => 'test',
+                'options' => array(
+                    'dev' => __('Development (dev-api.coinsub.io)', 'coinsub'),
+                    'test' => __('Test (test-api.coinsub.io)', 'coinsub'),
+                    'staging' => __('Staging (staging-api.coinsub.io)', 'coinsub'),
+                    'production' => __('Production (api.coinsub.io)', 'coinsub')
+                ),
+                'required' => true,
+            ),
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
@@ -166,6 +181,41 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             ),
             
         );
+    }
+    
+    /**
+     * Get API base URL based on selected environment
+     */
+    public function get_api_base_url() {
+        $environment = $this->get_option('environment', 'test');
+        
+        $environment_urls = array(
+            'dev' => 'https://dev-api.coinsub.io/v1',
+            'test' => 'https://test-api.coinsub.io/v1',
+            'staging' => 'https://staging-api.coinsub.io/v1',
+            'production' => 'https://api.coinsub.io/v1'
+        );
+        
+        return isset($environment_urls[$environment]) ? $environment_urls[$environment] : $environment_urls['test'];
+    }
+    
+    /**
+     * Update API client settings when gateway settings are saved
+     */
+    public function update_api_client_settings() {
+        $environment = $this->get_option('environment', 'test');
+        $merchant_id = $this->get_option('merchant_id', '');
+        $api_key = $this->get_option('api_key', '');
+        
+        $environment_urls = array(
+            'dev' => 'https://dev-api.coinsub.io/v1',
+            'test' => 'https://test-api.coinsub.io/v1',
+            'staging' => 'https://staging-api.coinsub.io/v1',
+            'production' => 'https://api.coinsub.io/v1'
+        );
+        
+        $api_base_url = isset($environment_urls[$environment]) ? $environment_urls[$environment] : $environment_urls['test'];
+        $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
     }
     
     /**
