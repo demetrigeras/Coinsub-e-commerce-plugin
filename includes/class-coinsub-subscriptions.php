@@ -274,6 +274,9 @@ class CoinSub_Subscriptions {
                         <th><?php _e('Product', 'coinsub'); ?></th>
                         <th><?php _e('Amount', 'coinsub'); ?></th>
                         <th><?php _e('Frequency', 'coinsub'); ?></th>
+                        <th><?php _e('Created At', 'coinsub'); ?></th>
+                        <th><?php _e('Next Processing', 'coinsub'); ?></th>
+                        <th><?php _e('Cancelled At', 'coinsub'); ?></th>
                         <th><?php _e('Status', 'coinsub'); ?></th>
                         <th><?php _e('Actions', 'coinsub'); ?></th>
                     </tr>
@@ -284,6 +287,9 @@ class CoinSub_Subscriptions {
                         <td><?php echo esc_html($subscription['product_name']); ?></td>
                         <td><?php echo wc_price($subscription['amount']); ?></td>
                         <td><?php echo esc_html($subscription['frequency_text']); ?></td>
+                        <td><?php echo esc_html($subscription['created_at'] ?? '—'); ?></td>
+                        <td><?php echo esc_html($subscription['next_processing'] ?? '—'); ?></td>
+                        <td><?php echo esc_html($subscription['cancelled_at'] ?? '—'); ?></td>
                         <td><?php echo esc_html($subscription['status']); ?></td>
                         <td>
                             <?php if ($subscription['status'] === 'Active'): ?>
@@ -375,6 +381,30 @@ class CoinSub_Subscriptions {
             
             $status = $order->get_meta('_coinsub_subscription_status');
             
+            // Fetch agreement details from API to get dates
+            $created_at = $order->get_date_created()->date('Y-m-d H:i:s');
+            $next_processing = '';
+            $cancelled_at = '';
+            
+            $api_client = $this->get_api_client();
+            if ($api_client) {
+                $agreement_response = $api_client->retrieve_agreement($agreement_id);
+                if (!is_wp_error($agreement_response)) {
+                    $agreement_data = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
+                    
+                    // Extract dates from agreement data
+                    if (isset($agreement_data['created_at'])) {
+                        $created_at = $this->format_date($agreement_data['created_at']);
+                    }
+                    if (isset($agreement_data['next_processing'])) {
+                        $next_processing = $this->format_date($agreement_data['next_processing']);
+                    }
+                    if (isset($agreement_data['cancelled_at'])) {
+                        $cancelled_at = $this->format_date($agreement_data['cancelled_at']);
+                    }
+                }
+            }
+            
             // Show both active and cancelled subscriptions
             $subscriptions[] = array(
                 'order_id' => $order->get_id(),
@@ -382,11 +412,37 @@ class CoinSub_Subscriptions {
                 'product_name' => $this->get_subscription_product_name($order),
                 'amount' => $order->get_total(),
                 'frequency_text' => $this->get_subscription_frequency_text($order),
-                'status' => $status === 'cancelled' ? 'Cancelled' : 'Active'
+                'status' => $status === 'cancelled' ? 'Cancelled' : 'Active',
+                'created_at' => $created_at,
+                'next_processing' => $next_processing ?: '—',
+                'cancelled_at' => $cancelled_at ?: '—'
             );
         }
         
         return $subscriptions;
+    }
+    
+    /**
+     * Format date from API response
+     */
+    private function format_date($date_value) {
+        if (empty($date_value)) {
+            return '';
+        }
+        
+        // If it's a timestamp (numeric)
+        if (is_numeric($date_value)) {
+            return date('Y-m-d H:i:s', $date_value);
+        }
+        
+        // If it's a date string, try to parse it
+        $timestamp = strtotime($date_value);
+        if ($timestamp !== false) {
+            return date('Y-m-d H:i:s', $timestamp);
+        }
+        
+        // Return as-is if we can't parse it
+        return $date_value;
     }
     
     /**
