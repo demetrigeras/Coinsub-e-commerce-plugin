@@ -54,7 +54,6 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-webhook-handler.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-order-manager.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-logs.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-test.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-cart-sync.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-subscriptions.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-subscriptions.php';
@@ -76,7 +75,6 @@ function coinsub_commerce_init() {
     // Initialize admin tools (only in admin)
     if (is_admin()) {
         new CoinSub_Admin_Logs();
-        new CoinSub_Admin_Test();
     }
     
     // Force traditional checkout template (not block-based)
@@ -623,144 +621,30 @@ function coinsub_heartbeat_received($response, $data, $screen_id) {
 
 /**
  * Send CoinSub payment emails when order status changes to processing
+ * DISABLED: WooCommerce handles all emails automatically based on order status
  */
 function coinsub_send_payment_emails($order_id) {
-    error_log('📧 CoinSub Email Hook: Triggered for order #' . $order_id);
-    
-    $order = wc_get_order($order_id);
-    
-    if (!$order) {
-        error_log('❌ CoinSub Email Hook: Order not found for ID: ' . $order_id);
-        return;
-    }
-    
-    $payment_method = $order->get_payment_method();
-    error_log('📧 CoinSub Email Hook: Order payment method: ' . $payment_method);
-    
-    // Only send emails for CoinSub orders
-    if ($payment_method !== 'coinsub') {
-        error_log('📧 CoinSub Email Hook: Skipping - not a CoinSub order (method: ' . $payment_method . ')');
-        return;
-    }
-    
-    error_log('📧 CoinSub Email Hook: Order #' . $order_id . ' changed to processing - sending emails');
-    
-    // Send WooCommerce's built-in emails
-    if (class_exists('WC_Emails')) {
-        $wc_emails = WC_Emails::instance();
-        
-        // Send customer processing order email
-        if (method_exists($wc_emails, 'customer_processing_order')) {
-            $wc_emails->customer_processing_order($order);
-            error_log('✅ CoinSub Email Hook: Customer processing email sent');
-        }
-        
-        // Send new order email to admin
-        if (method_exists($wc_emails, 'new_order')) {
-            $wc_emails->new_order($order);
-            error_log('✅ CoinSub Email Hook: New order email sent to admin');
-        }
-    }
-    
-    // Send custom CoinSub merchant notification
-    coinsub_send_custom_merchant_notification($order);
+    // Email sending disabled - WooCommerce will handle all emails automatically
+    // when order status changes. Merchant can configure emails in WooCommerce > Settings > Emails
+    return;
 }
 
 /**
  * Send CoinSub payment emails when order status changes (any status change)
+ * DISABLED: WooCommerce handles all emails automatically based on order status
  */
 function coinsub_send_payment_emails_on_status_change($order_id, $old_status, $new_status) {
-    error_log('📧 CoinSub Status Change Hook: Order #' . $order_id . ' changed from ' . $old_status . ' to ' . $new_status);
-    
-    // Only trigger for processing status
-    if ($new_status !== 'processing') {
-        return;
-    }
-    
-    // Call the main email function
-    coinsub_send_payment_emails($order_id);
+    // Email sending disabled - WooCommerce will handle all emails automatically
+    // when order status changes. Merchant can configure emails in WooCommerce > Settings > Emails
+    return;
 }
 
 // Duplicate function removed
 
 /**
  * Send custom CoinSub merchant notification
+ * DISABLED: WooCommerce handles all emails automatically based on order status
  */
-function coinsub_send_custom_merchant_notification($order) {
-    $merchant_email = get_option('admin_email');
-    if (!$merchant_email) {
-        error_log('❌ CoinSub Email Hook: No admin email configured');
-        return;
-    }
-    
-    $transaction_hash = $order->get_meta('_coinsub_transaction_hash');
-    $transaction_id = $order->get_meta('_coinsub_transaction_id');
-    $chain_id = $order->get_meta('_coinsub_chain_id');
-    
-    $subject = sprintf('[Coinsub] Payment Received - Order #%s', $order->get_id());
-    
-    // Get order breakdown
-    $subtotal = $order->get_subtotal();
-    $shipping_total = $order->get_shipping_total();
-    $tax_total = $order->get_total_tax();
-    $total = $order->get_total();
-    
-    // Check if it's a subscription
-    $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
-    
-    // Get items list
-    $items_list = '';
-    foreach ($order->get_items() as $item_id => $item) {
-        $product_name = $item->get_name();
-        $quantity = $item->get_quantity();
-        $line_total = $order->get_line_total($item);
-        $items_list .= sprintf("• %s × %d - $%s\n", $product_name, $quantity, number_format($line_total, 2));
-    }
-    
-    // Get shipping address
-    $shipping_address = $order->get_formatted_shipping_address();
-    
-    // Build message
-    $message = "🚨 NEW PAYMENT RECEIVED\n";
-    $message .= "==========================================\n\n";
-    $message .= "A customer has successfully completed a payment via Coinsub.\n\n";
-    $message .= "📋 ORDER INFORMATION:\n";
-    $message .= "Order ID: #" . $order->get_id() . "\n";
-    $message .= "Customer: " . $order->get_billing_first_name() . " " . $order->get_billing_last_name() . "\n";
-    $message .= "Email: " . $order->get_billing_email() . "\n";
-    $message .= "Payment Amount: " . $order->get_formatted_order_total() . "\n";
-    $message .= "Order Type: " . ($is_subscription ? 'SUBSCRIPTION' : 'ONE-TIME') . "\n\n";
-    $message .= "🛍️ ITEMS PURCHASED:\n";
-    $message .= $items_list . "\n";
-    $message .= "💰 FINANCIAL BREAKDOWN:\n";
-    $message .= "Subtotal: $" . number_format($subtotal, 2) . "\n";
-    $message .= "Shipping Cost: $" . number_format($shipping_total, 2) . "\n";
-    $message .= "Tax Amount: $" . number_format($tax_total, 2) . "\n";
-    $message .= "TOTAL RECEIVED: $" . number_format($total, 2) . "\n\n";
-    $message .= "📍 SHIPPING INFORMATION:\n";
-    $message .= ($shipping_address ?: 'No shipping address provided') . "\n\n";
-    $message .= "🔗 CRYPTO TRANSACTION:\n";
-    $message .= "Transaction Hash: " . ($transaction_hash ?: 'N/A') . "\n";
-    $message .= "Transaction ID: " . ($transaction_id ?: 'N/A') . "\n";
-    $message .= "Blockchain: " . ($chain_id ? 'Chain ID ' . $chain_id : 'N/A') . "\n\n";
-    $message .= "⚡ NEXT STEPS:\n";
-    $message .= "1. Review order details\n";
-    $message .= "2. Prepare items for shipping\n";
-    $message .= "3. Update order status when shipped\n\n";
-    $message .= "🔗 VIEW ORDER: " . admin_url('post.php?post=' . $order->get_id() . '&action=edit') . "\n\n";
-    $message .= "---\n";
-    $message .= "This is an automated notification from your Coinsub payment gateway.\n";
-    $message .= "Please process this order promptly to maintain customer satisfaction.";
-    
-    $headers = array('Content-Type: text/plain; charset=UTF-8');
-    
-    error_log('📧 CoinSub Email Hook: Sending custom merchant notification to: ' . $merchant_email);
-    
-    if (wp_mail($merchant_email, $subject, $message, $headers)) {
-        error_log('✅ CoinSub Email Hook: Custom merchant notification sent successfully');
-    } else {
-        error_log('❌ CoinSub Email Hook: Failed to send custom merchant notification');
-    }
-}
+
 
 ?>

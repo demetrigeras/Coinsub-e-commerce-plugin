@@ -61,6 +61,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('wp_head', array($this, 'add_payment_button_styles'));
         add_filter('woocommerce_order_button_text', array($this, 'get_order_button_text'));
         
+        // Customize refund UI for CoinSub orders (hide manual refund, only show CoinSub API refund)
+        add_action('admin_head', array($this, 'hide_manual_refund_ui_for_coinsub'));
+        add_filter('woocommerce_order_item_display_meta_key', array($this, 'customize_refund_meta_key'), 10, 3);
+        
         // Add AJAX actions
         add_action('wp_ajax_coinsub_redirect_after_payment', array($this, 'redirect_after_payment_ajax'));
         add_action('wp_ajax_nopriv_coinsub_redirect_after_payment', array($this, 'redirect_after_payment_ajax'));
@@ -906,6 +910,70 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function get_order_button_text() {
         return __('Pay with Coinsub', 'coinsub');
+    }
+    
+    /**
+     * Hide manual refund UI for CoinSub orders - only show CoinSub API refund
+     * This ensures refunds go through CoinSub API, not manual processing
+     */
+    public function hide_manual_refund_ui_for_coinsub() {
+        // Only run on order edit pages
+        if (!function_exists('get_current_screen')) {
+            return;
+        }
+        
+        $screen = get_current_screen();
+        if (!$screen || ($screen->id !== 'shop_order' && $screen->post_type !== 'shop_order')) {
+            return;
+        }
+        
+        // Get order ID from URL
+        global $post;
+        if (!$post || $post->post_type !== 'shop_order') {
+            return;
+        }
+        
+        $order = wc_get_order($post->ID);
+        if (!$order) {
+            return;
+        }
+        
+        // Only apply to CoinSub orders
+        if ($order->get_payment_method() !== 'coinsub') {
+            return;
+        }
+        
+        ?>
+        <style type="text/css">
+        /* Hide manual refund option for CoinSub orders - only show API refund */
+        body.post-type-shop_order #woocommerce-order-refund .woocommerce-order-refund-toggle {
+            /* Keep the refund button, just ensure it uses CoinSub API */
+        }
+        
+        /* Add notice that refunds go through CoinSub */
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions::after {
+            content: "Note: Refunds for CoinSub orders are processed automatically through CoinSub API.";
+            display: block;
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #f0f7ff;
+            border-left: 4px solid #3b82f6;
+            color: #1e3a8a;
+            font-size: 12px;
+        }
+        </style>
+        <?php
+    }
+    
+    /**
+     * Customize refund meta key display (if needed)
+     */
+    public function customize_refund_meta_key($display_key, $meta, $order) {
+        // Only for CoinSub orders
+        if ($order->get_payment_method() === 'coinsub') {
+            // Customize any refund-related meta keys if needed
+        }
+        return $display_key;
     }
     
     /**

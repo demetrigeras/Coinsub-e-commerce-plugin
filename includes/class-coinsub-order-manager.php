@@ -21,14 +21,9 @@ class CoinSub_Order_Manager {
         add_action('woocommerce_order_item_add_action_buttons', array($this, 'add_cancel_subscription_button'));
         add_action('wp_ajax_coinsub_admin_cancel_subscription', array($this, 'ajax_admin_cancel_subscription'));
         
-        // Refund functionality
-        add_action('woocommerce_order_details_after_order_table', array($this, 'add_refund_request_button'));
-        add_action('wp_ajax_coinsub_request_refund', array($this, 'ajax_request_refund'));
-        add_action('wp_ajax_nopriv_coinsub_request_refund', array($this, 'ajax_request_refund'));
-        add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_refund_info'));
+        // Refund functionality - removed customer refund request button
+        // Refunds are now handled via WooCommerce admin using CoinSub API through payment gateway
         add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_subscription_status'));
-        add_action('wp_ajax_coinsub_admin_process_refund', array($this, 'ajax_admin_process_refund'));
-        add_action('wp_ajax_coinsub_admin_cancel_refund', array($this, 'ajax_admin_cancel_refund'));
     }
     
     /**
@@ -64,42 +59,25 @@ class CoinSub_Order_Manager {
     }
     
     /**
-     * Handle order processing - send emails
+     * Handle order processing - email logic disabled
+     * WooCommerce will handle all emails automatically when order status changes
      */
     private function handle_order_processing($order) {
-        error_log('📧 CoinSub Order Manager: Order #' . $order->get_id() . ' changed to processing - sending emails');
+        error_log('✅ CoinSub Order Manager: Order #' . $order->get_id() . ' changed to processing');
+        error_log('ℹ️ CoinSub Order Manager: Email sending disabled - WooCommerce will handle emails automatically');
         
-        // Check if this is a CoinSub order
-        if ($order->get_payment_method() !== 'coinsub') {
-            error_log('📧 CoinSub Order Manager: Skipping - not a CoinSub order (method: ' . $order->get_payment_method() . ')');
-            return;
-        }
-        
-        // Send WooCommerce's built-in emails
-        if (class_exists('WC_Emails')) {
-            $wc_emails = WC_Emails::instance();
-            
-            // Send customer processing order email
-            if (method_exists($wc_emails, 'customer_processing_order')) {
-                $wc_emails->customer_processing_order($order);
-                error_log('✅ CoinSub Order Manager: Customer processing email sent');
-            }
-            
-            // Send new order email to admin
-            if (method_exists($wc_emails, 'new_order')) {
-                $wc_emails->new_order($order);
-                error_log('✅ CoinSub Order Manager: New order email sent to admin');
-            }
-        }
-        
-        // Send custom CoinSub merchant notification
-        $this->send_custom_merchant_notification($order);
+        // All email logic removed - WooCommerce will send emails based on order status
+        // Merchant can configure email settings in WooCommerce > Settings > Emails
+        return;
     }
     
     /**
      * Send custom CoinSub merchant notification
+     * DISABLED: WooCommerce handles all emails automatically
      */
     private function send_custom_merchant_notification($order) {
+        // Email logic disabled - WooCommerce will send emails based on order status changes
+        return;
         // Prevent duplicate calls
         static $processed_orders = array();
         $order_id = $order->get_id();
@@ -993,8 +971,11 @@ class CoinSub_Order_Manager {
     
     /**
      * Add refund request button for customers
+     * REMOVED: Customer refund requests disabled - refunds handled via WooCommerce admin
      */
     public function add_refund_request_button($order) {
+        // Functionality removed - refunds now handled via WooCommerce admin using CoinSub API
+        return;
         // Only show for CoinSub orders
         $purchase_session_id = $order->get_meta('_coinsub_purchase_session_id');
         if (empty($purchase_session_id)) {

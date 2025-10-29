@@ -70,9 +70,17 @@ class CoinSub_Admin_Payments {
         $api_client = $this->get_api_client();
         $payments_response = $api_client ? $api_client->get_all_payments() : null;
         
+        // Log API response structure for debugging
+        if ($payments_response && !is_wp_error($payments_response)) {
+            error_log('🔍 Payments API response structure: ' . json_encode($payments_response));
+        }
+        
         $payments = array();
         if (!is_wp_error($payments_response) && isset($payments_response['data']) && is_array($payments_response['data'])) {
             $payments = $payments_response['data'];
+        } elseif (!is_wp_error($payments_response) && is_array($payments_response)) {
+            // Sometimes the API might return the array directly without 'data' wrapper
+            $payments = $payments_response;
         }
         
         // Match payments with WooCommerce orders
@@ -358,6 +366,34 @@ class CoinSub_Admin_Payments {
                 $customer_name = $payment['customer_name'] ?? '';
             }
             
+            // Extract created_at from payment - check multiple possible field names and locations
+            $created_at = '';
+            
+            // Check direct field
+            if (isset($payment['created_at']) && !empty($payment['created_at'])) {
+                $created_at = $payment['created_at'];
+            }
+            // Check alternative field names
+            elseif (isset($payment['createdAt']) && !empty($payment['createdAt'])) {
+                $created_at = $payment['createdAt'];
+            }
+            elseif (isset($payment['date']) && !empty($payment['date'])) {
+                $created_at = $payment['date'];
+            }
+            elseif (isset($payment['timestamp']) && !empty($payment['timestamp'])) {
+                $created_at = $payment['timestamp'];
+            }
+            // Check if nested in data object
+            elseif (isset($payment['data']['created_at']) && !empty($payment['data']['created_at'])) {
+                $created_at = $payment['data']['created_at'];
+            }
+            
+            // Log for debugging if still empty
+            if (empty($created_at)) {
+                error_log('🔍 Payment data keys: ' . json_encode(array_keys($payment)));
+                error_log('🔍 Full payment data: ' . json_encode($payment));
+            }
+            
             $matched_payments[] = array(
                 'payment_id' => $payment['payment_id'] ?? $payment['id'] ?? '',
                 'order' => $order,
@@ -367,7 +403,7 @@ class CoinSub_Admin_Payments {
                 'currency' => $payment['currency'] ?? 'USD',
                 'status' => $payment['status'] ?? 'unknown',
                 'transaction_hash' => $payment['transaction_hash'] ?? $payment['tx_hash'] ?? '',
-                'created_at' => $payment['created_at'] ?? $payment['date'] ?? ''
+                'created_at' => $created_at
             );
         }
         

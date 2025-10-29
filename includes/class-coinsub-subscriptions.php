@@ -392,13 +392,18 @@ class CoinSub_Subscriptions {
                 if (!is_wp_error($agreement_response)) {
                     $agreement_data = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
                     
-                    // Extract dates from agreement data
+                    // Extract dates from agreement data - check multiple possible field names
                     if (isset($agreement_data['created_at'])) {
                         $created_at = $this->format_date($agreement_data['created_at']);
                     }
-                    if (isset($agreement_data['next_processing'])) {
+                    
+                    // Check for next_process_date (correct field name)
+                    if (isset($agreement_data['next_process_date'])) {
+                        $next_processing = $this->format_date($agreement_data['next_process_date']);
+                    } elseif (isset($agreement_data['next_processing'])) {
                         $next_processing = $this->format_date($agreement_data['next_processing']);
                     }
+                    
                     if (isset($agreement_data['cancelled_at'])) {
                         $cancelled_at = $this->format_date($agreement_data['cancelled_at']);
                     }
