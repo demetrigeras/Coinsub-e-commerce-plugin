@@ -566,8 +566,8 @@ class CoinSub_Order_Manager {
             return;
         }
         
-        // Get blockchain explorer URL
-        $explorer_url = $this->get_explorer_url($chain_id, $transaction_hash);
+        // Get blockchain explorer URL (pass order to access webhook metadata)
+        $explorer_url = $this->get_explorer_url($chain_id, $transaction_hash, $order);
         
         ?>
         <div class="address">
@@ -849,28 +849,67 @@ class CoinSub_Order_Manager {
     }
 
     /**
-     * Get blockchain explorer URL using OKLink (supports all networks)
+     * Get blockchain explorer URL dynamically from webhook data or chain_id
+     * Uses stored explorer_url from webhook, network name, or generates from chain_id
+     * Priority: explorer_url from webhook > network_name from webhook > chain_id mapping
      */
-    private function get_explorer_url($chain_id, $transaction_hash) {
-        // Map chain IDs to OKLink network names
-        $networks = array(
-            '1' => 'eth',           // Ethereum Mainnet
-            '137' => 'polygon',     // Polygon
-            '80002' => 'amoy',      // Polygon Amoy Testnet
-            '11155111' => 'sepolia', // Sepolia Testnet
-            '56' => 'bsc',          // BSC
-            '43114' => 'avaxc',     // Avalanche C-Chain
-            '42161' => 'arbitrum',  // Arbitrum One
-            '10' => 'optimism',     // Optimism
-            '8453' => 'base',       // Base
-            '421613' => 'sepolia',  // Sepolia Testnet
+    private function get_explorer_url($chain_id, $transaction_hash, $order = null) {
+        if (empty($transaction_hash)) {
+            return '';
+        }
+        
+        // Try to get order if not provided
+        if (!$order) {
+            global $post;
+            if ($post && $post->post_type === 'shop_order') {
+                $order = wc_get_order($post->ID);
+            }
+        }
+        
+        if ($order) {
+            // Only use explorer_url directly from webhook - no hardcoded mappings
+            $explorer_url = $order->get_meta('_coinsub_explorer_url');
+            if (!empty($explorer_url)) {
+                // Replace transaction hash placeholder if needed, or append hash
+                if (strpos($explorer_url, '{hash}') !== false || strpos($explorer_url, '{tx}') !== false) {
+                    $explorer_url = str_replace(array('{hash}', '{tx}'), $transaction_hash, $explorer_url);
+                } elseif (strpos($explorer_url, $transaction_hash) === false) {
+                    // If URL doesn't contain hash, append it
+                    $explorer_url = rtrim($explorer_url, '/') . '/tx/' . $transaction_hash;
+                }
+                return $explorer_url;
+            }
             
-        );
+            // If webhook provided network name, we can construct URL using it
+            // But webhook should ideally provide full explorer_url
+            $network_name = $order->get_meta('_coinsub_network_name');
+            if (!empty($network_name)) {
+                return $this->build_explorer_url_from_network($network_name, $transaction_hash);
+            }
+        }
         
-        // Get network name or default to polygon
-        $network = isset($networks[$chain_id]) ? $networks[$chain_id] : 'polygon';
+        // No webhook data - cannot build explorer URL
+        // Webhook should always provide explorer_url or network_name
+        error_log('⚠️ CoinSub: Cannot build explorer URL - webhook did not provide explorer_url or network_name');
+        return '';
+    }
+    
+    /**
+     * Build explorer URL from network name (from webhook)
+     * Uses network name directly from webhook - no hardcoded mappings
+     */
+    private function build_explorer_url_from_network($network_name, $transaction_hash) {
+        // Use network name exactly as provided by webhook
+        // This assumes webhook provides network name in format compatible with explorer
+        // Ideally webhook should provide full explorer_url instead
+        $network = strtolower(trim($network_name));
         
-        // Return OKLink explorer URL
+        // Log that we're using network name - webhook should ideally provide full explorer_url
+        error_log('ℹ️ CoinSub: Building explorer URL from network name: ' . $network_name);
+        
+        // Construct explorer URL using network name from webhook
+        // Format depends on explorer service - currently using OKLink format
+        // If your API uses a different explorer format, webhook should provide full explorer_url
         return 'https://www.oklink.com/' . $network . '/tx/' . $transaction_hash;
     }
     

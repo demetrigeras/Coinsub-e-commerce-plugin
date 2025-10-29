@@ -264,6 +264,20 @@ class CoinSub_Webhook_Handler {
             $order->update_meta_data('_coinsub_chain_id', $transaction_details['chain_id']);
         }
         
+        // Store network name from webhook metadata if available (for explorer URLs)
+        if (isset($transaction_details['network'])) {
+            $order->update_meta_data('_coinsub_network_name', $transaction_details['network']);
+        } elseif (isset($data['network'])) {
+            $order->update_meta_data('_coinsub_network_name', $data['network']);
+        }
+        
+        // Store explorer URL directly from webhook if provided
+        if (isset($transaction_details['explorer_url'])) {
+            $order->update_meta_data('_coinsub_explorer_url', $transaction_details['explorer_url']);
+        } elseif (isset($data['explorer_url'])) {
+            $order->update_meta_data('_coinsub_explorer_url', $data['explorer_url']);
+        }
+        
         // Store customer wallet address if available
         if (isset($transaction_details['customer_wallet_address'])) {
             $order->update_meta_data('_customer_wallet_address', $transaction_details['customer_wallet_address']);

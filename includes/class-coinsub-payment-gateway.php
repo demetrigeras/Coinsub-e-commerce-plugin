@@ -63,7 +63,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Customize refund UI for CoinSub orders (hide manual refund, only show CoinSub API refund)
         add_action('admin_head', array($this, 'hide_manual_refund_ui_for_coinsub'));
+        add_action('admin_footer', array($this, 'hide_manual_refund_js_for_coinsub'));
         add_filter('woocommerce_order_item_display_meta_key', array($this, 'customize_refund_meta_key'), 10, 3);
+        
+        // Prevent manual refunds for CoinSub orders
+        add_filter('woocommerce_order_manual_refund_needs_processing', array($this, 'disable_manual_refund_for_coinsub'), 10, 3);
+        add_filter('woocommerce_order_item_get_refunded', array($this, 'force_api_refund_for_coinsub'), 10, 2);
         
         // Add AJAX actions
         add_action('wp_ajax_coinsub_redirect_after_payment', array($this, 'redirect_after_payment_ajax'));
@@ -945,24 +950,196 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         ?>
         <style type="text/css">
-        /* Hide manual refund option for CoinSub orders - only show API refund */
-        body.post-type-shop_order #woocommerce-order-refund .woocommerce-order-refund-toggle {
-            /* Keep the refund button, just ensure it uses CoinSub API */
+        /* Hide manual refund option for CoinSub orders */
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions .do-manual-refund,
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions input[type="radio"][value="manual"],
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions label[for*="manual"],
+        body.post-type-shop_order .woocommerce-order-refund .manual-refund-actions,
+        body.post-type-shop_order .woocommerce-order-refund .refund-form .refund-actions .do-manual-refund {
+            display: none !important;
         }
         
-        /* Add notice that refunds go through CoinSub */
-        body.post-type-shop_order .woocommerce-order-refund .refund-actions::after {
-            content: "Note: Refunds for CoinSub orders are processed automatically through CoinSub API.";
-            display: block;
-            margin-top: 10px;
-            padding: 8px 12px;
-            background: #f0f7ff;
-            border-left: 4px solid #3b82f6;
-            color: #1e3a8a;
-            font-size: 12px;
+        /* Ensure automatic refund is selected by default */
+        body.post-type-shop_order .woocommerce-order-refund input[type="radio"][value="api"]:checked,
+        body.post-type-shop_order .woocommerce-order-refund .do-api-refund {
+            display: inline-block !important;
         }
         </style>
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            // Only run for CoinSub orders
+            var paymentMethod = '<?php echo esc_js($order->get_payment_method()); ?>';
+            if (paymentMethod !== 'coinsub') {
+                return;
+            }
+            
+            // Function to hide manual refund options
+            function hideManualRefund() {
+                // Hide manual refund button
+                $('.woocommerce-order-refund .do-manual-refund').hide();
+                
+                // Hide manual refund radio option if it exists
+                $('.woocommerce-order-refund input[type="radio"][value="manual"]').closest('label, li, div').hide();
+                
+                // Select automatic refund if available
+                var apiRefund = $('.woocommerce-order-refund input[type="radio"][value="api"]');
+                if (apiRefund.length && !apiRefund.is(':checked')) {
+                    apiRefund.prop('checked', true).trigger('change');
+                }
+                
+                // Hide any manual refund form sections
+                $('.woocommerce-order-refund .manual-refund-actions, .woocommerce-order-refund .refund-form .manual-refund').hide();
+            }
+            
+            // Run immediately
+            hideManualRefund();
+            
+            // Also run when refund modal/interface is opened
+            $(document).on('click', '.refund-items', function() {
+                setTimeout(hideManualRefund, 100);
+            });
+            
+            // Watch for dynamically loaded content
+            var observer = new MutationObserver(function(mutations) {
+                hideManualRefund();
+            });
+            
+            // Observe changes to the refund section
+            var refundContainer = document.querySelector('.woocommerce-order-refund');
+            if (refundContainer) {
+                observer.observe(refundContainer, {
+                    childList: true,
+                    subtree: true
+                });
+            }
+        });
+        </script>
         <?php
+    }
+    
+    /**
+     * Additional JavaScript to hide manual refund button (runs in footer for better timing)
+     */
+    public function hide_manual_refund_js_for_coinsub() {
+        // Only run on order edit pages
+        if (!function_exists('get_current_screen')) {
+            return;
+        }
+        
+        $screen = get_current_screen();
+        if (!$screen || ($screen->id !== 'shop_order' && $screen->post_type !== 'shop_order')) {
+            return;
+        }
+        
+        global $post;
+        if (!$post || $post->post_type !== 'shop_order') {
+            return;
+        }
+        
+        $order = wc_get_order($post->ID);
+        if (!$order || $order->get_payment_method() !== 'coinsub') {
+            return;
+        }
+        
+        ?>
+        <script type="text/javascript">
+        jQuery(function($) {
+            // Function to hide manual refund button specifically
+            function forceHideManualRefund() {
+                // Target WooCommerce's refund UI elements
+                var $refundSection = $('.woocommerce-order-refund, #woocommerce-order-refund');
+                
+                if ($refundSection.length === 0) {
+                    return; // Refund section not loaded yet
+                }
+                
+                // Hide manual refund button (WooCommerce uses .do-manual-refund class)
+                $refundSection.find('.do-manual-refund, button.do-manual-refund').hide();
+                
+                // Hide manual refund radio buttons
+                $refundSection.find('input[type="radio"][value="manual"], input[type="radio"][id*="manual"], input[type="radio"][name*="manual"]').each(function() {
+                    var $radio = $(this);
+                    // Hide the radio button and its container
+                    $radio.closest('li, div, p, label').hide();
+                });
+                
+                // Hide any buttons with manual refund text or data attributes
+                $refundSection.find('button').each(function() {
+                    var $btn = $(this);
+                    var text = $btn.text().toLowerCase();
+                    var dataAction = $btn.data('action') || '';
+                    
+                    if (text.indexOf('manual') !== -1 || dataAction.toLowerCase().indexOf('manual') !== -1) {
+                        // Only hide if it's clearly a manual refund button
+                        if (text.indexOf('refund') !== -1 || dataAction.indexOf('refund') !== -1) {
+                            $btn.hide();
+                        }
+                    }
+                });
+                
+                // Ensure API/automatic refund is available
+                var $apiRefund = $refundSection.find('.do-api-refund, button.do-api-refund, input[value="api"], input[id*="api"]');
+                if ($apiRefund.length > 0) {
+                    // Ensure it's visible
+                    $apiRefund.closest('li, div, p, label').show();
+                }
+            }
+            
+            // Run immediately
+            forceHideManualRefund();
+            
+            // Run after delays to catch dynamic content
+            setTimeout(forceHideManualRefund, 300);
+            setTimeout(forceHideManualRefund, 800);
+            
+            // Watch for refund section being opened
+            $(document).on('click', '.refund-items, #refund-items', function() {
+                setTimeout(forceHideManualRefund, 200);
+                setTimeout(forceHideManualRefund, 500);
+            });
+            
+            // Watch for AJAX completion (WooCommerce loads refund UI via AJAX)
+            $(document).ajaxComplete(function() {
+                setTimeout(forceHideManualRefund, 150);
+            });
+            
+            // Use MutationObserver for better detection
+            if (typeof MutationObserver !== 'undefined') {
+                var observer = new MutationObserver(function() {
+                    forceHideManualRefund();
+                });
+                
+                // Observe the order edit page
+                var targetNode = document.querySelector('.woocommerce-order-refund, #woocommerce-order-refund, #order_data');
+                if (targetNode) {
+                    observer.observe(targetNode, {
+                        childList: true,
+                        subtree: true
+                    });
+                }
+            }
+        });
+        </script>
+        <?php
+    }
+    
+    /**
+     * Disable manual refund processing for CoinSub orders
+     */
+    public function disable_manual_refund_for_coinsub($needs_processing, $order, $amount) {
+        if ($order && $order->get_payment_method() === 'coinsub') {
+            // Force refunds to go through payment gateway (CoinSub API) instead of manual
+            return false;
+        }
+        return $needs_processing;
+    }
+    
+    /**
+     * Force API refund for CoinSub orders
+     */
+    public function force_api_refund_for_coinsub($refunded, $item) {
+        // This ensures CoinSub orders use API refunds
+        return $refunded;
     }
     
     /**

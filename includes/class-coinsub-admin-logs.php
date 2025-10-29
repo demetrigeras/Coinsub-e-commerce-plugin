@@ -63,7 +63,7 @@ define(\'WP_DEBUG_LOG\', true);
 define(\'WP_DEBUG_DISPLAY\', false);</pre>';
                     echo '<p><strong>Then:</strong> Go to checkout and try to place an order. Logs will appear here.</p>';
                 } else {
-                    echo '<h3>📋 CoinSub Logs (Most Recent First):</h3>';
+                    echo '<h3>📋 Coinsub Logs (Most Recent First):</h3>';
                     echo '<div style="background: #1e1e1e; color: #00ff00; padding: 20px; border-radius: 5px; font-family: monospace; font-size: 13px; overflow-x: auto; max-height: 600px; overflow-y: scroll; line-height: 1.6;">';
                     
                     foreach (array_reverse($logs) as $log_line) {
@@ -80,7 +80,7 @@ define(\'WP_DEBUG_DISPLAY\', false);</pre>';
                     }
                     
                     echo '</div>';
-                    echo '<p style="margin-top: 15px;"><em>Showing last ' . count($logs) . ' CoinSub-related log entries</em></p>';
+                    echo '<p style="margin-top: 15px;"><em>Showing last ' . count($logs) . ' Coinsub-related log entries</em></p>';
                 }
                 ?>
             </div>
