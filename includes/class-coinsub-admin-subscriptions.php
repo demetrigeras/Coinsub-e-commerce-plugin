@@ -308,7 +308,7 @@ class CoinSub_Admin_Subscriptions {
                 'status_class' => 'status-' . $status,
                 'created_at' => $created_at,
                 'next_processing' => $next_processing ?: '—',
-                'cancelled_at' => $cancelled_at ?: '—'
+                'cancelled_at' => ($cancelled_at ?: ($order->get_meta('_coinsub_cancelled_at') ?: '—'))
             );
         }
         
@@ -475,6 +475,8 @@ class CoinSub_Admin_Subscriptions {
         
         // Update order meta
         $order->update_meta_data('_coinsub_subscription_status', 'cancelled');
+        // Stamp local cancelled_at timestamp
+        $order->update_meta_data('_coinsub_cancelled_at', current_time('mysql'));
         $order->add_order_note(__('Subscription cancelled by merchant from Subscriptions page', 'coinsub'));
         $order->save();
         

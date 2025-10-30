@@ -110,22 +110,17 @@ class CoinSub_Admin_Payments {
                 <table class="wp-list-table widefat fixed striped" style="margin-top: 20px;">
                     <thead>
                         <tr>
-                            <th><?php _e('Payment ID', 'coinsub'); ?></th>
                             <th><?php _e('Order', 'coinsub'); ?></th>
                             <th><?php _e('Customer', 'coinsub'); ?></th>
                             <th><?php _e('Amount', 'coinsub'); ?></th>
                             <th><?php _e('Status', 'coinsub'); ?></th>
                             <th><?php _e('Transaction Hash', 'coinsub'); ?></th>
                             <th><?php _e('Date', 'coinsub'); ?></th>
-                            <th><?php _e('Actions', 'coinsub'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($payments_with_orders as $payment): ?>
                         <tr>
-                            <td>
-                                <code><?php echo esc_html($payment['payment_id']); ?></code>
-                            </td>
                             <td>
                                 <?php if ($payment['order']): ?>
                                     <a href="<?php echo esc_url(admin_url('post.php?post=' . $payment['order']->get_id() . '&action=edit')); ?>">
@@ -172,28 +167,11 @@ class CoinSub_Admin_Payments {
                                 }
                                 ?>
                             </td>
-                            <td>
-                                <?php if (!empty($payment['payment_id'])): ?>
-                                    <a href="#" class="button button-small view-payment-details" 
-                                       data-payment-id="<?php echo esc_attr($payment['payment_id']); ?>">
-                                        <?php _e('View Details', 'coinsub'); ?>
-                                    </a>
-                                <?php endif; ?>
-                            </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             <?php endif; ?>
-        </div>
-        
-        <!-- Payment Details Modal -->
-        <div id="coinsub-payment-modal" style="display: none;">
-            <div class="coinsub-modal-content">
-                <span class="coinsub-modal-close">&times;</span>
-                <h2><?php _e('Payment Details', 'coinsub'); ?></h2>
-                <div id="coinsub-payment-details"></div>
-            </div>
         </div>
         
         <style>
@@ -221,94 +199,8 @@ class CoinSub_Admin_Payments {
             color: #383d41;
         }
         
-        /* Modal Styles */
-        #coinsub-payment-modal {
-            position: fixed;
-            z-index: 100000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.4);
-        }
-        .coinsub-modal-content {
-            background-color: #fefefe;
-            margin: 5% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 800px;
-            border-radius: 8px;
-            position: relative;
-        }
-        .coinsub-modal-close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .coinsub-modal-close:hover,
-        .coinsub-modal-close:focus {
-            color: black;
-        }
-        #coinsub-payment-details {
-            margin-top: 20px;
-        }
-        #coinsub-payment-details table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        #coinsub-payment-details table td {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-        }
-        #coinsub-payment-details table td:first-child {
-            font-weight: bold;
-            width: 200px;
-        }
         </style>
         
-        <script>
-        jQuery(document).ready(function($) {
-            $('.view-payment-details').on('click', function(e) {
-                e.preventDefault();
-                var paymentId = $(this).data('payment-id');
-                
-                $.ajax({
-                    url: ajaxurl,
-                    type: 'POST',
-                    data: {
-                        action: 'coinsub_get_payment_details',
-                        payment_id: paymentId,
-                        nonce: '<?php echo wp_create_nonce('coinsub_payment_details'); ?>'
-                    },
-                    success: function(response) {
-                        if (response.success && response.data.html) {
-                            $('#coinsub-payment-details').html(response.data.html);
-                            $('#coinsub-payment-modal').show();
-                        } else {
-                            alert(response.data.message || 'Failed to load payment details');
-                        }
-                    },
-                    error: function() {
-                        alert('Error loading payment details');
-                    }
-                });
-            });
-            
-            $('.coinsub-modal-close').on('click', function() {
-                $('#coinsub-payment-modal').hide();
-            });
-            
-            $(window).on('click', function(e) {
-                if ($(e.target).is('#coinsub-payment-modal')) {
-                    $('#coinsub-payment-modal').hide();
-                }
-            });
-        });
-        </script>
         <?php
     }
     
