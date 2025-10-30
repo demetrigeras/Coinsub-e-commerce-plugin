@@ -17,7 +17,7 @@ class CoinSub_Order_Manager {
     public function __construct() {
         add_action('woocommerce_order_status_changed', array($this, 'handle_order_status_change'), 10, 3);
         add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_coinsub_info'));
-        add_action('woocommerce_email_after_order_table', array($this, 'add_coinsub_info_to_email'), 10, 4);
+        // Email handling left to WooCommerce - no custom email content from plugin
         add_action('woocommerce_order_item_add_action_buttons', array($this, 'add_cancel_subscription_button'));
         add_action('wp_ajax_coinsub_admin_cancel_subscription', array($this, 'ajax_admin_cancel_subscription'));
         
@@ -880,17 +880,28 @@ class CoinSub_Order_Manager {
                 return $explorer_url;
             }
             
-            // If webhook provided network name, we can construct URL using it
-            // But webhook should ideally provide full explorer_url
+            // If webhook provided network name, construct URL using it
             $network_name = $order->get_meta('_coinsub_network_name');
             if (!empty($network_name)) {
                 return $this->build_explorer_url_from_network($network_name, $transaction_hash);
             }
+
+            // Try chain_id from order meta if not passed in
+            if (empty($chain_id)) {
+                $chain_id = $order->get_meta('_coinsub_chain_id');
+            }
+        }
+
+        // Use chain_id mapping as final fallback
+        if (!empty($chain_id)) {
+            $network_from_chain = $this->get_network_from_chain_id($chain_id);
+            if (!empty($network_from_chain)) {
+                return $this->build_explorer_url_from_network($network_from_chain, $transaction_hash);
+            }
         }
         
-        // No webhook data - cannot build explorer URL
-        // Webhook should always provide explorer_url or network_name
-        error_log('⚠️ CoinSub: Cannot build explorer URL - webhook did not provide explorer_url or network_name');
+        // No data available to construct a link
+        error_log('⚠️ CoinSub: Cannot build explorer URL - missing explorer_url/network_name/chain_id');
         return '';
     }
     
@@ -899,54 +910,93 @@ class CoinSub_Order_Manager {
      * Uses network name directly from webhook - no hardcoded mappings
      */
     private function build_explorer_url_from_network($network_name, $transaction_hash) {
-        // Use network name exactly as provided by webhook
-        // This assumes webhook provides network name in format compatible with explorer
-        // Ideally webhook should provide full explorer_url instead
         $network = strtolower(trim($network_name));
-        
-        // Log that we're using network name - webhook should ideally provide full explorer_url
-        error_log('ℹ️ CoinSub: Building explorer URL from network name: ' . $network_name);
-        
-        // Construct explorer URL using network name from webhook
-        // Format depends on explorer service - currently using OKLink format
-        // If your API uses a different explorer format, webhook should provide full explorer_url
-        return 'https://www.oklink.com/' . $network . '/tx/' . $transaction_hash;
+        // OKLink format with English locale
+        return 'https://www.oklink.com/en/' . rawurlencode($network) . '/tx/' . rawurlencode($transaction_hash);
+    }
+
+    private function get_network_from_chain_id($chain_id) {
+        // Normalize numeric value
+        $id = (int) $chain_id;
+        $map = array(
+            1 => 'eth',           // Ethereum Mainnet
+            10 => 'optimism',     // Optimism
+            56 => 'bsc',          // BNB Smart Chain
+            137 => 'polygon',     // Polygon Mainnet
+            8453 => 'base',       // Base
+            42161 => 'arbitrum-one', // Arbitrum One
+            43114 => 'avalanche', // Avalanche C-Chain
+            80002 => 'amoy',      // Polygon Amoy (testnet)
+            11155111 => 'sepolia', // Ethereum Sepolia
+        );
+        return isset($map[$id]) ? $map[$id] : '';
     }
     
     /**
      * Add CoinSub information to order emails
      */
     public function add_coinsub_info_to_email($order, $sent_to_admin, $plain_text, $email) {
-        $purchase_session_id = $order->get_meta('_coinsub_purchase_session_id');
-        
-        if (empty($purchase_session_id)) {
+        // Only show payment info if order is CoinSub
+        if ($order->get_payment_method() !== 'coinsub') {
             return;
         }
         
+        $order_status = $order->get_status();
+        
+        // For pending/on-hold orders: show "Complete Payment" button
+        if (in_array($order_status, array('pending', 'on-hold'), true)) {
+            $checkout_url = $order->get_meta('_coinsub_checkout_url');
+            if (empty($checkout_url)) {
+                return;
+            }
+            
+            if ($plain_text) {
+                echo "\n" . __('Complete Your Payment:', 'coinsub-commerce') . "\n";
+                echo __('Payment URL: ', 'coinsub-commerce') . $checkout_url . "\n";
+            } else {
+                ?>
+                <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #007cba;">
+                    <h3 style="margin-top: 0;"><?php _e('Complete Your Payment', 'coinsub-commerce'); ?></h3>
+                    <p><?php _e('Click the button below to complete your payment:', 'coinsub-commerce'); ?></p>
+                    <p>
+                        <a href="<?php echo esc_url($checkout_url); ?>" style="background: #007cba; color: white; padding: 10px 20px; text-decoration: none; border-radius: 3px; display: inline-block;">
+                            <?php _e('Complete Payment', 'coinsub-commerce'); ?>
+                        </a>
+                    </p>
+                </div>
+                <?php
+            }
+            return;
+        }
+        
+        // For completed/processing orders: show transaction hash link (if available)
+        $transaction_hash = $order->get_meta('_coinsub_transaction_hash');
+        $chain_id = $order->get_meta('_coinsub_chain_id');
+        
+        if (empty($transaction_hash)) {
+            return; // No transaction info to show
+        }
+        
+        $explorer_url = $this->get_explorer_url($chain_id, $transaction_hash, $order);
+        
         if ($plain_text) {
             echo "\n" . __('CoinSub Payment Information:', 'coinsub-commerce') . "\n";
-            echo __('Purchase Session ID: ', 'coinsub-commerce') . $purchase_session_id . "\n";
-            
-            $checkout_url = $order->get_meta('_coinsub_checkout_url');
-            if ($checkout_url) {
-                echo __('Payment URL: ', 'coinsub-commerce') . $checkout_url . "\n";
+            echo __('Transaction Hash: ', 'coinsub-commerce') . $transaction_hash . "\n";
+            if ($explorer_url) {
+                echo __('View on Blockchain: ', 'coinsub-commerce') . $explorer_url . "\n";
             }
         } else {
             ?>
             <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #007cba;">
-                <h3 style="margin-top: 0;"><?php _e('CoinSub Payment Information', 'coinsub-commerce'); ?></h3>
+                <h3 style="margin-top: 0;"><?php _e('Payment Confirmation', 'coinsub-commerce'); ?></h3>
                 <p>
-                    <strong><?php _e('Purchase Session ID:', 'coinsub-commerce'); ?></strong><br>
-                    <code><?php echo esc_html($purchase_session_id); ?></code>
+                    <strong><?php _e('Transaction Hash:', 'coinsub-commerce'); ?></strong><br>
+                    <code><?php echo esc_html($transaction_hash); ?></code>
                 </p>
-                
-                <?php
-                $checkout_url = $order->get_meta('_coinsub_checkout_url');
-                if ($checkout_url):
-                ?>
+                <?php if ($explorer_url): ?>
                 <p>
-                    <a href="<?php echo esc_url($checkout_url); ?>" style="background: #007cba; color: white; padding: 10px 20px; text-decoration: none; border-radius: 3px; display: inline-block;">
-                        <?php _e('Complete Payment', 'coinsub-commerce'); ?>
+                    <a href="<?php echo esc_url($explorer_url); ?>" style="background: #007cba; color: white; padding: 10px 20px; text-decoration: none; border-radius: 3px; display: inline-block;" target="_blank">
+                        <?php _e('View on Blockchain', 'coinsub-commerce'); ?>
                     </a>
                 </p>
                 <?php endif; ?>

@@ -228,9 +228,14 @@ class CoinSub_Webhook_Handler {
         error_log('🎉 CoinSub Webhook: Processing payment completion for order #' . $order->get_id());
         error_log('CoinSub Webhook: Current order status: ' . $order->get_status());
         
-        // Update WooCommerce order status - payment received, move to processing for consistency
-        $order->update_status('processing', __('Payment received via CoinSub', 'coinsub'));
-        error_log('CoinSub Webhook: Updated order status to processing');
+        // Update WooCommerce order status based on shipping requirement
+        if (method_exists($order, 'needs_shipping') && $order->needs_shipping()) {
+            $order->update_status('processing', __('Payment received via CoinSub (awaiting fulfillment)', 'coinsub'));
+            error_log('CoinSub Webhook: Updated order status to processing (needs shipping)');
+        } else {
+            $order->update_status('completed', __('Payment completed via CoinSub', 'coinsub'));
+            error_log('CoinSub Webhook: Updated order status to completed (no shipping)');
+        }
         
         // Debug: Check payment method
         $payment_method = $order->get_payment_method();
