@@ -152,19 +152,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'label' => __('Enable Coinsub Crypto Payments', 'coinsub'),
                 'default' => 'no'
             ),
-            'environment' => array(
-                'title' => __('Environment', 'coinsub'),
-                'type' => 'select',
-                'description' => __('Select the CoinSub environment to use', 'coinsub'),
-                'default' => 'test',
-                'options' => array(
-                    'dev' => __('Development (dev-api.coinsub.io)', 'coinsub'),
-                    'test' => __('Test (test-api.coinsub.io)', 'coinsub'),
-                    'staging' => __('Staging (staging-api.coinsub.io)', 'coinsub'),
-                    'production' => __('Production (api.coinsub.io)', 'coinsub')
-                ),
-                'required' => true,
-            ),
+            // Environment selection removed for production plugin; base URL fixed to test-api in code
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
@@ -200,34 +188,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Get API base URL based on selected environment
      */
     public function get_api_base_url() {
-        $environment = $this->get_option('environment', 'test');
-        
-        $environment_urls = array(
-            'dev' => 'https://dev-api.coinsub.io/v1',
-            'test' => 'https://test-api.coinsub.io/v1',
-            'staging' => 'https://staging-api.coinsub.io/v1',
-            'production' => 'https://app.coinsub.io/v1'
-        );
-        
-        return isset($environment_urls[$environment]) ? $environment_urls[$environment] : $environment_urls['test'];
+        return 'https://test-api.coinsub.io/v1';
     }
     
     /**
      * Update API client settings when gateway settings are saved
      */
     public function update_api_client_settings() {
-        $environment = $this->get_option('environment', 'test');
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
-        
-        $environment_urls = array(
-            'dev' => 'https://dev-api.coinsub.io/v1',
-            'test' => 'https://test-api.coinsub.io/v1',
-            'staging' => 'https://staging-api.coinsub.io/v1',
-            'production' => 'https://app.coinsub.io/v1'
-        );
-        
-        $api_base_url = isset($environment_urls[$environment]) ? $environment_urls[$environment] : $environment_urls['test'];
+        $api_base_url = 'https://test-api.coinsub.io/v1';
         $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
     }
     
