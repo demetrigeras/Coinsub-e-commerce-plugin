@@ -172,6 +172,7 @@ class CoinSub_Subscriptions {
             'description' => __('How often the subscription renews', 'coinsub')
         ));
         
+        $stored_interval = get_post_meta($post->ID, '_coinsub_interval', true);
         woocommerce_wp_select(array(
             'id' => '_coinsub_interval',
             'label' => __('Interval', 'coinsub'),
@@ -181,9 +182,10 @@ class CoinSub_Subscriptions {
                 '2' => 'Month',
                 '3' => 'Year',
             ),
-            'value' => get_post_meta($post->ID, '_coinsub_interval', true),
+            'value' => $stored_interval,
             'desc_tip' => true,
-            'description' => __('Time period for the subscription', 'coinsub')
+            'description' => __('Time period for the subscription', 'coinsub'),
+            'custom_attributes' => array('required' => 'required')
         ));
         
         $duration_value = get_post_meta($post->ID, '_coinsub_duration', true);
@@ -211,6 +213,19 @@ class CoinSub_Subscriptions {
             $frequency = isset($_POST['_coinsub_frequency']) ? sanitize_text_field($_POST['_coinsub_frequency']) : '1';
             $interval = isset($_POST['_coinsub_interval']) ? sanitize_text_field($_POST['_coinsub_interval']) : '2';
             $duration = isset($_POST['_coinsub_duration']) ? sanitize_text_field($_POST['_coinsub_duration']) : '';
+
+            // Normalize interval to allowed values and map labels if needed
+            $allowed_intervals = array('0','1','2','3');
+            if (!in_array($interval, $allowed_intervals, true)) {
+                $map = array(
+                    'day' => '0', '0' => '0',
+                    'week' => '1', '1' => '1',
+                    'month' => '2', '2' => '2',
+                    'year' => '3', '3' => '3',
+                );
+                $key = strtolower(trim($interval));
+                $interval = isset($map[$key]) ? $map[$key] : '2';
+            }
             
             // Convert empty duration to "0" (Until Cancelled)
             if (empty($duration) || $duration === 'Until Cancelled') {
@@ -383,7 +398,7 @@ class CoinSub_Subscriptions {
             
             // Fetch agreement details from API to get dates
             $created_at = $order->get_date_created()->date('Y-m-d H:i:s');
-            $next_processing = '';
+            $next_process_date = '';
             $cancelled_at = '';
             
             $api_client = $this->get_api_client();
@@ -392,20 +407,45 @@ class CoinSub_Subscriptions {
                 if (!is_wp_error($agreement_response)) {
                     $agreement_data = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
                     
-                    // Extract dates from agreement data - check multiple possible field names
+                    // Extract dates from agreement data - check multiple possible field names and nests
                     if (isset($agreement_data['created_at'])) {
                         $created_at = $this->format_date($agreement_data['created_at']);
+                    } elseif (isset($agreement_data['createdAt'])) {
+                        $created_at = $this->format_date($agreement_data['createdAt']);
+                    } elseif (isset($agreement_data['agreement']['created_at'])) {
+                        $created_at = $this->format_date($agreement_data['agreement']['created_at']);
                     }
                     
-                    // Check for next_process_date (correct field name)
+                    // Check for next_process_date with multiple variants
                     if (isset($agreement_data['next_process_date'])) {
-                        $next_processing = $this->format_date($agreement_data['next_process_date']);
+                        $next_process_date = $this->format_date($agreement_data['next_process_date']);
                     } elseif (isset($agreement_data['next_processing'])) {
-                        $next_processing = $this->format_date($agreement_data['next_processing']);
+                        $next_process_date = $this->format_date($agreement_data['next_processing']);
+                    } elseif (isset($agreement_data['nextProcessDate'])) {
+                        $next_process_date = $this->format_date($agreement_data['nextProcessDate']);
+                    } elseif (isset($agreement_data['nextProcess'])) {
+                        $next_process_date = $this->format_date($agreement_data['nextProcess']);
                     }
                     
+                    // Cancelled variants (American/British spellings and cases)
                     if (isset($agreement_data['cancelled_at'])) {
                         $cancelled_at = $this->format_date($agreement_data['cancelled_at']);
+                    } elseif (isset($agreement_data['canceled_at'])) {
+                        $cancelled_at = $this->format_date($agreement_data['canceled_at']);
+                    } elseif (isset($agreement_data['cancelledAt'])) {
+                        $cancelled_at = $this->format_date($agreement_data['cancelledAt']);
+                    } elseif (isset($agreement_data['canceledAt'])) {
+                        $cancelled_at = $this->format_date($agreement_data['canceledAt']);
+                    } elseif (isset($agreement_data['agreement']['cancelled_at'])) {
+                        $cancelled_at = $this->format_date($agreement_data['agreement']['cancelled_at']);
+                    } elseif (isset($agreement_data['agreement']['canceled_at'])) {
+                        $cancelled_at = $this->format_date($agreement_data['agreement']['canceled_at']);
+                    }
+
+                    // Prefer agreement frequency/interval for display if provided
+                    $agreement_frequency_text = $this->format_frequency_from_agreement($agreement_data);
+                    if (!empty($agreement_frequency_text)) {
+                        $frequency_text_override = $agreement_frequency_text;
                     }
                 }
             }
@@ -416,10 +456,10 @@ class CoinSub_Subscriptions {
                 'agreement_id' => $agreement_id,
                 'product_name' => $this->get_subscription_product_name($order),
                 'amount' => $order->get_total(),
-                'frequency_text' => $this->get_subscription_frequency_text($order),
+                'frequency_text' => isset($frequency_text_override) ? $frequency_text_override : $this->get_subscription_frequency_text($order),
                 'status' => $status === 'cancelled' ? 'Cancelled' : 'Active',
                 'created_at' => $created_at,
-                'next_processing' => $next_processing ?: '—',
+                'next_process_date' => $next_process_date ?: '—',
                 'cancelled_at' => $cancelled_at ?: '—'
             );
         }
@@ -437,13 +477,13 @@ class CoinSub_Subscriptions {
         
         // If it's a timestamp (numeric)
         if (is_numeric($date_value)) {
-            return date('Y-m-d H:i:s', $date_value);
+            return date_i18n('Y-m-d h:i:s A', (int)$date_value);
         }
         
         // If it's a date string, try to parse it
         $timestamp = strtotime($date_value);
         if ($timestamp !== false) {
-            return date('Y-m-d H:i:s', $timestamp);
+            return date_i18n('Y-m-d h:i:s A', $timestamp);
         }
         
         // Return as-is if we can't parse it
@@ -499,6 +539,46 @@ class CoinSub_Subscriptions {
         }
         
         return __('N/A', 'coinsub');
+    }
+
+    /**
+     * Build frequency text from agreement data if it includes numeric frequency/interval
+     */
+    private function format_frequency_from_agreement($agreement_data) {
+        $frequency = null;
+        $interval = null;
+        if (isset($agreement_data['frequency'])) {
+            $frequency = is_numeric($agreement_data['frequency']) ? (int)$agreement_data['frequency'] : null;
+        }
+        if (isset($agreement_data['interval'])) {
+            $interval = is_numeric($agreement_data['interval']) ? (int)$agreement_data['interval'] : null;
+        }
+        if ($frequency === null || $interval === null) {
+            return '';
+        }
+
+        // Frequency words
+        $frequencyWords = array(
+            1 => 'Every',
+            2 => 'Every Other',
+            3 => 'Every Third',
+            4 => 'Every Fourth',
+            5 => 'Every Fifth',
+            6 => 'Every Sixth',
+            7 => 'Every Seventh'
+        );
+        $freqText = isset($frequencyWords[$frequency]) ? $frequencyWords[$frequency] : 'Every ' . $frequency . 'th';
+
+        // Interval words (backend mapping 0=Day,1=Week,2=Month,3=Year)
+        $intervalWords = array(
+            0 => 'Day',
+            1 => 'Week',
+            2 => 'Month',
+            3 => 'Year'
+        );
+        $intervalText = isset($intervalWords[$interval]) ? $intervalWords[$interval] : 'Month';
+
+        return $freqText . ' ' . $intervalText;
     }
     
     /**

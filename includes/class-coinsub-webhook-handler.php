@@ -64,6 +64,19 @@ class CoinSub_Webhook_Handler {
         error_log('🔔 CoinSub Webhook - User Agent: ' . ($_SERVER['HTTP_USER_AGENT'] ?? 'Not set'));
         error_log('🔔 CoinSub Webhook - Remote IP: ' . ($_SERVER['REMOTE_ADDR'] ?? 'Not set'));
         
+        // Verify per-site webhook secret
+        $expected = get_option('coinsub_webhook_secret');
+        $provided = $request->get_param('secret');
+        if (!$provided) {
+            // Try header fallback
+            $headers = $request->get_headers();
+            $provided = $headers['x-coinsub-secret'][0] ?? null;
+        }
+        if (!empty($expected) && hash_equals($expected, (string)$provided) === false) {
+            error_log('❌ CoinSub Webhook - Secret mismatch or missing');
+            return new WP_REST_Response(array('error' => 'Unauthorized'), 401);
+        }
+        
         // Get the request body
         $data = $request->get_json_params();
         

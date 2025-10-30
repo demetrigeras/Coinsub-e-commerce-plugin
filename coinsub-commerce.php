@@ -48,6 +48,12 @@ function coinsub_commerce_init() {
     // Load text domain
     load_plugin_textdomain('coinsub', false, dirname(plugin_basename(__FILE__)) . '/languages');
     
+    // Ensure a per-site webhook secret exists
+    if (!get_option('coinsub_webhook_secret')) {
+        $secret = wp_generate_password(32, false, false);
+        add_option('coinsub_webhook_secret', $secret, '', false);
+    }
+    
     // Include required files
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-api-client.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-payment-gateway.php';
@@ -163,6 +169,15 @@ function coinsub_commerce_deactivate() {
 add_action('plugins_loaded', 'coinsub_commerce_init');
 add_filter('woocommerce_payment_gateways', 'coinsub_add_gateway_class');
 add_action('before_woocommerce_init', 'coinsub_commerce_declare_hpos_compatibility');
+
+// Generate webhook secret on activation as well
+function coinsub_plugin_activate_secret() {
+    if (!get_option('coinsub_webhook_secret')) {
+        $secret = wp_generate_password(32, false, false);
+        add_option('coinsub_webhook_secret', $secret, '', false);
+    }
+}
+register_activation_hook(__FILE__, 'coinsub_plugin_activate_secret');
 
 
 // Force traditional checkout (disable blocks)

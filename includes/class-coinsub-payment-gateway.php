@@ -184,7 +184,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
                 'description' => __('Copy this URL and add it to your Coinsub merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
-                'default' => home_url('/wp-json/coinsub/v1/webhook'),
+                'default' => (function() {
+                    $secret = get_option('coinsub_webhook_secret');
+                    $base = home_url('/wp-json/coinsub/v1/webhook');
+                    return $secret ? add_query_arg('secret', $secret, $base) : $base;
+                })(),
                 'custom_attributes' => array('readonly' => 'readonly'),
                 'css' => 'background: #f0f0f0;',
             ),
@@ -202,7 +206,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'dev' => 'https://dev-api.coinsub.io/v1',
             'test' => 'https://test-api.coinsub.io/v1',
             'staging' => 'https://staging-api.coinsub.io/v1',
-            'production' => 'https://api.coinsub.io/v1'
+            'production' => 'https://app.coinsub.io/v1'
         );
         
         return isset($environment_urls[$environment]) ? $environment_urls[$environment] : $environment_urls['test'];
@@ -220,7 +224,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'dev' => 'https://dev-api.coinsub.io/v1',
             'test' => 'https://test-api.coinsub.io/v1',
             'staging' => 'https://staging-api.coinsub.io/v1',
-            'production' => 'https://api.coinsub.io/v1'
+            'production' => 'https://app.coinsub.io/v1'
         );
         
         $api_base_url = isset($environment_urls[$environment]) ? $environment_urls[$environment] : $environment_urls['test'];

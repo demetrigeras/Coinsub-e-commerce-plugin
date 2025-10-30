@@ -47,7 +47,7 @@ class CoinSub_API_Client {
             'dev' => 'https://dev-api.coinsub.io/v1',
             'test' => 'https://test-api.coinsub.io/v1',
             'staging' => 'https://staging-api.coinsub.io/v1',
-            'production' => 'https://api.coinsub.io/v1'
+            'production' => 'https://app.coinsub.io/v1'
         );
         
         $this->api_base_url = isset($environment_urls[$environment]) ? $environment_urls[$environment] : $environment_urls['test'];

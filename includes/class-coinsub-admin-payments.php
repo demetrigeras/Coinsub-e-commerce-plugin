@@ -165,10 +165,8 @@ class CoinSub_Admin_Payments {
                             <td>
                                 <?php 
                                 if (!empty($payment['created_at'])) {
-                                    $date = is_numeric($payment['created_at']) 
-                                        ? date('Y-m-d H:i:s', $payment['created_at']) 
-                                        : $payment['created_at'];
-                                    echo esc_html($date);
+                                    $ts = is_numeric($payment['created_at']) ? (int)$payment['created_at'] : strtotime($payment['created_at']);
+                                    echo esc_html($ts ? date_i18n('Y-m-d h:i:s A', $ts) : $payment['created_at']);
                                 } else {
                                     echo '—';
                                 }
@@ -386,6 +384,27 @@ class CoinSub_Admin_Payments {
             // Check if nested in data object
             elseif (isset($payment['data']['created_at']) && !empty($payment['data']['created_at'])) {
                 $created_at = $payment['data']['created_at'];
+            } elseif (isset($payment['data']['createdAt']) && !empty($payment['data']['createdAt'])) {
+                $created_at = $payment['data']['createdAt'];
+            } elseif (isset($payment['created']) && !empty($payment['created'])) { // some APIs use 'created'
+                $created_at = $payment['created'];
+            } elseif (isset($payment['attributes']['created_at']) && !empty($payment['attributes']['created_at'])) {
+                $created_at = $payment['attributes']['created_at'];
+            } elseif (isset($payment['attributes']['createdAt']) && !empty($payment['attributes']['createdAt'])) {
+                $created_at = $payment['attributes']['createdAt'];
+            }
+
+            // Fallback to transaction_date variants if created_at not present
+            if (empty($created_at)) {
+                if (isset($payment['transaction_date']) && !empty($payment['transaction_date'])) {
+                    $created_at = $payment['transaction_date'];
+                } elseif (isset($payment['transactionDate']) && !empty($payment['transactionDate'])) {
+                    $created_at = $payment['transactionDate'];
+                } elseif (isset($payment['data']['transaction_date']) && !empty($payment['data']['transaction_date'])) {
+                    $created_at = $payment['data']['transaction_date'];
+                } elseif (isset($payment['attributes']['transaction_date']) && !empty($payment['attributes']['transaction_date'])) {
+                    $created_at = $payment['attributes']['transaction_date'];
+                }
             }
             
             // Log for debugging if still empty
@@ -394,6 +413,14 @@ class CoinSub_Admin_Payments {
                 error_log('🔍 Full payment data: ' . json_encode($payment));
             }
             
+            // Normalize milliseconds timestamps to seconds if needed
+            if (is_numeric($created_at)) {
+                $created_num = (int)$created_at;
+                if ($created_num > 20000000000) { // > year 2603 in seconds -> likely ms
+                    $created_at = (int) floor($created_num / 1000);
+                }
+            }
+
             $matched_payments[] = array(
                 'payment_id' => $payment['payment_id'] ?? $payment['id'] ?? '',
                 'order' => $order,
