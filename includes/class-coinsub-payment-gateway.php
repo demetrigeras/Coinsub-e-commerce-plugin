@@ -66,9 +66,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('admin_footer', array($this, 'hide_manual_refund_js_for_coinsub'));
         add_filter('woocommerce_order_item_display_meta_key', array($this, 'customize_refund_meta_key'), 10, 3);
         
-        // Prevent manual refunds for CoinSub orders
+        // Prevent manual refunds for CoinSub orders (multiple layers of protection)
         add_filter('woocommerce_order_manual_refund_needs_processing', array($this, 'disable_manual_refund_for_coinsub'), 10, 3);
         add_filter('woocommerce_order_item_get_refunded', array($this, 'force_api_refund_for_coinsub'), 10, 2);
+        add_filter('woocommerce_create_refund', array($this, 'prevent_manual_refund_creation'), 10, 3);
+        add_action('woocommerce_order_refund_created', array($this, 'block_manual_refund_for_coinsub'), 10, 2);
         
         // Add AJAX actions
         add_action('wp_ajax_coinsub_redirect_after_payment', array($this, 'redirect_after_payment_ajax'));
@@ -924,10 +926,21 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         ?>
         <style type="text/css">
-        /* Disabled state styling for manual refund button when CoinSub */
-        body.post-type-shop_order .woocommerce-order-refund .refund-actions .do-manual-refund[disabled] {
-            opacity: 0.5;
-            cursor: not-allowed;
+        /* Completely hide manual refund button for CoinSub orders */
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions .do-manual-refund,
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions button[class*="manual"],
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions a[class*="manual"],
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions input[value*="manual"],
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions input[type="radio"][value="manual"],
+        body.post-type-shop_order .woocommerce-order-refund .refund-actions label[for*="manual"],
+        body.post-type-shop_order .woocommerce-order-refund .manual-refund-actions,
+        body.post-type-shop_order .woocommerce-order-refund .refund-form .manual-refund {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
         }
         
         /* Ensure automatic refund is selected by default */
@@ -949,12 +962,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 var $section = $('.woocommerce-order-refund');
                 if ($section.length === 0) return;
                 
-                // Disable manual refund button
-                $section.find('.do-manual-refund').prop('disabled', true).attr('aria-disabled', 'true').attr('title', 'Manual refunds are disabled for CoinSub payments');
+                // Completely hide manual refund button
+                $section.find('.do-manual-refund, button.do-manual-refund, a.do-manual-refund').hide().remove();
                 
-                // Disable manual refund radio option if it exists
+                // Hide manual refund radio option and all related elements
                 var $manualRadio = $section.find('input[type="radio"][value="manual"]');
-                $manualRadio.prop('disabled', true).attr('aria-disabled', 'true');
+                $manualRadio.closest('li, div, p, label, tr').hide().remove();
+                
+                // Hide any buttons with "manual" in text or class
+                $section.find('button, a').each(function() {
+                    var $btn = $(this);
+                    var text = $btn.text().toLowerCase();
+                    var classes = $btn.attr('class') || '';
+                    if (text.indexOf('manual') !== -1 || classes.indexOf('manual') !== -1) {
+                        $btn.hide().remove();
+                    }
+                });
                 
                 // Select automatic refund if available
                 var apiRefund = $('.woocommerce-order-refund input[type="radio"][value="api"]');
@@ -1030,14 +1053,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                     return; // Refund section not loaded yet
                 }
                 
-                // Disable manual refund button
-                $refundSection.find('.do-manual-refund, button.do-manual-refund')
-                    .prop('disabled', true)
-                    .attr('aria-disabled', 'true')
-                    .attr('title', 'Manual refunds are disabled for CoinSub payments');
+                // Completely hide and remove manual refund button
+                $refundSection.find('.do-manual-refund, button.do-manual-refund, a.do-manual-refund').each(function() {
+                    $(this).hide().remove();
+                });
                 
-                // Disable manual refund radio buttons
-                $refundSection.find('input[type="radio"][value="manual"], input[type="radio"][id*="manual"], input[type="radio"][name*="manual"]').prop('disabled', true).attr('aria-disabled', 'true');
+                // Hide and remove manual refund radio buttons and containers
+                $refundSection.find('input[type="radio"][value="manual"], input[type="radio"][id*="manual"], input[type="radio"][name*="manual"]').each(function() {
+                    $(this).closest('li, div, p, label, tr').hide().remove();
+                });
+                
+                // Hide and remove any buttons with manual refund text
+                $refundSection.find('button, a').each(function() {
+                    var $btn = $(this);
+                    var text = $btn.text().toLowerCase();
+                    var classes = $btn.attr('class') || '';
+                    if ((text.indexOf('manual') !== -1 && text.indexOf('refund') !== -1) || classes.indexOf('manual') !== -1) {
+                        $btn.hide().remove();
+                    }
+                });
                 
                 // Ensure API/automatic refund is available
                 var $apiRefund = $refundSection.find('.do-api-refund, button.do-api-refund, input[value="api"], input[id*="api"]');
@@ -1106,6 +1140,52 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function force_api_refund_for_coinsub($refunded, $item) {
         // This ensures CoinSub orders use API refunds
         return $refunded;
+    }
+    
+    /**
+     * Prevent manual refund creation for CoinSub orders
+     * Returns false to block the refund
+     */
+    public function prevent_manual_refund_creation($refund, $args, $order) {
+        // Only block for CoinSub orders
+        if (!$order || $order->get_payment_method() !== 'coinsub') {
+            return $refund;
+        }
+        
+        // Check if this is a manual refund (no refund_line_items means manual)
+        $is_manual = empty($args['refund_line_items']);
+        
+        if ($is_manual) {
+            error_log('❌ CoinSub: Blocked manual refund creation for order #' . $order->get_id());
+            $order->add_order_note(__('Manual refund blocked for CoinSub payment. Use the "Refund via CoinSub" button instead.', 'coinsub'));
+            // Return false/error to prevent refund creation
+            return false;
+        }
+        
+        return $refund;
+    }
+    
+    /**
+     * Block manual refunds after they're created (delete them immediately)
+     */
+    public function block_manual_refund_for_coinsub($refund_id, $order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order || $order->get_payment_method() !== 'coinsub') {
+            return;
+        }
+        
+        $refund = wc_get_order($refund_id);
+        if (!$refund) {
+            return;
+        }
+        
+        // Check if this is a manual refund (has no line items = manual)
+        $refund_items = $refund->get_items();
+        if (empty($refund_items)) {
+            error_log('❌ CoinSub: Deleting manual refund #' . $refund_id . ' for order #' . $order_id);
+            $order->add_order_note(__('Manual refund was attempted but blocked. Use the "Refund via CoinSub" button instead.', 'coinsub'));
+            wp_delete_post($refund_id, true);
+        }
     }
     
     /**
