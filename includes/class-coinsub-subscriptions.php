@@ -177,10 +177,10 @@ class CoinSub_Subscriptions {
             'id' => '_coinsub_interval',
             'label' => __('Interval', 'coinsub'),
             'options' => array(
-                '0' => 'Day',
-                '1' => 'Week',
-                '2' => 'Month',
-                '3' => 'Year',
+                'day' => 'Day',
+                'week' => 'Week',
+                'month' => 'Month',
+                'year' => 'Year',
             ),
             'value' => $stored_interval,
             'desc_tip' => true,
@@ -211,20 +211,20 @@ class CoinSub_Subscriptions {
         
         if ($is_subscription === 'yes') {
             $frequency = isset($_POST['_coinsub_frequency']) ? sanitize_text_field($_POST['_coinsub_frequency']) : '1';
-            $interval = isset($_POST['_coinsub_interval']) ? sanitize_text_field($_POST['_coinsub_interval']) : '2';
+            $interval = isset($_POST['_coinsub_interval']) ? sanitize_text_field($_POST['_coinsub_interval']) : '';
             $duration = isset($_POST['_coinsub_duration']) ? sanitize_text_field($_POST['_coinsub_duration']) : '';
 
-            // Normalize interval to allowed values and map labels if needed
-            $allowed_intervals = array('0','1','2','3');
+            // Normalize interval to allowed label values
+            $allowed_intervals = array('day','week','month','year');
+            $interval = strtolower(trim($interval));
+            // Map accidental numeric submissions to labels
+            $num_to_label = array('0' => 'day', '1' => 'week', '2' => 'month', '3' => 'year');
+            if (isset($num_to_label[$interval])) {
+                $interval = $num_to_label[$interval];
+            }
             if (!in_array($interval, $allowed_intervals, true)) {
-                $map = array(
-                    'day' => '0', '0' => '0',
-                    'week' => '1', '1' => '1',
-                    'month' => '2', '2' => '2',
-                    'year' => '3', '3' => '3',
-                );
-                $key = strtolower(trim($interval));
-                $interval = isset($map[$key]) ? $map[$key] : '2';
+                // Require a valid selection; leave as empty and rely on required attribute in UI
+                $interval = '';
             }
             
             // Convert empty duration to "0" (Until Cancelled)
@@ -518,10 +518,10 @@ class CoinSub_Subscriptions {
         );
         
         $interval_map = array(
-            '0' => 'Day',
-            '1' => 'Week',
-            '2' => 'Month',
-            '3' => 'Year',
+            '0' => 'Day', 'day' => 'Day',
+            '1' => 'Week', 'week' => 'Week',
+            '2' => 'Month', 'month' => 'Month',
+            '3' => 'Year', 'year' => 'Year',
         );
         
         // Get subscription data from order items

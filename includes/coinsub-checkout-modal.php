@@ -88,7 +88,7 @@ jQuery(document).ready(function($) {
                     shipping_country: $('select[name="shipping_country"]').val()
                 },
                 success: function(response) {
-                    console.log('AJAX Success Response:', response);
+                    
                     
                     // Check for different response structures
                     var checkoutUrl = null;

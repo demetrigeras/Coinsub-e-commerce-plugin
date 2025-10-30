@@ -277,7 +277,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Create purchase session directly with cart totals
             error_log('💳 CoinSub - Creating purchase session...');
             $purchase_session_data = $this->prepare_purchase_session_from_cart($order, $cart_data);
-            error_log('CoinSub - Session data: ' . json_encode(['amount' => $purchase_session_data['amount'], 'currency' => $purchase_session_data['currency']]));
+            
             $purchase_session = $this->api_client->create_purchase_session($purchase_session_data);
             error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
             
@@ -1520,9 +1520,38 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Add subscription fields if recurring
         if ($cart_data['has_subscription'] && $cart_data['subscription_data']) {
-            $session_data['frequency'] = $cart_data['subscription_data']['frequency'];
-            $session_data['interval'] = $cart_data['subscription_data']['interval'];
-            $session_data['duration'] = $cart_data['subscription_data']['duration'];
+            $freq = $cart_data['subscription_data']['frequency'];
+            $intr = $cart_data['subscription_data']['interval'];
+            $dur = $cart_data['subscription_data']['duration'];
+
+            // Map frequency number -> label (example expects labels like "Every", "Every Other")
+            $frequency_map = array(
+                '1' => 'Every',
+                '2' => 'Every Other',
+                '3' => 'Every Third',
+                '4' => 'Every Fourth',
+                '5' => 'Every Fifth',
+                '6' => 'Every Sixth',
+                '7' => 'Every Seventh',
+            );
+            $freq_label = isset($frequency_map[(string)$freq]) ? $frequency_map[(string)$freq] : 'Every';
+
+            // Normalize interval to Capitalized label for API (Day/Week/Month/Year) per working example
+            $interval_cap_map = array(
+                '0' => 'Day', 'day' => 'Day', 'Day' => 'Day',
+                '1' => 'Week', 'week' => 'Week', 'Week' => 'Week',
+                '2' => 'Month', 'month' => 'Month', 'Month' => 'Month',
+                '3' => 'Year', 'year' => 'Year', 'Year' => 'Year',
+            );
+            $intr_key = (string) $intr;
+            $intr_key = isset($interval_cap_map[$intr_key]) ? $intr_key : strtolower(trim($intr_key));
+            $intr_out = isset($interval_cap_map[$intr_key]) ? $interval_cap_map[$intr_key] : 'Month';
+
+            // Build payload matching the working example
+            $session_data['frequency'] = $freq_label;          // e.g., "Every"
+            $session_data['interval'] = $intr_out;             // e.g., "Week"
+            $session_data['Duration'] = (string) $dur;         // capital D per example
+            $session_data['duration'] = (string) $dur;         // keep lowercase for backward compat
             $session_data['metadata']['subscription_data'] = $cart_data['subscription_data'];
         }
         

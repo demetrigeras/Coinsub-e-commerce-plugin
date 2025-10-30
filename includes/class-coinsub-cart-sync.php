@@ -103,6 +103,7 @@ class WC_CoinSub_Cart_Sync {
                     'interval' => $product->get_meta('_coinsub_interval'),
                     'duration' => $product->get_meta('_coinsub_duration')
                 );
+                
                 break;
             }
         }
