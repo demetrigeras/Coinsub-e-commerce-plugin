@@ -222,7 +222,42 @@ class CoinSub_Webhook_Handler {
                 break;
                 
             case 'failed_payment':
-                $this->handle_payment_failed($order, $data);
+                // Check if this failed_payment is for THIS order's payment
+                $webhook_payment_id = $data['payment_id'] ?? null;
+                $order_payment_id = $order->get_meta('_coinsub_payment_id');
+                
+                // Only process failed_payment if:
+                // 1. Order is still pending/failed (not already successful)
+                // 2. AND the payment ID matches (this is the current order's payment, not a future one)
+                
+                $current_status = $order->get_status();
+                
+                // If order is already successful, always ignore (payment succeeded)
+                if (in_array($current_status, array('processing', 'completed', 'on-hold'))) {
+                    error_log('⚠️ CoinSub Webhook: Ignoring failed_payment webhook - order #' . $order->get_id() . ' is already ' . $current_status);
+                    error_log('⚠️ CoinSub Webhook: Payment was successful on-chain, ignoring failed_payment');
+                    
+                    $order->add_order_note(
+                        __('CoinSub: Ignored failed_payment webhook - payment already successful (order status: ' . $current_status . ')', 'coinsub')
+                    );
+                    $order->save();
+                } 
+                // If order is pending but payment IDs don't match, ignore (this is a future payment failure)
+                elseif ($order_payment_id && $webhook_payment_id && $order_payment_id !== $webhook_payment_id) {
+                    error_log('⚠️ CoinSub Webhook: Ignoring failed_payment webhook - payment ID mismatch');
+                    error_log('⚠️ CoinSub Webhook: Order payment ID: ' . $order_payment_id . ', Webhook payment ID: ' . $webhook_payment_id);
+                    error_log('⚠️ CoinSub Webhook: This failure is for a different payment (likely future subscription payment)');
+                    
+                    $order->add_order_note(
+                        __('CoinSub: Ignored failed_payment webhook - failure is for different payment ID (likely future subscription payment)', 'coinsub')
+                    );
+                    $order->save();
+                }
+                // Otherwise, this is a real failure for this order's payment
+                else {
+                    error_log('❌ CoinSub Webhook: Processing failed_payment for order #' . $order->get_id());
+                    $this->handle_payment_failed($order, $data);
+                }
                 break;
                 
             case 'cancellation':
@@ -405,12 +440,24 @@ class CoinSub_Webhook_Handler {
     
     /**
      * Handle payment failed
+     * Only called if order is NOT already in a successful state
      */
     private function handle_payment_failed($order, $data) {
-        $order->update_status('failed', __('Payment Failed', 'coinsub'));
+        error_log('❌ CoinSub Webhook: Processing payment failure for order #' . $order->get_id());
+        
+        $failure_reason = $data['failure_reason'] ?? 'Unknown';
+        error_log('❌ CoinSub Webhook: Failure reason: ' . $failure_reason);
+        
+        // Only mark as failed if order is still pending
+        // If it's already processing/completed, don't change it
+        $current_status = $order->get_status();
+        if (!in_array($current_status, array('processing', 'completed', 'on-hold'))) {
+            $order->update_status('failed', __('Payment Failed', 'coinsub'));
+        } else {
+            error_log('⚠️ CoinSub Webhook: Order #' . $order->get_id() . ' already ' . $current_status . ' - not changing to failed');
+        }
         
         // Add order note
-        $failure_reason = $data['failure_reason'] ?? 'Unknown';
         $order->add_order_note(
             sprintf(
                 __('CoinSub Payment Failed - Reason: %s', 'coinsub'),
@@ -420,7 +467,7 @@ class CoinSub_Webhook_Handler {
         
         // Store failure reason
         if (isset($data['failure_reason'])) {
-            $order->update_meta_data('_coinsub_failure_reason', $data['failure_reason']);
+            $order->update_meta_data('_coinsub_failure_reason', $failure_reason);
         }
         
         $order->save();
