@@ -791,6 +791,9 @@ class CoinSub_Order_Manager {
             return;
         }
         
+        // Display parent/child relationship if applicable
+        $this->display_renewal_order_relationship($order);
+        
         // Display cancelled message if exists
         $cancelled_message = $order->get_meta('_coinsub_cancelled_message');
         if (!empty($cancelled_message)) {
@@ -804,6 +807,76 @@ class CoinSub_Order_Manager {
         } else {
             // For active subscriptions, try to fetch and display payments
             $this->maybe_display_subscription_payments($order);
+        }
+    }
+    
+    /**
+     * Display renewal order relationship (parent/child)
+     */
+    private function display_renewal_order_relationship($order) {
+        $is_renewal = $order->get_meta('_coinsub_is_renewal_order') === 'yes';
+        $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
+        
+        $html = '';
+        
+        // If this is a renewal order, show parent link
+        if ($is_renewal) {
+            $parent_order_id = $order->get_meta('_coinsub_parent_subscription_order');
+            if ($parent_order_id) {
+                $parent_order = wc_get_order($parent_order_id);
+                if ($parent_order) {
+                    $parent_order_url = admin_url('post.php?post=' . $parent_order_id . '&action=edit');
+                    $html .= '<div class="coinsub-renewal-info" style="background: #e7f3ff; border: 1px solid #b3d9ff; padding: 15px; margin: 10px 0; border-radius: 5px;">';
+                    $html .= '<h4 style="margin: 0 0 10px 0; color: #0056b3;">🔄 Renewal Order</h4>';
+                    $html .= '<p style="margin: 0; font-size: 14px;">';
+                    $html .= 'This is a renewal order for subscription order <strong><a href="' . esc_url($parent_order_url) . '">#' . $parent_order->get_order_number() . '</a></strong>.';
+                    $html .= '</p>';
+                    $html .= '</div>';
+                }
+            }
+        }
+        
+        // If this is a subscription order, show all renewal orders
+        if ($is_subscription) {
+            $renewal_orders = $order->get_meta('_coinsub_renewal_orders');
+            if (is_array($renewal_orders) && !empty($renewal_orders)) {
+                $html .= '<div class="coinsub-renewal-orders" style="background: #f0f9ff; border: 1px solid #b3d9ff; padding: 15px; margin: 10px 0; border-radius: 5px;">';
+                $html .= '<h4 style="margin: 0 0 10px 0; color: #0056b3;">📋 Renewal Orders (' . count($renewal_orders) . ')</h4>';
+                $html .= '<ul style="margin: 10px 0 0 0; padding-left: 20px;">';
+                
+                foreach ($renewal_orders as $renewal_order_id) {
+                    $renewal_order = wc_get_order($renewal_order_id);
+                    if ($renewal_order) {
+                        $renewal_order_url = admin_url('post.php?post=' . $renewal_order_id . '&action=edit');
+                        $renewal_status = $renewal_order->get_status();
+                        $status_colors = array(
+                            'processing' => '#0073aa',
+                            'completed' => '#46b450',
+                            'pending' => '#ffb900',
+                            'on-hold' => '#ff922b',
+                            'cancelled' => '#dc3232',
+                            'failed' => '#dc3232',
+                            'refunded' => '#999'
+                        );
+                        $status_color = isset($status_colors[$renewal_status]) ? $status_colors[$renewal_status] : '#666';
+                        
+                        $html .= '<li style="margin: 5px 0;">';
+                        $html .= '<a href="' . esc_url($renewal_order_url) . '" style="color: ' . $status_color . '; font-weight: bold;">';
+                        $html .= 'Order #' . $renewal_order->get_order_number();
+                        $html .= '</a>';
+                        $html .= ' - <span style="color: ' . $status_color . ';">' . ucfirst($renewal_status) . '</span>';
+                        $html .= ' - <span style="color: #666; font-size: 12px;">' . $renewal_order->get_date_created()->date_i18n(get_option('date_format')) . '</span>';
+                        $html .= '</li>';
+                    }
+                }
+                
+                $html .= '</ul>';
+                $html .= '</div>';
+            }
+        }
+        
+        if (!empty($html)) {
+            echo $html;
         }
     }
 
