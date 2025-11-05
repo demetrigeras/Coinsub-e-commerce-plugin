@@ -864,14 +864,23 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Override can_refund to always allow refunds for CoinSub orders
      */
     public function can_refund($order) {
+        error_log('🔍 CoinSub Refund - can_refund() called for order #' . $order->get_id());
+        error_log('🔍 CoinSub Refund - Order payment method: ' . $order->get_payment_method());
+        error_log('🔍 CoinSub Refund - Order status: ' . $order->get_status());
+        error_log('🔍 CoinSub Refund - Gateway supports: ' . json_encode($this->supports));
+        
         // Always allow refunds for CoinSub orders that have been paid
         if ($order->get_payment_method() === 'coinsub') {
             $paid_statuses = array('processing', 'completed', 'on-hold');
-            return in_array($order->get_status(), $paid_statuses);
+            $can_refund = in_array($order->get_status(), $paid_statuses);
+            error_log('🔍 CoinSub Refund - can_refund result: ' . ($can_refund ? 'YES' : 'NO'));
+            return $can_refund;
         }
         
         // For other payment methods, use default behavior
-        return parent::can_refund($order);
+        $result = parent::can_refund($order);
+        error_log('🔍 CoinSub Refund - can_refund (parent) result: ' . ($result ? 'YES' : 'NO'));
+        return $result;
     }
 
 
