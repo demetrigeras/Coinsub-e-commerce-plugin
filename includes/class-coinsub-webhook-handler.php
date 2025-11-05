@@ -155,6 +155,52 @@ class CoinSub_Webhook_Handler {
             }
         }
         
+        // For transfer events (refunds), also try to find by payment_id or refund_id
+        if (!$order && $event_type === 'transfer' && isset($data['payment_id'])) {
+            $payment_id = $data['payment_id'];
+            error_log('CoinSub Webhook: Order not found by origin ID, trying payment ID for transfer: ' . $payment_id);
+            
+            // Find order by payment_id (for refunds)
+            $orders_by_payment = wc_get_orders(array(
+                'meta_key' => '_coinsub_payment_id',
+                'meta_value' => $payment_id,
+                'meta_compare' => '=',
+                'limit' => 1,
+                'orderby' => 'date',
+                'order' => 'DESC'
+            ));
+            
+            if (!empty($orders_by_payment)) {
+                $order = $orders_by_payment[0];
+                error_log('✅ CoinSub Webhook: Found order #' . $order->get_id() . ' by payment ID for transfer');
+            }
+        }
+        
+        // Also try to find by refund_id if this is a transfer event
+        if (!$order && $event_type === 'transfer' && isset($data['transfer_id'])) {
+            // Check all orders with pending refunds
+            $orders_with_refunds = wc_get_orders(array(
+                'meta_key' => '_coinsub_refund_pending',
+                'meta_value' => 'yes',
+                'meta_compare' => '=',
+                'limit' => 10,
+                'orderby' => 'date',
+                'order' => 'DESC'
+            ));
+            
+            // Try to match by payment_id in webhook data
+            if (!empty($orders_with_refunds) && isset($data['payment_id'])) {
+                foreach ($orders_with_refunds as $refund_order) {
+                    $order_payment_id = $refund_order->get_meta('_coinsub_payment_id');
+                    if ($order_payment_id === $data['payment_id']) {
+                        $order = $refund_order;
+                        error_log('✅ CoinSub Webhook: Found order #' . $order->get_id() . ' by matching payment ID with pending refund');
+                        break;
+                    }
+                }
+            }
+        }
+        
         if (!$order) {
             error_log('❌ CoinSub Webhook: Order not found for origin ID: ' . $origin_id);
             error_log('CoinSub Webhook: Event type: ' . $event_type);
@@ -489,19 +535,57 @@ class CoinSub_Webhook_Handler {
      * Handle transfer completed
      */
     private function handle_transfer_completed($order, $data) {
-        $order->update_status('processing', __('Transfer completed via CoinSub', 'coinsub'));
+        error_log('🔄 CoinSub Webhook: Processing transfer completed for order #' . $order->get_id());
         
-        // Add order note
-        $transfer_id = $data['transfer_id'] ?? 'N/A';
+        // Check if this is a refund transfer
+        $payment_id = $data['payment_id'] ?? null;
+        $transfer_id = $data['transfer_id'] ?? null;
         $hash = $data['hash'] ?? 'N/A';
         
-        $order->add_order_note(
-            sprintf(
-                __('CoinSub transfer completed. Transfer ID: %s, Hash: %s', 'coinsub'),
-                $transfer_id,
+        // Check if this order has a pending refund
+        $refund_id = $order->get_meta('_coinsub_refund_id');
+        $refund_pending = $order->get_meta('_coinsub_refund_pending');
+        
+        // If this is a refund transfer (has refund_id or refund_pending flag)
+        if ($refund_pending === 'yes' || !empty($refund_id)) {
+            error_log('💰 CoinSub Webhook: This is a refund transfer - refund ID: ' . ($refund_id ?: 'N/A'));
+            
+            // Mark refund as successful
+            $order->update_meta_data('_coinsub_refund_status', 'completed');
+            $order->update_meta_data('_coinsub_refund_pending', 'no');
+            $order->update_meta_data('_coinsub_refund_transaction_hash', $hash);
+            
+            if ($transfer_id) {
+                $order->update_meta_data('_coinsub_refund_transfer_id', $transfer_id);
+            }
+            
+            // Add order note
+            $refund_note = sprintf(
+                __('✅ CoinSub Refund Completed: Transfer ID: %s, Transaction Hash: %s. Refund has been successfully sent to customer.', 'coinsub'),
+                $transfer_id ?: 'N/A',
                 $hash
-            )
-        );
+            );
+            $order->add_order_note($refund_note);
+            
+            // Update order status to refunded (if not already)
+            if ($order->get_status() !== 'refunded') {
+                $order->update_status('refunded', __('Refund completed via CoinSub', 'coinsub'));
+            }
+            
+            error_log('✅ CoinSub Webhook: Refund marked as successful for order #' . $order->get_id());
+        } else {
+            // Regular transfer (not a refund) - update order status
+            $order->update_status('processing', __('Transfer completed via CoinSub', 'coinsub'));
+            
+            // Add order note
+            $order->add_order_note(
+                sprintf(
+                    __('CoinSub transfer completed. Transfer ID: %s, Hash: %s', 'coinsub'),
+                    $transfer_id ?: 'N/A',
+                    $hash
+                )
+            );
+        }
         
         // Store transfer details
         if (isset($data['transfer_id'])) {
@@ -527,10 +611,47 @@ class CoinSub_Webhook_Handler {
      * Handle transfer failed
      */
     private function handle_transfer_failed($order, $data) {
-        $order->update_status('failed', __('Transfer failed via CoinSub', 'coinsub'));
+        error_log('❌ CoinSub Webhook: Processing transfer failed for order #' . $order->get_id());
         
-        // Add order note
-        $order->add_order_note(__('CoinSub transfer failed', 'coinsub'));
+        // Check if this is a refund transfer
+        $refund_id = $order->get_meta('_coinsub_refund_id');
+        $refund_pending = $order->get_meta('_coinsub_refund_pending');
+        
+        // If this is a refund transfer that failed
+        if ($refund_pending === 'yes' || !empty($refund_id)) {
+            error_log('💰 CoinSub Webhook: Refund transfer failed - refund ID: ' . ($refund_id ?: 'N/A'));
+            
+            // Mark refund as failed
+            $order->update_meta_data('_coinsub_refund_status', 'failed');
+            $order->update_meta_data('_coinsub_refund_pending', 'no');
+            
+            $failure_reason = $data['failure_reason'] ?? $data['error'] ?? 'Unknown error';
+            
+            // Add order note
+            $refund_note = sprintf(
+                __('❌ CoinSub Refund Failed: %s. The refund could not be processed. Please try again or process manually.', 'coinsub'),
+                $failure_reason
+            );
+            $order->add_order_note($refund_note);
+            
+            // Remove refunded status if it was set (refund failed)
+            // Note: WooCommerce might have already marked it as refunded, but we should note the failure
+            $current_status = $order->get_status();
+            if ($current_status === 'refunded') {
+                // Add note but keep refunded status - merchant will need to manually handle
+                error_log('⚠️ CoinSub Webhook: Order already marked as refunded, but refund transfer failed');
+            } else {
+                $order->update_status('refund-pending', __('Refund failed - manual processing required', 'coinsub'));
+            }
+            
+            error_log('❌ CoinSub Webhook: Refund marked as failed for order #' . $order->get_id());
+        } else {
+            // Regular transfer (not a refund) - update order status
+            $order->update_status('failed', __('Transfer failed via CoinSub', 'coinsub'));
+            
+            // Add order note
+            $order->add_order_note(__('CoinSub transfer failed', 'coinsub'));
+        }
         
         $order->save();
     }
@@ -702,6 +823,7 @@ class CoinSub_Webhook_Handler {
             '8453' => 'Base',
             '84532' => 'Base Sepolia',
             '421613' => 'Arbitrum Nova'
+            
         );
         
         return isset($networks[$chain_id]) ? $networks[$chain_id] : 'Chain ID ' . $chain_id;

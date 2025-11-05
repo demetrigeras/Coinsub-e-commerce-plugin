@@ -792,24 +792,31 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Success - add order note and update status
         $refund_note = sprintf(
-            __('REFUND PROCESSED: %s. Reason: %s. Customer wallet: %s. Refund initiated via CoinSub API.', 'coinsub'),
+            __('REFUND INITIATED: %s. Reason: %s. Customer wallet: %s. Refund initiated via CoinSub API. Waiting for transfer confirmation...', 'coinsub'),
             wc_price($amount),
             $reason,
             $customer_wallet
         );
         $order->add_order_note($refund_note);
         
-        // Store refund details
+        // Store refund details and mark as pending
+        $order->update_meta_data('_coinsub_refund_pending', 'yes');
+        $order->update_meta_data('_coinsub_refund_status', 'pending');
+        
         if (isset($refund_result['refund_id'])) {
             $order->update_meta_data('_coinsub_refund_id', $refund_result['refund_id']);
         }
         if (isset($refund_result['transaction_hash'])) {
             $order->update_meta_data('_coinsub_refund_transaction_hash', $refund_result['transaction_hash']);
         }
+        
+        // Don't mark as refunded yet - wait for transfer webhook confirmation
+        // WooCommerce will mark it as refunded when we return true, but we'll track status separately
         $order->save();
         
-        error_log('✅ CoinSub Refund - Successfully processed refund for order #' . $order_id);
+        error_log('✅ CoinSub Refund - Refund initiated for order #' . $order_id . ' - waiting for transfer confirmation');
         
+        // Return true to WooCommerce so it shows the refund UI, but we'll update status when transfer webhook arrives
         return true;
     }
     

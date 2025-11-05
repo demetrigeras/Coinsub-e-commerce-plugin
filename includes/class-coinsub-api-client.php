@@ -273,7 +273,8 @@ class CoinSub_API_Client {
     public function refund_transfer_request($to_address, $amount, $chain_id, $token_symbol) {
         $endpoint = rtrim($this->api_base_url, '/') . '/merchants/transfer/request';
         
-        // Debug API key
+        // Debug API key and endpoint
+        error_log('🔑 CoinSub Refund API - Full URL: ' . $endpoint);
         error_log('🔑 CoinSub Refund API - API Key: ' . ($this->api_key ? 'SET' : 'NOT SET'));
         error_log('🔑 CoinSub Refund API - Merchant ID: ' . ($this->merchant_id ?: 'NOT SET'));
         
