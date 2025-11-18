@@ -132,6 +132,20 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             </ol>
             
             <p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Coinsub works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;">
+                <h3 style="margin-top: 0;">💰 Add USDC Polygon for Refunds</h3>
+                <p><strong>All refunds are processed as USDC on Polygon.</strong></p>
+                <p>To process refunds, you'll need USDC tokens on the Polygon network in your merchant wallet.</p>
+                <p style="margin-bottom: 10px;">
+                    <a href="<?php echo esc_url($this->get_meld_onramp_url()); ?>" target="_blank" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">
+                        💳 Onramp USDC Polygon via Meld
+                    </a>
+                </p>
+                <p style="margin-bottom: 0; font-size: 12px; color: #666;">
+                    💡 <strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.
+                </p>
+            </div>
         </div>
         
         <table class="form-table">
@@ -720,15 +734,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                     $error_message
                 );
                 
-                $insufficient_funds_note .= '<br><br><strong>🔧 Action Required:</strong><br>';
-                $insufficient_funds_note .= '1. Go to <a href="https://app.coinsub.io" target="_blank">app.coinsub.io</a><br>';
-                $insufficient_funds_note .= '2. Sign in with your merchant email' . '<br>';
-                $insufficient_funds_note .= '3. Navigate to the <strong>Wallet</strong> tab<br>';
-                $insufficient_funds_note .= '4. Onramp ' . $amount . ' ' . $token_symbol . ' to your wallet on ' . $this->get_network_name($chain_id) . '<br>';
-                $insufficient_funds_note .= '5. Retry the refund once funds are available';
+                $coinsub_settings_url = admin_url('admin.php?page=wc-settings&tab=checkout&section=coinsub');
+                
+                $insufficient_funds_note .= '<br><br><strong>🔧 Action Required - Add USDC to Polygon:</strong><br>';
+                $insufficient_funds_note .= 'You need ' . $amount . ' USDC on Polygon to process this refund.<br><br>';
+                
+                $insufficient_funds_note .= '<strong>To add funds:</strong><br>';
+                $insufficient_funds_note .= '1. Go to <strong>WooCommerce → Settings → Payments → CoinSub</strong><br>';
+                $insufficient_funds_note .= '2. Click <strong>"Manage"</strong> or scroll down<br>';
+                $insufficient_funds_note .= '3. Click the <strong>"Onramp USDC Polygon via Meld"</strong> button<br>';
+                $insufficient_funds_note .= '4. Complete the onramp process<br>';
+                $insufficient_funds_note .= '5. Retry the refund once funds are available<br><br>';
+                
+                $insufficient_funds_note .= '<a href="' . esc_url($coinsub_settings_url) . '" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">Go to CoinSub Settings</a>';
                 
                 $order->add_order_note($insufficient_funds_note);
-                $order->update_status('refund-pending', __('Refund pending - insufficient funds. Please add funds to merchant wallet.', 'coinsub'));
+                $order->update_status('refund-pending', __('Refund pending - insufficient funds. Please add USDC to Polygon wallet.', 'coinsub'));
                 
                 error_log('❌ CoinSub Refund - Insufficient funds: ' . $error_message);
                 return new WP_Error('insufficient_funds', $error_message);
@@ -805,6 +826,75 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Return true to WooCommerce so it shows the refund UI, but we'll update status when transfer webhook arrives
         return true;
+    }
+    
+    /**
+     * Generate Meld onramp URL for USDC Polygon
+     * Format: https://meldcrypto.com/?publicKey=...&destinationCurrencyCodeLocked=USDC_POLYGON&walletAddressLocked=...&transactionType=BUY&sourceAmount=...&externalSessionId=...&redirectUrl=...
+     */
+    private function get_meld_onramp_url($wallet_address = '', $amount = '') {
+        // Meld base URL
+        $meld_base_url = 'https://meldcrypto.com';
+        
+        // Get Meld public key from settings (if configured)
+        // For now, we'll use a placeholder - you may want to add this as a setting field
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $meld_public_key = isset($gateway_settings['meld_public_key']) ? $gateway_settings['meld_public_key'] : '';
+        
+        // Get merchant wallet address - try to get from CoinSub API or use provided
+        if (empty($wallet_address)) {
+            // TODO: Could fetch from CoinSub API if available
+            // For now, leave empty - Meld can handle it
+        }
+        
+        // Generate session ID (UUID v4 format)
+        $session_id = $this->generate_uuid4();
+        
+        // Get redirect URL (WordPress admin - CoinSub settings page)
+        $redirect_url = admin_url('admin.php?page=wc-settings&tab=checkout&section=coinsub');
+        
+        // Build URL parameters
+        $url_params = array();
+        
+        // Required/Main parameters
+        $url_params['destinationCurrencyCodeLocked'] = 'USDC_POLYGON';
+        $url_params['transactionType'] = 'BUY';
+        $url_params['externalSessionId'] = $session_id;
+        $url_params['redirectUrl'] = $redirect_url; // http_build_query will encode it automatically
+        
+        // Optional parameters
+        if (!empty($meld_public_key)) {
+            $url_params['publicKey'] = $meld_public_key;
+        }
+        if (!empty($wallet_address)) {
+            $url_params['walletAddressLocked'] = $wallet_address;
+        }
+        if (!empty($amount)) {
+            $url_params['sourceAmount'] = $amount;
+        }
+        
+        // Build final URL
+        $final_url = $meld_base_url . '/?' . http_build_query($url_params);
+        
+        return $final_url;
+    }
+    
+    /**
+     * Generate UUID v4
+     */
+    private function generate_uuid4() {
+        // Generate UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+        $data = random_bytes(16);
+        $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // Set version to 0100
+        $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // Set bits 6-7 to 10
+        
+        return sprintf('%08s-%04s-%04s-%04s-%12s',
+            bin2hex(substr($data, 0, 4)),
+            bin2hex(substr($data, 4, 2)),
+            bin2hex(substr($data, 6, 2)),
+            bin2hex(substr($data, 8, 2)),
+            bin2hex(substr($data, 10, 6))
+        );
     }
     
     /**
