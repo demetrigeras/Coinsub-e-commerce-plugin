@@ -357,5 +357,61 @@ class CoinSub_API_Client {
         return $data;
     }
 
+    /**
+     * Get submerchant data (includes parent merchant ID)
+     */
+    public function get_submerchant($merchant_id) {
+        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/submerchants/' . $merchant_id;
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
+        );
+        
+        $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
+        
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (wp_remote_retrieve_response_code($response) !== 200) {
+            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * Get environment configs (whitelabel branding data)
+     * Note: This endpoint does not require authentication headers
+     */
+    public function get_environment_configs() {
+        $endpoint = rtrim($this->api_base_url, '/') . '/environment-variables/domain-logo';
+        
+        // No headers needed for this endpoint
+        $headers = array(
+            'Content-Type' => 'application/json'
+        );
+        
+        $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
+        
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (wp_remote_retrieve_response_code($response) !== 200) {
+            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        }
+        
+        return $data;
+    }
+
     // REMOVED: update_commerce_order_from_webhook - using WooCommerce-only approach
 }

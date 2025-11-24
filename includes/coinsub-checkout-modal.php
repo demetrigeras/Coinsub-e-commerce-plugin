@@ -42,14 +42,22 @@ if (!defined('ABSPATH')) {
 <!-- CoinSub Checkout JavaScript -->
 <script type="text/javascript">
 jQuery(document).ready(function($) {
+    // Only load CoinSub checkout functionality if we're on checkout page
+    if (!$('body').hasClass('woocommerce-checkout') && !$('body').hasClass('woocommerce-page-checkout')) {
+        return; // Exit early if not on checkout page
+    }
+    
     // Prevent double submission
     if (typeof window.coinsubSubmitting === 'undefined') {
         window.coinsubSubmitting = false;
     }
-    // Override the place order button for CoinSub
+    
+    // Override the place order button ONLY for CoinSub
+    // This ensures we don't interfere with other payment gateways like Coinbase, Stripe, etc.
     $('body').on('click', '#place_order', function(e) {
         var paymentMethod = $('input[name="payment_method"]:checked').val();
         
+        // Only intercept if CoinSub is selected - let other gateways work normally
         if (paymentMethod === 'coinsub') {
             e.preventDefault();
             e.stopPropagation();

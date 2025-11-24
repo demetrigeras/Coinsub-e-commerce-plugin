@@ -42,6 +42,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $this->description = '';
         $this->enabled = $this->get_option('enabled', 'yes');
         
+        // Initialize API client
+        $this->api_client = new CoinSub_API_Client();
+        
+        // Load whitelabel branding and update title/icon
+        $this->load_whitelabel_branding();
+        
         error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
         error_log('🏗️ CoinSub - Constructor - Title: ' . $this->title);
         error_log('🏗️ CoinSub - Constructor - Description: ' . $this->description);
@@ -49,9 +55,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('🏗️ CoinSub - Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
         error_log('🏗️ CoinSub - Constructor - Method Title: ' . $this->method_title);
         error_log('🏗️ CoinSub - Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
-        
-        // Initialize API client
-        $this->api_client = new CoinSub_API_Client();
         
         // Add hooks
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
@@ -206,6 +209,24 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
+     * Load whitelabel branding and update gateway display
+     */
+    private function load_whitelabel_branding() {
+        $branding = new CoinSub_Whitelabel_Branding();
+        $branding_data = $branding->get_branding();
+        
+        // Update title with whitelabel company name
+        $company_name = $branding_data['company'];
+        $this->title = 'Pay with ' . $company_name;
+        
+        // Update icon with whitelabel logo (use default light logo)
+        $logo_url = $branding->get_logo_url('default', 'light');
+        if ($logo_url) {
+            $this->icon = $logo_url;
+        }
+    }
+    
+    /**
      * Update API client settings when gateway settings are saved
      */
     public function update_api_client_settings() {
@@ -213,6 +234,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $api_key = $this->get_option('api_key', '');
         $api_base_url = 'https://test-api.coinsub.io/v1';
         $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
+        
+        // Clear whitelabel branding cache when credentials change
+        $branding = new CoinSub_Whitelabel_Branding();
+        $branding->clear_cache();
+        
+        // Reload branding
+        $this->load_whitelabel_branding();
     }
     
     /**

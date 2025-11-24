@@ -53,6 +53,7 @@ function coinsub_commerce_init() {
     
     // Include required files
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-api-client.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-whitelabel-branding.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-payment-gateway.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-webhook-handler.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-order-manager.php';
@@ -90,17 +91,24 @@ function coinsub_commerce_init() {
 
 /**
  * Force traditional checkout template for CoinSub compatibility
+ * Only applies when CoinSub gateway is enabled
  */
 function coinsub_force_traditional_checkout() {
     if (is_checkout() && !is_wc_endpoint_url('order-pay')) {
-        // Remove block-based checkout and use shortcode
-        remove_action('woocommerce_before_checkout_form', 'woocommerce_checkout_form_wrapper_start');
-        remove_action('woocommerce_after_checkout_form', 'woocommerce_checkout_form_wrapper_end');
+        // Check if CoinSub gateway is enabled
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $coinsub_enabled = isset($gateway_settings['enabled']) && $gateway_settings['enabled'] === 'yes';
         
-        // Force shortcode checkout
-        add_filter('woocommerce_checkout_shortcode_tag', function() {
-            return 'woocommerce_checkout';
-        });
+        if ($coinsub_enabled) {
+            // Remove block-based checkout and use shortcode
+            remove_action('woocommerce_before_checkout_form', 'woocommerce_checkout_form_wrapper_start');
+            remove_action('woocommerce_after_checkout_form', 'woocommerce_checkout_form_wrapper_end');
+            
+            // Force shortcode checkout
+            add_filter('woocommerce_checkout_shortcode_tag', function() {
+                return 'woocommerce_checkout';
+            });
+        }
     }
 }
 
@@ -197,35 +205,37 @@ function coinsub_plugin_activate_secret() {
 register_activation_hook(__FILE__, 'coinsub_plugin_activate_secret');
 
 
-// Force traditional checkout (disable blocks)
-add_filter('woocommerce_checkout_shortcode_tag', function() {
-    return 'woocommerce_checkout';
-});
-
-// Completely disable block-based checkout
+// Only disable block-based checkout if CoinSub gateway is enabled
+// This prevents conflicts with other payment plugins
 add_filter('woocommerce_feature_enabled', function($enabled, $feature) {
     if ($feature === 'checkout_block') {
-        return false; // Force disable checkout blocks
+        // Check if CoinSub gateway is enabled
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $coinsub_enabled = isset($gateway_settings['enabled']) && $gateway_settings['enabled'] === 'yes';
+        
+        // Only disable blocks if CoinSub is enabled
+        if ($coinsub_enabled) {
+            return false;
+        }
     }
     return $enabled;
 }, 10, 2);
 
-// Force classic checkout template
-add_filter('woocommerce_is_checkout_block', '__return_false');
-
-// Disable block-based checkout for CoinSub compatibility
-add_action('init', function() {
-    if (class_exists('WooCommerce')) {
-        // Force traditional checkout template
-        remove_action('woocommerce_checkout_form', 'woocommerce_checkout_form');
-        add_action('woocommerce_checkout_form', function() {
-            echo do_shortcode('[woocommerce_checkout]');
-        });
+// Force classic checkout template only when CoinSub is enabled
+add_filter('woocommerce_is_checkout_block', function($is_block) {
+    $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+    $coinsub_enabled = isset($gateway_settings['enabled']) && $gateway_settings['enabled'] === 'yes';
+    
+    // Only force classic checkout if CoinSub is enabled
+    if ($coinsub_enabled) {
+        return false;
     }
-}, 999);
+    
+    return $is_block;
+});
 
-// Force gateway availability for debugging
-add_filter('woocommerce_available_payment_gateways', 'coinsub_force_availability', 999);
+// Force gateway availability for debugging (lower priority to avoid conflicts)
+add_filter('woocommerce_available_payment_gateways', 'coinsub_force_availability', 20);
 
 function coinsub_force_availability($gateways) {
     $page_context = is_checkout() ? 'CHECKOUT' : (is_admin() ? 'ADMIN' : 'OTHER');
