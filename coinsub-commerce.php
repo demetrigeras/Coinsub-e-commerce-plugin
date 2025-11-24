@@ -61,6 +61,7 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-subscriptions.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-subscriptions.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-payments.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-review-page.php';
     
     // Register custom order status
     
@@ -79,6 +80,9 @@ function coinsub_commerce_init() {
     if (is_admin()) {
         new CoinSub_Admin_Logs();
     }
+
+    // Initialize review/brand explainer page
+    new CoinSub_Review_Page();
     
     // Force traditional checkout template (not block-based)
     add_action('template_redirect', 'coinsub_force_traditional_checkout');
@@ -142,6 +146,14 @@ function coinsub_add_gateway_class($methods) {
 /**
  * Plugin activation
  */
+function coinsub_register_review_rewrite_rule() {
+    add_rewrite_rule(
+        '^stablecoin-pay-review/?$',
+        'index.php?coinsub_review=1',
+        'top'
+    );
+}
+
 function coinsub_commerce_activate() {
     // Add rewrite rules for webhook endpoint
     add_rewrite_rule(
@@ -149,6 +161,9 @@ function coinsub_commerce_activate() {
         'index.php?coinsub_webhook=1',
         'top'
     );
+
+    // Add rewrite for the review/branding explainer page
+    coinsub_register_review_rewrite_rule();
     
     // Flush rewrite rules
     flush_rewrite_rules();
