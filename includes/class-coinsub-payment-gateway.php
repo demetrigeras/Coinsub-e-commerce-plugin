@@ -156,6 +156,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         </table>
         <?php
     }
+    
 
     /**
      * Initialize form fields

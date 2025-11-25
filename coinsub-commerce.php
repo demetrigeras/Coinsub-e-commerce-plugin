@@ -313,6 +313,19 @@ function coinsub_add_settings_link($links) {
     return $links;
 }
 
+// Add review page link to plugin meta (below description)
+add_filter('plugin_row_meta', 'coinsub_add_review_page_link', 10, 2);
+
+function coinsub_add_review_page_link($links, $file) {
+    // Only add link for this plugin
+    if (plugin_basename(__FILE__) === $file) {
+        $review_url = home_url('/stablecoin-pay-review');
+        $review_link = '<a href="' . esc_url($review_url) . '" target="_blank">' . __('Review Page', 'coinsub') . '</a>';
+        $links[] = $review_link;
+    }
+    return $links;
+}
+
 // AJAX handler for modal payment processing
 add_action('wp_ajax_coinsub_process_payment', 'coinsub_ajax_process_payment');
 add_action('wp_ajax_nopriv_coinsub_process_payment', 'coinsub_ajax_process_payment');
