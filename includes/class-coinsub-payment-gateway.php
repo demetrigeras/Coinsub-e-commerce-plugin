@@ -1,6 +1,6 @@
 <?php
 /**
- * CoinSub Payment Gateway
+ * Stablecoin Pay Payment Gateway
  * 
  * Simple cryptocurrency payment gateway for WooCommerce
  */
@@ -23,10 +23,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('🏗️ Coinsub - Gateway constructor called');
         
         $this->id = 'coinsub';
-        $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.png';
+        $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         $this->has_fields = true; // Enable custom payment box
-        $this->method_title = __('Coinsub', 'coinsub');
-        $this->method_description = __('Accept Crypto payments with Coinsub', 'coinsub');
+        $this->method_title = __('Stablecoin Pay', 'coinsub');
+        $this->method_description = __('Accept Crypto payments with Stablecoin Pay', 'coinsub');
         
         // Declare supported features
         $this->supports = array(
@@ -96,11 +96,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         <div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;">
             <h3 style="margin-top: 0;">📋 Setup Instructions</h3>
             
-            <h4>Step 1: Select Environment & Get Your Coinsub Credentials</h4>
+            <h4>Step 1: Select Environment & Get Your Stablecoin Pay Credentials</h4>
             <ol style="line-height: 1.8;">
                 <li>Select your <strong>Environment</strong> from the dropdown below (Development, Test, Staging, or Production)</li>
-                <li>Go to the appropriate Coinsub environment URL and sign up or log in</li>
-                <li>Navigate to <strong>Settings</strong> in your Coinsub dashboard</li>
+                <li>Go to the appropriate CoinSub environment URL and sign up or log in</li>
+                <li>Navigate to <strong>Settings</strong> in your CoinSub dashboard</li>
                 <li>Copy your <strong>Merchant ID</strong></li>
                 <li>Create and copy your <strong>API Key</strong></li>
                 <li>Paste both into the fields below</li>
@@ -133,14 +133,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 <li>Close preferences and update the page</li>
             </ol>
             
-            <h4>Step 5: Enable Coinsub</h4>
+            <h4>Step 5: Enable Stablecoin Pay</h4>
             <ol style="line-height: 1.8;">
-                <li>Check the <strong>"Enable Coinsub Crypto Payments"</strong> box below</li>
+                <li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below</li>
                 <li>Click <strong>Save changes</strong></li>
-                <li>Done! Customers will now see "Pay with Coinsub" at checkout</li>
+                <li>Done! Customers will now see the payment option at checkout (whitelabeled if configured, or "Pay with Coinsub" by default)</li>
             </ol>
             
-            <p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Coinsub works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p>
+            <p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p>
             
             <div style="margin-top: 20px; padding: 15px; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;">
                 <h3 style="margin-top: 0;">💰 Add USDC Polygon for Refunds</h3>
@@ -173,14 +173,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'enabled' => array(
                 'title' => __('Enable/Disable', 'coinsub'),
                 'type' => 'checkbox',
-                'label' => __('Enable Coinsub Crypto Payments', 'coinsub'),
+                'label' => __('Enable Stablecoin Pay Crypto Payments', 'coinsub'),
                 'default' => 'no'
             ),
             // Environment selection removed for production plugin; base URL fixed to dev-api in code
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Get this from your Coinsub merchant dashboard', 'coinsub'),
+                'description' => __('Get this from your CoinSub merchant dashboard', 'coinsub'),
                 'default' => '',
                 'placeholder' => 'e.g., 12345678-abcd-1234-abcd-123456789abc',
                 'required' => true,
@@ -188,14 +188,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'api_key' => array(
                 'title' => __('API Key', 'coinsub'),
                 'type' => 'password',
-                'description' => __('Get this from your Coinsub merchant dashboard', 'coinsub'),
+                'description' => __('Get this from your CoinSub merchant dashboard', 'coinsub'),
                 'default' => '',
                 'required' => true,
             ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Copy this URL and add it to your Coinsub merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
+                'description' => __('Copy this URL and add it to your CoinSub merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
                 'default' => (function() {
                     $secret = get_option('coinsub_webhook_secret');
                     $base = home_url('/wp-json/coinsub/v1/webhook');
@@ -253,9 +253,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub" and CoinSub logo');
             $this->brand_company = 'Coinsub';
             $this->title = 'Pay with Coinsub';
-            $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.png';
+            $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             // Set default button logo URL
-            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.png';
+            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_company_name = 'Coinsub';
             error_log('CoinSub Whitelabel: ✅ Set default title: "' . $this->title . '" and default icon: ' . $this->icon);
             error_log('CoinSub Whitelabel: 🔘 Button logo URL set to default: ' . $this->button_logo_url);
@@ -1076,7 +1076,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function get_icon() {
         // Use the icon set by load_whitelabel_branding() (could be whitelabel or default)
-        $icon_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.png';
+        $icon_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         
         error_log('CoinSub Whitelabel: 🖼️ get_icon() called - Using icon URL: ' . $icon_url);
         
@@ -1089,7 +1089,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function get_order_button_text() {
         // Get logo URL (whitelabel or default)
-        $logo_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.png';
+        $logo_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         $company_name = !empty($this->brand_company) ? $this->brand_company : 'Coinsub';
         
         error_log('CoinSub Whitelabel: 🔘 Button text - Company: "' . $company_name . '" | Logo URL: ' . $logo_url);

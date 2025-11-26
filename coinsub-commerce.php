@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: Coinsub
+ * Plugin Name: Stablecoin Pay
  * Plugin URI: https://coinsub.io
- * Description: Accept cryptocurrency payments with Coinsub. Simple crypto payments for WooCommerce.
+ * Description: Accept cryptocurrency payments with Stablecoin Pay. Simple crypto payments for WooCommerce.
  * Version: 1.0.0
  * Author: CoinSub
  * Author URI: https://coinsub.io
@@ -38,7 +38,7 @@ if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get
  * WooCommerce missing notice
  */
 function coinsub_woocommerce_missing_notice() {
-    echo '<div class="error"><p><strong>CoinSub</strong> requires WooCommerce to be installed and active.</p></div>';
+    echo '<div class="error"><p><strong>Stablecoin Pay</strong> requires WooCommerce to be installed and active.</p></div>';
 }
 
 /**

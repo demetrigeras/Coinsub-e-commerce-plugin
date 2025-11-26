@@ -464,7 +464,7 @@ class CoinSub_Whitelabel_Branding {
         }
         
         // No logo found - return default CoinSub logo
-        $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.png';
+        $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo found in branding, using default: ' . $default_logo);
         return $default_logo;
     }

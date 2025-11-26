@@ -72,9 +72,9 @@ class CoinSub_Admin_Subscriptions {
         ?>
         <div class="wrap">
             <h1 class="wp-heading-inline">
-                <img src="<?php echo esc_url(COINSUB_PLUGIN_URL . 'images/coinsub.png'); ?>" 
+                <img src="<?php echo esc_url(COINSUB_PLUGIN_URL . 'images/coinsub.svg'); ?>" 
                      style="height: 30px; vertical-align: middle; margin-right: 10px;" 
-                     alt="Coinsub" />
+                     alt="Stablecoin Pay" />
                 <?php _e('Coinsub Subscriptions', 'coinsub'); ?>
             </h1>
             
