@@ -40,8 +40,8 @@ class CoinSub_API_Client {
         // Try to get settings from payment gateway first, then fallback to global options
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
-        // Fixed API base URL to test-api for production plugin build
-        $this->api_base_url = 'https://test-api.coinsub.io/v1';
+        // Default to dev API while testing
+        $this->api_base_url = 'https://dev-api.coinsub.io/v1';
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
@@ -358,10 +358,93 @@ class CoinSub_API_Client {
     }
 
     /**
-     * Get submerchant data (includes parent merchant ID)
+     * Get merchant info (checks if submerchant and returns parent merchant ID)
+     * Route: GET /v1/environment-variables/merchant-info
+     * Only requires Merchant-ID header (no API key needed)
+     */
+    public function get_merchant_info($merchant_id) {
+        $endpoint = rtrim($this->api_base_url, '/') . '/environment-variables/merchant-info';
+        
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 🌐🌐🌐 MERCHANT INFO API CALL 🌐🌐🌐');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📍 Endpoint: ' . $endpoint);
+        error_log('CoinSub API: 🔑 Merchant-ID header: ' . $merchant_id);
+        error_log('CoinSub API: ℹ️  No API key required for this endpoint');
+        error_log('CoinSub API: 📤 Request Method: GET');
+        error_log('CoinSub API: 📤 Request Headers: ' . json_encode(array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $merchant_id
+        )));
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $merchant_id
+            // No API-Key header needed!
+        );
+        
+        $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
+        
+        if (is_wp_error($response)) {
+            error_log('CoinSub API: ❌❌❌ WP_Error getting merchant info ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $response->get_error_message());
+            error_log('CoinSub API: Error code: ' . $response->get_error_code());
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📥📥📥 MERCHANT INFO API RESPONSE 📥📥📥');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📊 Response Code: ' . $response_code);
+        error_log('CoinSub API: 📦 Response Body (raw): ' . $body);
+        error_log('CoinSub API: 📦 Response Body (pretty): ' . json_encode($data, JSON_PRETTY_PRINT));
+        error_log('CoinSub API: 🔑 Response Keys: ' . (is_array($data) ? implode(', ', array_keys($data)) : 'NOT AN ARRAY'));
+        
+        if ($response_code !== 200) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('CoinSub API: ❌❌❌ ERROR RESPONSE ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $error_msg);
+            error_log('═══════════════════════════════════════════════════════════');
+            return new WP_Error('api_error', $error_msg);
+        }
+        
+        error_log('CoinSub API: ✅✅✅ SUCCESS - Merchant info retrieved ✅✅✅');
+        error_log('CoinSub API: 📊 Is Submerchant: ' . (isset($data['is_submerchant']) ? ($data['is_submerchant'] ? 'YES' : 'NO') : 'UNKNOWN'));
+        error_log('CoinSub API: 📊 Parent Merchant ID: ' . (isset($data['parent_merchant_id']) ? $data['parent_merchant_id'] : 'N/A'));
+        error_log('═══════════════════════════════════════════════════════════');
+        
+        return $data;
+    }
+    
+    /**
+     * Get submerchant data (includes parent merchant ID) - DEPRECATED
+     * Use get_merchant_info() instead - it doesn't require API key
+     * Route: GET /v1/merchants/:merchant_id (submerchant routes registered under /v1/merchants)
      */
     public function get_submerchant($merchant_id) {
-        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/submerchants/' . $merchant_id;
+        // Based on Go routes structure:
+        // merchantsGroup := r.Group("/v1/merchants")
+        // registerSubmerchantRoutes(merchantsGroup) with r.GET("/:merchant_id", ...)
+        // So the full path is: /v1/merchants/:merchant_id
+        // NOT /v1/merchants/submerchants/:merchant_id
+        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $merchant_id;
+        
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 🌐🌐🌐 SUBMERCHANT API CALL 🌐🌐🌐');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📍 Endpoint: ' . $endpoint);
+        error_log('CoinSub API: 🔑 Merchant-ID header: ' . $this->merchant_id);
+        error_log('CoinSub API: 🔑 API-Key header: ' . (strlen($this->api_key) > 0 ? substr($this->api_key, 0, 10) . '...' : 'EMPTY'));
+        error_log('CoinSub API: 📤 Request Method: GET');
+        error_log('CoinSub API: 📤 Request Headers: ' . json_encode(array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => (strlen($this->api_key) > 0 ? substr($this->api_key, 0, 10) . '...' : 'EMPTY')
+        )));
         
         $headers = array(
             'Content-Type' => 'application/json',
@@ -372,15 +455,35 @@ class CoinSub_API_Client {
         $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
         
         if (is_wp_error($response)) {
+            error_log('CoinSub API: ❌❌❌ WP_Error getting submerchant ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $response->get_error_message());
+            error_log('CoinSub API: Error code: ' . $response->get_error_code());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
+        $response_code = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
         
-        if (wp_remote_retrieve_response_code($response) !== 200) {
-            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📥📥📥 SUBMERCHANT API RESPONSE 📥📥📥');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📊 Response Code: ' . $response_code);
+        error_log('CoinSub API: 📦 Response Body (raw): ' . $body);
+        error_log('CoinSub API: 📦 Response Body (pretty): ' . json_encode($data, JSON_PRETTY_PRINT));
+        error_log('CoinSub API: 🔑 Response Keys: ' . (is_array($data) ? implode(', ', array_keys($data)) : 'NOT AN ARRAY'));
+        
+        if ($response_code !== 200) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('CoinSub API: ❌❌❌ ERROR RESPONSE ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $error_msg);
+            error_log('═══════════════════════════════════════════════════════════');
+            return new WP_Error('api_error', $error_msg);
         }
+        
+        error_log('CoinSub API: ✅✅✅ SUCCESS - Submerchant data retrieved ✅✅✅');
+        error_log('CoinSub API: 📊 Data structure: ' . json_encode(array_keys($data)));
+        error_log('═══════════════════════════════════════════════════════════');
         
         return $data;
     }
@@ -388,9 +491,18 @@ class CoinSub_API_Client {
     /**
      * Get environment configs (whitelabel branding data)
      * Note: This endpoint does not require authentication headers
+     * Endpoint: GET /v1/environment-variables/domain-logo
      */
     public function get_environment_configs() {
         $endpoint = rtrim($this->api_base_url, '/') . '/environment-variables/domain-logo';
+        
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 🌐🌐🌐 ENVIRONMENT CONFIGS API CALL 🌐🌐🌐');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📍 Endpoint: ' . $endpoint);
+        error_log('CoinSub API: 📤 Request Method: GET');
+        error_log('CoinSub API: 📤 Request Headers: ' . json_encode(array('Content-Type' => 'application/json')));
+        error_log('CoinSub API: ℹ️  No authentication required for this endpoint');
         
         // No headers needed for this endpoint
         $headers = array(
@@ -400,15 +512,41 @@ class CoinSub_API_Client {
         $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
         
         if (is_wp_error($response)) {
+            error_log('CoinSub API: ❌❌❌ WP_Error getting environment configs ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $response->get_error_message());
+            error_log('CoinSub API: Error code: ' . $response->get_error_code());
+            error_log('═══════════════════════════════════════════════════════════');
             return new WP_Error('api_error', $response->get_error_message());
         }
         
+        $response_code = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
         
-        if (wp_remote_retrieve_response_code($response) !== 200) {
-            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📥📥📥 ENVIRONMENT CONFIGS API RESPONSE 📥📥📥');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📊 Response Code: ' . $response_code);
+        error_log('CoinSub API: 📦 Response Body (raw, first 2000 chars): ' . substr($body, 0, 2000));
+        error_log('CoinSub API: 📦 Response Body (pretty, first 5000 chars): ' . substr(json_encode($data, JSON_PRETTY_PRINT), 0, 5000));
+        error_log('CoinSub API: 🔑 Response Keys: ' . (is_array($data) ? implode(', ', array_keys($data)) : 'NOT AN ARRAY'));
+        
+        if ($response_code !== 200) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('CoinSub API: ❌❌❌ ERROR RESPONSE ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $error_msg);
+            error_log('═══════════════════════════════════════════════════════════');
+            return new WP_Error('api_error', $error_msg);
         }
+        
+        error_log('CoinSub API: ✅✅✅ SUCCESS - Environment configs retrieved ✅✅✅');
+        if (isset($data['environment_configs'])) {
+            error_log('CoinSub API: 📊 Found ' . count($data['environment_configs']) . ' environment configs');
+            foreach ($data['environment_configs'] as $index => $config) {
+                error_log('CoinSub API: 📋 Config #' . $index . ' - environment_id: ' . (isset($config['environment_id']) ? $config['environment_id'] : 'N/A'));
+            }
+        }
+        error_log('═══════════════════════════════════════════════════════════');
         
         return $data;
     }

@@ -12,34 +12,15 @@ if (!defined('ABSPATH')) {
 class CoinSub_Whitelabel_Branding {
     
     /**
-     * Cache key for branding data
+     * Database option key for branding data (persists in database, not transient)
      */
-    const BRANDING_CACHE_KEY = 'coinsub_whitelabel_branding';
-    const BRANDING_CACHE_EXPIRY = 3600; // 1 hour
+    const BRANDING_OPTION_KEY = 'coinsub_whitelabel_branding';
+    const BRANDING_FETCH_LOCK_KEY = 'coinsub_whitelabel_fetching'; // Prevent multiple simultaneous fetches
     
     /**
-     * Default branding fallback
+     * No default branding - if branding is not found, return null/empty
+     * This ensures the gateway doesn't show incorrect branding
      */
-    private $default_branding = array(
-        'company' => 'Stablecoin Pay',
-        'powered_by' => 'Powered by CoinSub',
-        'logo' => array(
-            'default' => array(
-                'light' => COINSUB_PLUGIN_URL . 'images/coinsub.png',
-                'dark' => COINSUB_PLUGIN_URL . 'images/coinsub.png'
-            ),
-            'square' => array(
-                'light' => COINSUB_PLUGIN_URL . 'images/coinsub.png',
-                'dark' => COINSUB_PLUGIN_URL . 'images/coinsub.png'
-            )
-        ),
-        'favicon' => '',
-        'buyurl' => '',
-        'documentation_url' => '',
-        'privacy_policy_url' => '',
-        'terms_of_service_url' => '',
-        'copyright' => ''
-    );
     
     /**
      * API client instance
@@ -51,19 +32,60 @@ class CoinSub_Whitelabel_Branding {
      */
     public function __construct() {
         $this->api_client = new CoinSub_API_Client();
+        
+        // Ensure API client has current credentials
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
+        $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
+        $api_base_url = 'https://dev-api.coinsub.io/v1';
+        
+        if (!empty($merchant_id) && !empty($api_key)) {
+            $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
+        }
     }
     
     /**
      * Get whitelabel branding for current merchant
      * 
+     * @param bool $force_refresh If true, force API call even if cache exists. If false, use cache only (no API calls).
      * @return array Branding data (company, logo, etc.)
      */
-    public function get_branding() {
-        // Check cache first
-        $cached = get_transient(self::BRANDING_CACHE_KEY);
-        if ($cached !== false) {
-            return $cached;
+    public function get_branding($force_refresh = false) {
+        // If not forcing refresh, get branding from database (no API calls)
+        if (!$force_refresh) {
+            $stored_branding = get_option(self::BRANDING_OPTION_KEY, false);
+            
+            if ($stored_branding !== false && is_array($stored_branding)) {
+                error_log('CoinSub Whitelabel: 📦 Found branding in database - Structure: ' . json_encode(array_keys($stored_branding)));
+                
+                if (isset($stored_branding['company']) && !empty($stored_branding['company'])) {
+                    error_log('CoinSub Whitelabel: ✅ Using stored branding from database - Company: "' . $stored_branding['company'] . '"');
+                    return $stored_branding;
+                } else {
+                    error_log('CoinSub Whitelabel: ⚠️ Stored branding missing company field');
+                }
+            }
+            
+            error_log('CoinSub Whitelabel: Checking database... Result: NOT FOUND');
+            
+            // No branding in database - return empty array (no default)
+            // Branding will ONLY be fetched when settings are saved (to avoid rate limits)
+            // Go to WooCommerce → Settings → Payments → CoinSub and click "Save changes"
+            error_log('CoinSub Whitelabel: ⚠️ No branding in database - returning empty (no default)');
+            error_log('CoinSub Whitelabel: 💡 TIP: Go to WooCommerce → Settings → Payments → CoinSub and click "Save changes" to fetch branding from API');
+            return array(); // Return empty array, no default
         }
+        
+        // Force refresh - fetch fresh data from API and store in database
+        error_log('CoinSub Whitelabel: 🔄🔄🔄 FORCE REFRESH - Fetching branding from API and storing in database 🔄🔄🔄');
+        
+        // Acquire a lock to prevent multiple simultaneous fetches
+        if (get_transient(self::BRANDING_FETCH_LOCK_KEY)) {
+            error_log('CoinSub Whitelabel: 🔒 Fetch lock active. Another process is already fetching branding. Returning empty.');
+            return array(); // Return empty array, no default
+        }
+        set_transient(self::BRANDING_FETCH_LOCK_KEY, true, 30); // Lock for 30 seconds
+        error_log('CoinSub Whitelabel: 🔒 Acquired fetch lock for 30 seconds');
         
         // Get merchant ID from settings
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
@@ -71,92 +93,119 @@ class CoinSub_Whitelabel_Branding {
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
         if (empty($merchant_id) || empty($api_key)) {
-            // No credentials, return default
-            return $this->default_branding;
+            // No credentials, return empty
+            error_log('CoinSub Whitelabel: ❌ No merchant ID or API key in settings - cannot fetch branding');
+            return array(); // Return empty array, no default
         }
         
-        // Fetch submerchant data to get parent merchant ID
-        $submerchant_data = $this->api_client->get_submerchant($merchant_id);
+        // Ensure API client has the latest base URL (merchant ID is passed directly to the method)
+        $api_base_url = 'https://dev-api.coinsub.io/v1';
+        // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
+        $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
+        error_log('CoinSub Whitelabel: Updated API client - Merchant ID: ' . $merchant_id . ' (no API key needed for merchant-info endpoint)');
         
-        if (is_wp_error($submerchant_data)) {
-            error_log('CoinSub Whitelabel: Failed to get submerchant data: ' . $submerchant_data->get_error_message());
-            return $this->default_branding;
-        }
+        // Fetch merchant info to check if submerchant and get parent merchant ID
+        // NEW: Use headerless endpoint that only requires Merchant-ID (no API key needed)
+        error_log('CoinSub Whitelabel: Attempting to fetch merchant info for merchant ID: ' . $merchant_id);
+        error_log('CoinSub Whitelabel: Using NEW headerless endpoint (no API key required)');
+        $merchant_info = $this->api_client->get_merchant_info($merchant_id);
         
-        // Extract parent merchant ID from submerchant data
-        // The submerchant API response should include the parent merchant ID
-        // Based on the Go code, the response structure may vary, so check multiple locations
         $parent_merchant_id = null;
         
-        // Log full response for debugging
-        error_log('CoinSub Whitelabel: Submerchant data response: ' . json_encode($submerchant_data));
-        
-        // Check various possible response structures (handle both wrapped and unwrapped responses)
-        $response_data = isset($submerchant_data['data']) ? $submerchant_data['data'] : $submerchant_data;
-        
-        // Try to find parent merchant ID in different possible locations
-        // 1. Direct field in response data
-        if (isset($response_data['MerchantID']) && !empty($response_data['MerchantID'])) {
-            // If MerchantID exists and is different from the submerchant ID, it's likely the parent
-            if ($response_data['MerchantID'] !== $merchant_id) {
-                $parent_merchant_id = $response_data['MerchantID'];
+        if (is_wp_error($merchant_info)) {
+            $error_message = $merchant_info->get_error_message();
+            error_log('CoinSub Whitelabel: ❌ Failed to get merchant info: ' . $error_message);
+            
+            // Handle rate limit errors - use stored branding if available
+            if (strpos($error_message, 'Rate limit') !== false || strpos($error_message, 'rate limit') !== false) {
+                error_log('CoinSub Whitelabel: Rate limit exceeded. Checking database for stored branding...');
+                $stored_branding = get_option(self::BRANDING_OPTION_KEY, false);
+                if ($stored_branding !== false && is_array($stored_branding) && isset($stored_branding['company'])) {
+                    error_log('CoinSub Whitelabel: ✅ Using stored branding from database due to rate limit - Company: "' . $stored_branding['company'] . '"');
+                    return $stored_branding;
+                }
+                error_log('CoinSub Whitelabel: ❌ No stored branding available - returning empty (no default)');
+                return array(); // Return empty array, no default
             }
+            
+            error_log('CoinSub Whitelabel: ❌ Merchant info API error - returning empty (no default)');
+            return array(); // Return empty array, no default
         }
         
-        // 2. Check for parent_merchant_id or parentMerchantID fields
-        if (empty($parent_merchant_id)) {
-            if (isset($response_data['parent_merchant_id']) && !empty($response_data['parent_merchant_id'])) {
-                $parent_merchant_id = $response_data['parent_merchant_id'];
-            } elseif (isset($response_data['parentMerchantID']) && !empty($response_data['parentMerchantID'])) {
-                $parent_merchant_id = $response_data['parentMerchantID'];
-            } elseif (isset($response_data['ParentMerchantID']) && !empty($response_data['ParentMerchantID'])) {
-                $parent_merchant_id = $response_data['ParentMerchantID'];
-            }
-        }
+        // Extract parent merchant ID from merchant info response
+        // Response structure: { "submerchant_id": "...", "is_submerchant": true/false, "parent_merchant_id": "..." }
+        error_log('CoinSub Whitelabel: 📦📦📦 MERCHANT INFO RESPONSE 📦📦📦');
+        error_log('CoinSub Whitelabel: Merchant info response (pretty): ' . json_encode($merchant_info, JSON_PRETTY_PRINT));
         
-        // 3. Check in submerchant relationship data if present
-        if (empty($parent_merchant_id) && isset($response_data['submerchant_relationship'])) {
-            $relationship = $response_data['submerchant_relationship'];
-            if (isset($relationship['parent_merchant_id'])) {
-                $parent_merchant_id = $relationship['parent_merchant_id'];
-            } elseif (isset($relationship['ParentMerchantID'])) {
-                $parent_merchant_id = $relationship['ParentMerchantID'];
-            }
-        }
+        // Check if merchant is a submerchant
+        $is_submerchant = isset($merchant_info['is_submerchant']) ? $merchant_info['is_submerchant'] : false;
+        error_log('CoinSub Whitelabel: Is Submerchant: ' . ($is_submerchant ? 'YES' : 'NO'));
         
-        // 4. Fallback: check top-level fields
-        if (empty($parent_merchant_id)) {
-            if (isset($submerchant_data['MerchantID']) && $submerchant_data['MerchantID'] !== $merchant_id) {
-                $parent_merchant_id = $submerchant_data['MerchantID'];
-            } elseif (isset($submerchant_data['parent_merchant_id'])) {
-                $parent_merchant_id = $submerchant_data['parent_merchant_id'];
-            }
+        if ($is_submerchant && isset($merchant_info['parent_merchant_id']) && !empty($merchant_info['parent_merchant_id'])) {
+            $parent_merchant_id = $merchant_info['parent_merchant_id'];
+            error_log('CoinSub Whitelabel: ✅ Found parent merchant ID: ' . $parent_merchant_id);
+        } else {
+            error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant OR parent_merchant_id is missing');
+            error_log('CoinSub Whitelabel: Response structure: ' . print_r($merchant_info, true));
+            // If not a submerchant, we can't get branding - return empty
+            return array(); // Return empty array, no default
         }
-        
-        error_log('CoinSub Whitelabel: Extracted parent merchant ID: ' . ($parent_merchant_id ?: 'NOT FOUND'));
-        error_log('CoinSub Whitelabel: Submerchant ID (from settings): ' . $merchant_id);
         
         if (empty($parent_merchant_id)) {
-            // No parent merchant ID found, return default
-            error_log('CoinSub Whitelabel: No parent merchant ID found in submerchant data. Using default branding.');
-            return $this->default_branding;
+            // No parent merchant ID found, return empty
+            error_log('CoinSub Whitelabel: ❌ No parent merchant ID found - returning empty (no default)');
+            return array(); // Return empty array, no default
         }
+        
+        error_log('CoinSub Whitelabel: ✅✅✅ Parent merchant ID extracted: ' . $parent_merchant_id);
         
         // Fetch environment configs
+        error_log('CoinSub Whitelabel: Fetching environment configs from API...');
         $env_configs = $this->api_client->get_environment_configs();
         
         if (is_wp_error($env_configs)) {
-            error_log('CoinSub Whitelabel: Failed to get environment configs: ' . $env_configs->get_error_message());
-            return $this->default_branding;
+            error_log('CoinSub Whitelabel: ❌ Failed to get environment configs: ' . $env_configs->get_error_message());
+            return array(); // Return empty array, no default
         }
+        
+        error_log('CoinSub Whitelabel: ✅ Got environment configs. Structure: ' . json_encode(array_keys($env_configs)));
         
         // Match parent merchant ID to config_data
         $branding = $this->match_merchant_to_branding($parent_merchant_id, $env_configs);
         
-        // Cache the result
-        set_transient(self::BRANDING_CACHE_KEY, $branding, self::BRANDING_CACHE_EXPIRY);
+        // Store branding in WordPress database (persists until manually updated)
+        $stored = update_option(self::BRANDING_OPTION_KEY, $branding);
+        
+        error_log('CoinSub Whitelabel: 💾 Storing branding in database... Result: ' . ($stored ? 'SUCCESS' : 'FAILED'));
+        error_log('CoinSub Whitelabel: 📦 Branding data being stored: ' . json_encode($branding));
+        error_log('CoinSub Whitelabel: ✅✅✅ BRANDING STORED IN DATABASE - Company Name: "' . $branding['company'] . '" | Title will be: "Pay with ' . $branding['company'] . '"');
+        
+        // Clear fetch lock
+        delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+        
+        // Verify it was stored correctly
+        $verify = get_option(self::BRANDING_OPTION_KEY, false);
+        if ($verify !== false && isset($verify['company'])) {
+            error_log('CoinSub Whitelabel: ✅ Verified - Branding in database has company: "' . $verify['company'] . '"');
+        } else {
+            error_log('CoinSub Whitelabel: ⚠️ WARNING - Could not verify branding was stored correctly!');
+        }
         
         return $branding;
+    }
+    
+    /**
+     * Try to match branding by submerchant ID (fallback when parent lookup fails)
+     * 
+     * @param string $submerchant_id Submerchant ID to match
+     * @param array $env_configs Environment configs from API
+     * @return array|null Branding data or null if no match
+     */
+    private function try_match_by_submerchant_id($submerchant_id, $env_configs) {
+        // This is a fallback - usually we match by parent merchant ID
+        // But if API doesn't have submerchant, we can't get parent ID
+        // So this returns null for now - the real fix is ensuring submerchant exists in API
+        return null;
     }
     
     /**
@@ -169,7 +218,7 @@ class CoinSub_Whitelabel_Branding {
     private function match_merchant_to_branding($parent_merchant_id, $env_configs) {
         if (!isset($env_configs['environment_configs']) || !is_array($env_configs['environment_configs'])) {
             error_log('CoinSub Whitelabel: Invalid environment_configs structure. Response: ' . json_encode($env_configs));
-            return $this->default_branding;
+            return array(); // Return empty array, no default
         }
         
         error_log('CoinSub Whitelabel: Searching for parent merchant ID: ' . $parent_merchant_id);
@@ -187,6 +236,9 @@ class CoinSub_Whitelabel_Branding {
                 ? json_decode($config['config_data'], true) 
                 : $config['config_data'];
             
+            // Log the full config_data structure for debugging
+            error_log('CoinSub Whitelabel: 📋 Config #' . $index . ' - Full config_data: ' . json_encode($config_data, JSON_PRETTY_PRINT));
+            
             if (!is_array($config_data)) {
                 error_log('CoinSub Whitelabel: Config #' . $index . ' config_data is not an array');
                 continue;
@@ -197,14 +249,17 @@ class CoinSub_Whitelabel_Branding {
                 // Try alternative structure: maybe config_data is directly the app data
                 if (isset($config_data['merchantID'])) {
                     // This might be the app data directly
+                    error_log('CoinSub Whitelabel: Config #' . $index . ' - config_data has merchantID directly, wrapping in app key');
                     $config_data = array('app' => $config_data);
                 } else {
-                    error_log('CoinSub Whitelabel: Config #' . $index . ' missing app key in config_data');
+                    error_log('CoinSub Whitelabel: Config #' . $index . ' missing app key in config_data. Keys: ' . implode(', ', array_keys($config_data)));
                     continue;
                 }
             }
             
             $app_data = $config_data['app'];
+            error_log('CoinSub Whitelabel: Config #' . $index . ' - app data keys: ' . implode(', ', array_keys($app_data)));
+            error_log('CoinSub Whitelabel: Config #' . $index . ' - app data: ' . json_encode($app_data, JSON_PRETTY_PRINT));
             
             // Check if merchantID matches (case-insensitive comparison for safety)
             $config_merchant_id = null;
@@ -223,14 +278,28 @@ class CoinSub_Whitelabel_Branding {
             $parent_id_normalized = strtolower(trim($parent_merchant_id));
             $config_id_normalized = strtolower(trim($config_merchant_id));
             
-            error_log('CoinSub Whitelabel: Comparing parent ID "' . $parent_id_normalized . '" with config ID "' . $config_id_normalized . '"');
+            error_log('CoinSub Whitelabel: 🔍 Comparing parent merchant ID "' . $parent_id_normalized . '" with config merchantID "' . $config_id_normalized . '"');
+            error_log('CoinSub Whitelabel: Config #' . $index . ' - Company: "' . (isset($app_data['company']) ? $app_data['company'] : 'N/A') . '" | merchantID: "' . $config_merchant_id . '"');
             
             if ($config_id_normalized === $parent_id_normalized) {
-                // Found match! Extract branding data
+                // Found match! Extract branding data from app.company and app.logo
+                error_log('CoinSub Whitelabel: ✅✅✅ MATCH FOUND! Parent ID matches config merchantID');
+                
+                // Get company name from app.company (e.g., "Vantack")
+                $company_name = isset($app_data['company']) && !empty($app_data['company']) 
+                    ? $app_data['company'] 
+                    : ''; // No default company name
+                
+                error_log('CoinSub Whitelabel: 📦 Extracted company name from app.company: "' . $company_name . '"');
+                
+                // Extract logo data
+                $logo_data = $this->extract_logo_data($app_data);
+                error_log('CoinSub Whitelabel: 🖼️ Extracted logo data: ' . json_encode($logo_data));
+                
                 $branding = array(
-                    'company' => isset($app_data['company']) ? $app_data['company'] : $this->default_branding['company'],
+                    'company' => $company_name, // Use company name from app.company
                     'powered_by' => 'Powered by CoinSub', // Always show this
-                    'logo' => $this->extract_logo_data($app_data),
+                    'logo' => $logo_data,
                     'favicon' => isset($app_data['favicon']) ? $app_data['favicon'] : '',
                     'buyurl' => isset($app_data['buyurl']) ? $app_data['buyurl'] : '',
                     'documentation_url' => isset($app_data['documentation_url']) ? $app_data['documentation_url'] : '',
@@ -242,20 +311,20 @@ class CoinSub_Whitelabel_Branding {
                 // Convert relative logo URLs to absolute if needed
                 $branding['logo'] = $this->normalize_logo_urls($branding['logo']);
                 
-                error_log('CoinSub Whitelabel: ✅ Matched branding for merchant ' . $parent_merchant_id . ' - Company: ' . $branding['company']);
+                error_log('CoinSub Whitelabel: ✅✅✅ Final branding data - Company: "' . $branding['company'] . '" | Logo: ' . json_encode($branding['logo']));
                 
                 return $branding;
             }
         }
         
-        // No match found, return default
+        // No match found, return empty
         error_log('CoinSub Whitelabel: ❌ No matching branding found for parent merchant ID: ' . $parent_merchant_id);
         error_log('CoinSub Whitelabel: Available merchant IDs in configs: ' . json_encode(array_map(function($config) {
             $config_data = is_string($config['config_data']) ? json_decode($config['config_data'], true) : $config['config_data'];
             return isset($config_data['app']['merchantID']) ? $config_data['app']['merchantID'] : 'N/A';
         }, $env_configs['environment_configs'])));
         
-        return $this->default_branding;
+        return array(); // Return empty array, no default
     }
     
     /**
@@ -265,7 +334,11 @@ class CoinSub_Whitelabel_Branding {
      * @return array Logo URLs
      */
     private function extract_logo_data($app_data) {
-        $logo = $this->default_branding['logo'];
+        // Initialize empty logo structure
+        $logo = array(
+            'default' => array('light' => '', 'dark' => ''),
+            'square' => array('light' => '', 'dark' => '')
+        );
         
         if (isset($app_data['logo'])) {
             $logo_config = $app_data['logo'];
@@ -301,7 +374,7 @@ class CoinSub_Whitelabel_Branding {
      * @return array Normalized logo data
      */
     private function normalize_logo_urls($logo) {
-        $api_base = 'https://test-api.coinsub.io'; // Base URL for API assets
+        $api_base = 'https://dev-api.coinsub.io'; // Base URL for API assets
         
         foreach ($logo as $type => &$variants) {
             foreach ($variants as $theme => &$url) {
@@ -323,7 +396,7 @@ class CoinSub_Whitelabel_Branding {
      * Clear branding cache (call when merchant credentials change)
      */
     public function clear_cache() {
-        delete_transient(self::BRANDING_CACHE_KEY);
+        delete_option(self::BRANDING_OPTION_KEY);
     }
     
     /**
@@ -350,8 +423,8 @@ class CoinSub_Whitelabel_Branding {
             return $branding['logo'][$type][$theme];
         }
         
-        // Fallback to default logo
-        return $this->default_branding['logo']['default']['light'];
+        // No logo found, return empty string (no default)
+        return '';
     }
     
     /**
