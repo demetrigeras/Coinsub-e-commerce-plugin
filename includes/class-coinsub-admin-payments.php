@@ -38,13 +38,52 @@ class CoinSub_Admin_Payments {
     }
     
     /**
+     * Get whitelabel branding class
+     */
+    private function get_branding() {
+        if (!class_exists('CoinSub_Whitelabel_Branding')) {
+            require_once plugin_dir_path(__FILE__) . 'class-coinsub-whitelabel-branding.php';
+        }
+        return new CoinSub_Whitelabel_Branding();
+    }
+    
+    /**
+     * Check if settings are saved (merchant ID and API key exist)
+     */
+    private function are_settings_saved() {
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $merchant_id = isset($gateway_settings['merchant_id']) ? trim($gateway_settings['merchant_id']) : '';
+        $api_key = isset($gateway_settings['api_key']) ? trim($gateway_settings['api_key']) : '';
+        return !empty($merchant_id) && !empty($api_key);
+    }
+    
+    /**
+     * Get company name for display (whitelabel if settings saved, otherwise default)
+     */
+    private function get_display_company_name() {
+        // Only use whitelabel branding if settings are saved
+        if (!$this->are_settings_saved()) {
+            return 'Stablecoin Pay';
+        }
+        
+        // Settings are saved - try to get whitelabel branding
+        $branding = $this->get_branding();
+        $branding_data = $branding->get_branding(false);
+        return !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
+    }
+    
+    /**
      * Add admin menu item
      */
     public function add_admin_menu() {
+        // Get company name (whitelabel if settings saved, otherwise "Stablecoin Pay")
+        $company_name = $this->get_display_company_name();
+        $menu_title = sprintf(__('%s Payments', 'coinsub'), $company_name);
+        
         add_submenu_page(
             'woocommerce',
-            __('Coinsub Payments', 'coinsub'),
-            __('Coinsub Payments', 'coinsub'),
+            $menu_title,
+            $menu_title,
             'manage_woocommerce',
             'coinsub-payments',
             array($this, 'render_payments_page')
@@ -66,6 +105,10 @@ class CoinSub_Admin_Payments {
      * Render payments management page
      */
     public function render_payments_page() {
+        // Get company name for page title (whitelabel if settings saved, otherwise "Stablecoin Pay")
+        $company_name = $this->get_display_company_name();
+        $page_title = sprintf(__('%s Payments', 'coinsub'), $company_name);
+        
         // Get payments from API
         $api_client = $this->get_api_client();
         $payments_response = $api_client ? $api_client->get_all_payments() : null;
@@ -92,7 +135,7 @@ class CoinSub_Admin_Payments {
                 <img src="<?php echo esc_url(COINSUB_PLUGIN_URL . 'images/coinsub.svg'); ?>" 
                      style="height: 30px; vertical-align: middle; margin-right: 10px;" 
                      alt="Stablecoin Pay" />
-                <?php _e('Coinsub Payments', 'coinsub'); ?>
+                <?php echo esc_html($page_title); ?>
             </h1>
             
             <hr class="wp-header-end">

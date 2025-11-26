@@ -96,11 +96,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         <div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;">
             <h3 style="margin-top: 0;">📋 Setup Instructions</h3>
             
-            <h4>Step 1: Select Environment & Get Your Stablecoin Pay Credentials</h4>
+            <h4>Step 1: Get Your Stablecoin Pay Credentials</h4>
             <ol style="line-height: 1.8;">
-                <li>Select your <strong>Environment</strong> from the dropdown below (Development, Test, Staging, or Production)</li>
-                <li>Go to the appropriate CoinSub environment URL and sign up or log in</li>
-                <li>Navigate to <strong>Settings</strong> in your CoinSub dashboard</li>
+                <li>Log in to your account</li>
+                <li>Navigate to <strong>Settings</strong> in your dashboard</li>
                 <li>Copy your <strong>Merchant ID</strong></li>
                 <li>Create and copy your <strong>API Key</strong></li>
                 <li>Paste both into the fields below</li>
@@ -109,7 +108,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             <h4>Step 2: Configure Webhook (CRITICAL)</h4>
             <ol style="line-height: 1.8;">
                 <li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)</li>
-                <li>Go back to your Coinsub dashboard <strong>Settings</strong></li>
+                <li>Go back to your dashboard <strong>Settings</strong></li>
                 <li>Find the <strong>Webhook URL</strong> field</li>
                 <li><strong>Paste your webhook URL</strong> into that field and save</li>
                 <li><em>This is essential - without this, orders won't update when payments complete!</em></li>
@@ -180,7 +179,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Get this from your CoinSub merchant dashboard', 'coinsub'),
+                'description' => __('Get this from your merchant dashboard', 'coinsub'),
                 'default' => '',
                 'placeholder' => 'e.g., 12345678-abcd-1234-abcd-123456789abc',
                 'required' => true,
@@ -188,14 +187,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'api_key' => array(
                 'title' => __('API Key', 'coinsub'),
                 'type' => 'password',
-                'description' => __('Get this from your CoinSub merchant dashboard', 'coinsub'),
+                'description' => __('Get this from your merchant dashboard', 'coinsub'),
                 'default' => '',
                 'required' => true,
             ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Copy this URL and add it to your CoinSub merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
+                'description' => __('Copy this URL and add it to your merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
                 'default' => (function() {
                     $secret = get_option('coinsub_webhook_secret');
                     $base = home_url('/wp-json/coinsub/v1/webhook');
