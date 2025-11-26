@@ -13,6 +13,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     
     private $api_client;
     private $brand_company = ''; // No default - will be set from branding API
+    private $button_logo_url = ''; // Logo URL for button (injected via JS)
+    private $button_company_name = ''; // Company name for button
     
     /**
      * Constructor
@@ -226,7 +228,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $branding = new CoinSub_Whitelabel_Branding();
         $branding_data = $branding->get_branding($force_refresh);
         
-        // Only update if branding data exists and has company name (no default)
+        // Only update if branding data exists and has company name
         if (!empty($branding_data) && isset($branding_data['company']) && !empty($branding_data['company'])) {
             $company_name = $branding_data['company'];
             $this->brand_company = $company_name;
@@ -238,13 +240,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $logo_url = $branding->get_logo_url('default', 'light');
             if ($logo_url) {
                 $this->icon = $logo_url;
-                error_log('CoinSub Whitelabel: Set icon to: ' . $logo_url);
+                // Also set button logo URL for JavaScript injection
+                $this->button_logo_url = $logo_url;
+                $this->button_company_name = $company_name;
+                error_log('CoinSub Whitelabel: 🖼️ ✅ Set icon to: ' . $logo_url);
+                error_log('CoinSub Whitelabel: 🔘 Button logo URL set: ' . $this->button_logo_url);
+            } else {
+                error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo URL returned, keeping default icon');
             }
         } else {
-            // No branding found - don't set title/icon (gateway will use its default or be hidden)
-            error_log('CoinSub Whitelabel: ⚠️ No branding data found - not updating title/icon (no default)');
-            $this->brand_company = '';
-            // Keep title as "Coinsub" (the method_title) - don't set "Pay with" if no branding
+            // No branding found - use default "Pay with Coinsub" and CoinSub logo
+            error_log('CoinSub Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub" and CoinSub logo');
+            $this->brand_company = 'Coinsub';
+            $this->title = 'Pay with Coinsub';
+            $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.png';
+            // Set default button logo URL
+            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.png';
+            $this->button_company_name = 'Coinsub';
+            error_log('CoinSub Whitelabel: ✅ Set default title: "' . $this->title . '" and default icon: ' . $this->icon);
+            error_log('CoinSub Whitelabel: 🔘 Button logo URL set to default: ' . $this->button_logo_url);
         }
     }
     
@@ -1058,9 +1072,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     
     /**
      * Get payment method icon
+     * Uses whitelabel logo if available, otherwise default CoinSub logo
      */
     public function get_icon() {
-        $icon_html = '<img src="' . esc_url(COINSUB_PLUGIN_URL . 'images/coinsub.png') . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; height: auto;" />';
+        // Use the icon set by load_whitelabel_branding() (could be whitelabel or default)
+        $icon_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.png';
+        
+        error_log('CoinSub Whitelabel: 🖼️ get_icon() called - Using icon URL: ' . $icon_url);
+        
+        $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; height: auto;" />';
         return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
     }
     
@@ -1068,16 +1088,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Customize the payment button text
      */
     public function get_order_button_text() {
-        // Only show "Pay with {Company}" if branding is available (no default)
-        if (!empty($this->brand_company)) {
-            $button_text = sprintf(__('Pay with %s', 'coinsub'), $this->brand_company);
-            error_log('CoinSub Whitelabel: 🔘 Button text: "' . $button_text . '" (using brand_company: "' . $this->brand_company . '")');
-            return $button_text;
-        }
+        // Get logo URL (whitelabel or default)
+        $logo_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.png';
+        $company_name = !empty($this->brand_company) ? $this->brand_company : 'Coinsub';
         
-        // No branding - use default WooCommerce button text
-        error_log('CoinSub Whitelabel: 🔘 No branding - using default button text');
-        return __('Place order', 'woocommerce');
+        error_log('CoinSub Whitelabel: 🔘 Button text - Company: "' . $company_name . '" | Logo URL: ' . $logo_url);
+        
+        // Store logo URL for JavaScript to inject (WooCommerce escapes HTML in button text)
+        // We'll inject the logo via JavaScript instead
+        $this->button_logo_url = $logo_url;
+        $this->button_company_name = $company_name;
+        
+        // Return text only - logo will be added via JavaScript
+        return sprintf(__('Pay with %s', 'coinsub'), $company_name);
     }
     
     /**
@@ -1448,14 +1471,68 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             jQuery(document).ready(function($) {
                 console.log('✅ Coinsub payment gateway loaded');
                 
+                // Get logo URL and company name from PHP
+                var coinsubLogoUrl = '<?php echo esc_js($this->button_logo_url); ?>';
+                var coinsubCompanyName = '<?php echo esc_js($this->button_company_name); ?>';
+                
+                // Function to inject logo into button
+                function injectButtonLogo() {
+                    var $button = $('#place_order');
+                    if ($button.length === 0) return;
+                    
+                    // Only inject if CoinSub is selected
+                    var selectedMethod = $('input[name="payment_method"]:checked').val();
+                    if (selectedMethod !== 'coinsub') {
+                        // Remove logo if another method is selected
+                        $button.find('img.coinsub-button-logo').remove();
+                        return;
+                    }
+                    
+                    // Check if logo already injected
+                    if ($button.find('img.coinsub-button-logo').length > 0) {
+                        return;
+                    }
+                    
+                    // Inject logo if we have a URL
+                    if (coinsubLogoUrl && coinsubLogoUrl.trim() !== '') {
+                        var $logo = $('<img>', {
+                            src: coinsubLogoUrl,
+                            alt: coinsubCompanyName || 'Coinsub',
+                            class: 'coinsub-button-logo',
+                            css: {
+                                'max-width': '20px',
+                                'height': 'auto',
+                                'vertical-align': 'middle',
+                                'margin-right': '8px',
+                                'display': 'inline-block'
+                            }
+                        });
+                        
+                        // Prepend logo to button text
+                        var buttonText = $button.html();
+                        // Remove existing logo if any
+                        buttonText = buttonText.replace(/<img[^>]*class="coinsub-button-logo"[^>]*>/gi, '');
+                        $button.html($logo[0].outerHTML + buttonText);
+                        
+                        console.log('✅ CoinSub logo injected into button:', coinsubLogoUrl);
+                    }
+                }
+                
+                // Inject logo on page load
+                injectButtonLogo();
+                
                 // Style the Place Order button when Coinsub is selected
                 $('input[name="payment_method"]').on('change', function() {
                     var selectedMethod = $(this).val();
                     if (selectedMethod === 'coinsub') {
                         console.log('✅ Coinsub selected');
                         $('body').addClass('payment_method_coinsub');
+                        // Inject logo when CoinSub is selected
+                        setTimeout(injectButtonLogo, 100);
                     } else {
                         $('body').removeClass('payment_method_coinsub');
+                        // Remove logo when another method is selected
+                        $('#place_order').find('img.coinsub-button-logo').remove();
                     }
                 });
                 

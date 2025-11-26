@@ -340,35 +340,48 @@ class CoinSub_Whitelabel_Branding {
             'square' => array('light' => '', 'dark' => '')
         );
         
-        if (isset($app_data['logo'])) {
+        error_log('CoinSub Whitelabel: 🖼️ Extracting logo data from app_data');
+        error_log('CoinSub Whitelabel: 🖼️ app_data logo structure: ' . json_encode(isset($app_data['logo']) ? $app_data['logo'] : 'NOT SET', JSON_PRETTY_PRINT));
+        
+        if (isset($app_data['logo']) && is_array($app_data['logo'])) {
             $logo_config = $app_data['logo'];
             
             // Extract default logos
-            if (isset($logo_config['default'])) {
-                if (isset($logo_config['default']['light'])) {
+            if (isset($logo_config['default']) && is_array($logo_config['default'])) {
+                if (isset($logo_config['default']['light']) && !empty($logo_config['default']['light'])) {
                     $logo['default']['light'] = $logo_config['default']['light'];
+                    error_log('CoinSub Whitelabel: 🖼️ Found default.light logo: ' . $logo['default']['light']);
                 }
-                if (isset($logo_config['default']['dark'])) {
+                if (isset($logo_config['default']['dark']) && !empty($logo_config['default']['dark'])) {
                     $logo['default']['dark'] = $logo_config['default']['dark'];
+                    error_log('CoinSub Whitelabel: 🖼️ Found default.dark logo: ' . $logo['default']['dark']);
                 }
             }
             
             // Extract square logos
-            if (isset($logo_config['square'])) {
-                if (isset($logo_config['square']['light'])) {
+            if (isset($logo_config['square']) && is_array($logo_config['square'])) {
+                if (isset($logo_config['square']['light']) && !empty($logo_config['square']['light'])) {
                     $logo['square']['light'] = $logo_config['square']['light'];
+                    error_log('CoinSub Whitelabel: 🖼️ Found square.light logo: ' . $logo['square']['light']);
                 }
-                if (isset($logo_config['square']['dark'])) {
+                if (isset($logo_config['square']['dark']) && !empty($logo_config['square']['dark'])) {
                     $logo['square']['dark'] = $logo_config['square']['dark'];
+                    error_log('CoinSub Whitelabel: 🖼️ Found square.dark logo: ' . $logo['square']['dark']);
                 }
             }
+        } else {
+            error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo data found in app_data');
         }
+        
+        error_log('CoinSub Whitelabel: 🖼️ Extracted logo structure: ' . json_encode($logo, JSON_PRETTY_PRINT));
         
         return $logo;
     }
     
     /**
      * Normalize logo URLs (convert relative to absolute if needed)
+     * Logo URLs from config_data are relative paths like "/img/domain/vantack/vantack.light.svg"
+     * Need to convert to full URL: "https://dev-api.coinsub.io/img/domain/vantack/vantack.light.svg"
      * 
      * @param array $logo Logo data
      * @return array Normalized logo data
@@ -376,18 +389,33 @@ class CoinSub_Whitelabel_Branding {
     private function normalize_logo_urls($logo) {
         $api_base = 'https://dev-api.coinsub.io'; // Base URL for API assets
         
+        error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $api_base);
+        error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
+        
         foreach ($logo as $type => &$variants) {
+            if (!is_array($variants)) {
+                continue;
+            }
+            
             foreach ($variants as $theme => &$url) {
-                if (!empty($url) && strpos($url, 'http') !== 0) {
-                    // Relative URL, make it absolute
-                    if (strpos($url, '/') === 0) {
-                        $url = $api_base . $url;
+                if (!empty($url) && is_string($url)) {
+                    // If URL doesn't start with http, it's relative - make it absolute
+                    if (strpos($url, 'http') !== 0) {
+                        // Relative URL, make it absolute
+                        if (strpos($url, '/') === 0) {
+                            $url = $api_base . $url;
+                        } else {
+                            $url = $api_base . '/' . $url;
+                        }
+                        error_log('CoinSub Whitelabel: 🖼️ Converted relative logo URL to: ' . $url);
                     } else {
-                        $url = $api_base . '/' . $url;
+                        error_log('CoinSub Whitelabel: 🖼️ Logo URL already absolute: ' . $url);
                     }
                 }
             }
         }
+        
+        error_log('CoinSub Whitelabel: 🖼️ Logo data after normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
         
         return $logo;
     }
@@ -419,12 +447,26 @@ class CoinSub_Whitelabel_Branding {
     public function get_logo_url($type = 'default', $theme = 'light') {
         $branding = $this->get_branding();
         
-        if (isset($branding['logo'][$type][$theme])) {
-            return $branding['logo'][$type][$theme];
+        error_log('CoinSub Whitelabel: 🖼️ get_logo_url() called - Type: ' . $type . ', Theme: ' . $theme);
+        error_log('CoinSub Whitelabel: 🖼️ Branding data: ' . json_encode($branding, JSON_PRETTY_PRINT));
+        
+        if (!empty($branding) && isset($branding['logo'][$type][$theme]) && !empty($branding['logo'][$type][$theme])) {
+            $logo_url = $branding['logo'][$type][$theme];
+            error_log('CoinSub Whitelabel: 🖼️ ✅ Found logo URL: ' . $logo_url);
+            return $logo_url;
         }
         
-        // No logo found, return empty string (no default)
-        return '';
+        // Try fallback to dark theme if light not found
+        if ($theme === 'light' && !empty($branding) && isset($branding['logo'][$type]['dark']) && !empty($branding['logo'][$type]['dark'])) {
+            $logo_url = $branding['logo'][$type]['dark'];
+            error_log('CoinSub Whitelabel: 🖼️ ✅ Found logo URL (dark fallback): ' . $logo_url);
+            return $logo_url;
+        }
+        
+        // No logo found - return default CoinSub logo
+        $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.png';
+        error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo found in branding, using default: ' . $default_logo);
+        return $default_logo;
     }
     
     /**
