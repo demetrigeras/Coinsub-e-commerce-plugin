@@ -51,6 +51,17 @@ class CoinSub_Whitelabel_Branding {
      * @return array Branding data (company, logo, etc.)
      */
     public function get_branding($force_refresh = false) {
+        // CRITICAL FIX: Check if credentials exist before using stored branding
+        // If no credentials, don't use stored branding (it might be from a different merchant)
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
+        $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
+        
+        if (empty($merchant_id) || empty($api_key)) {
+            error_log('CoinSub Whitelabel: ⚠️ No credentials in settings - not using stored branding (might be from different merchant)');
+            return array(); // Return empty array, no default
+        }
+        
         // If not forcing refresh, get branding from database (no API calls)
         if (!$force_refresh) {
             $stored_branding = get_option(self::BRANDING_OPTION_KEY, false);

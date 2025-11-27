@@ -15,12 +15,17 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     private $brand_company = ''; // No default - will be set from branding API
     private $button_logo_url = ''; // Logo URL for button (injected via JS)
     private $button_company_name = ''; // Company name for button
+    private $checkout_title = ''; // Whitelabel title for checkout only (not admin)
+    private $checkout_icon = ''; // Whitelabel icon for checkout only (not admin)
     
     /**
      * Constructor
      */
     public function __construct() {
-        error_log('🏗️ Coinsub - Gateway constructor called');
+        // Only log on checkout, not in admin (reduces log noise)
+        if (is_checkout()) {
+            error_log('🏗️ Coinsub - Gateway constructor called');
+        }
         
         $this->id = 'coinsub';
         $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
@@ -34,36 +39,65 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'refunds'
         );
         
-        error_log('🏗️ Coinsub - Supports: ' . json_encode($this->supports));
+        // Only log on checkout, not in admin (reduces log noise)
+        if (is_checkout()) {
+            error_log('🏗️ Coinsub - Supports: ' . json_encode($this->supports));
+        }
         
         // Load settings
         $this->init_form_fields();
         $this->init_settings();
         
-        // Get settings for debugging
-        $this->title = 'Pay with Coinsub';
+        // Set default title for admin (always "Stablecoin Pay" in admin)
+        // Whitelabel branding will only be applied on checkout (frontend)
+        $this->title = 'Pay with Coinsub'; // Default for admin display
         $this->description = '';
         $this->enabled = $this->get_option('enabled', 'yes');
         
         // Initialize API client
         $this->api_client = new CoinSub_API_Client();
         
-        // Load whitelabel branding from cache only (no API calls)
-        // API calls only happen when settings are saved
-        $this->load_whitelabel_branding(false);
+        // CRITICAL: Only load whitelabel branding on frontend (checkout), NOT in admin
+        // Admin/settings page should always show "Stablecoin Pay"
+        if (!is_admin()) {
+            // Check if we need to refresh branding (deferred from previous save)
+            // This prevents timeout during save - branding fetch happens on next page load
+            $refresh_branding = get_transient('coinsub_refresh_branding_on_load');
+            if ($refresh_branding) {
+                error_log('CoinSub Whitelabel: 🔄 Deferred branding fetch triggered - fetching now...');
+                delete_transient('coinsub_refresh_branding_on_load');
+                // Load branding with force refresh (this will make API calls)
+                $this->load_whitelabel_branding(true);
+            } else {
+                // Load whitelabel branding from cache only (no API calls)
+                $this->load_whitelabel_branding(false);
+            }
+        } else {
+            // In admin, always use default branding (no whitelabel)
+            $this->checkout_title = 'Pay with Coinsub';
+            $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $this->button_company_name = 'Coinsub';
+            // Don't log in admin (reduces log noise)
+        }
         
-        error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
-        error_log('🏗️ CoinSub - Constructor - Title: ' . $this->title);
-        error_log('🏗️ CoinSub - Constructor - Description: ' . $this->description);
-        error_log('🏗️ CoinSub - Constructor - Enabled: ' . $this->enabled);
-        error_log('🏗️ CoinSub - Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
-        error_log('🏗️ CoinSub - Constructor - Method Title: ' . $this->method_title);
-        error_log('🏗️ CoinSub - Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
+        // Only log constructor details on checkout, not in admin (reduces log noise)
+        if (is_checkout()) {
+            error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
+            error_log('🏗️ CoinSub - Constructor - Title: ' . $this->title);
+            error_log('🏗️ CoinSub - Constructor - Description: ' . $this->description);
+            error_log('🏗️ CoinSub - Constructor - Enabled: ' . $this->enabled);
+            error_log('🏗️ CoinSub - Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
+            error_log('🏗️ CoinSub - Constructor - Method Title: ' . $this->method_title);
+            error_log('🏗️ CoinSub - Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
+        }
         
         // Add hooks
-        // Hook into settings save - this is the standard WooCommerce way
-        // Priority 99 to run after settings are saved
-        add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'update_api_client_settings'), 99);
+        // CRITICAL: This hook fires when settings are saved - it's the primary way WooCommerce saves gateway settings
+        add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'update_api_client_settings'), 10);
+        
+        // ALSO hook into admin_init to catch form submission early (backup method for debugging)
+        add_action('admin_init', array($this, 'maybe_process_admin_options'), 5);
         
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
@@ -89,76 +123,205 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Admin panel options
      */
     public function admin_options() {
+        /**
+         * CRITICAL FIX: We MUST call parent::admin_options() FIRST!
+         * 
+         * THE PROBLEM:
+         * - When we output HTML before calling parent::admin_options(), it breaks WooCommerce's form structure
+         * - WooCommerce's parent method expects to output the <form> tag from scratch
+         * - If we output HTML first, the form action attribute ends up empty
+         * - Without a form action, the form can't submit and settings can't be saved
+         * 
+         * THE SOLUTION:
+         * - Call parent::admin_options() FIRST to generate the complete form structure
+         * - Then inject instructions via JavaScript AFTER the form is rendered
+         * - This preserves the form structure and ensures the action attribute is set correctly
+         */
+        
+        // Call parent FIRST to generate the form with proper action attribute
+        parent::admin_options();
+        
+        // Now inject instructions at the top using JavaScript (after form is rendered)
+        // Get Meld URL first (PHP) so we can properly escape it for JavaScript
+        $meld_url = esc_js($this->get_meld_onramp_url());
         ?>
-        <h2><?php echo esc_html($this->get_method_title()); ?></h2>
-        <p><?php echo esc_html($this->get_method_description()); ?></p>
-        
-        <div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;">
-            <h3 style="margin-top: 0;">📋 Setup Instructions</h3>
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            // Inject instructions box at the top (after the h2 title, before the form table)
+            var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
+            var instructions = $('<div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;"><h3 style="margin-top: 0;">📋 Setup Instructions</h3><h4>Step 1: Get Your Stablecoin Pay Credentials</h4><ol style="line-height: 1.8;"><li>Log in to your account</li><li>Navigate to <strong>Settings</strong> in your dashboard</li><li>Copy your <strong>Merchant ID</strong></li><li>Create and copy your <strong>API Key</strong></li><li>Paste both into the fields below</li></ol><h4>Step 2: Configure Webhook (CRITICAL)</h4><ol style="line-height: 1.8;"><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)</li><li>Go back to your dashboard <strong>Settings</strong></li><li>Find the <strong>Webhook URL</strong> field</li><li><strong>Paste your webhook URL</strong> into that field and save</li><li><em>This is essential - without this, orders won\'t update when payments complete!</em></li></ol><h4>Step 3: Fix WordPress Checkout Page</h4><ol style="line-height: 1.8;"><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong></li><li>In the page editor, click the <strong>⋮</strong> (three vertical dots) in the top right</li><li>Select <strong>Code Editor</strong></li><li>Replace any block content with: <code>[woocommerce_checkout]</code></li><li>Click <strong>Update</strong> to save</li></ol><h4>Step 4: Remove Payment Blocks (Important)</h4><ol style="line-height: 1.8;"><li>In the page editor, click the <strong>⋮</strong> (three vertical dots) again</li><li>Select <strong>Preferences</strong></li><li>In the search bar, type <strong>"payments"</strong></li><li><strong>Uncheck all blocks related to payments</strong></li><li>Close preferences and update the page</li></ol><h4>Step 5: Enable Stablecoin Pay</h4><ol style="line-height: 1.8;"><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below</li><li>Click <strong>Save changes</strong></li><li>Done! Customers will now see the payment option at checkout (whitelabeled if configured, or "Pay with Coinsub" by default)</li></ol><p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p><div style="margin-top: 20px; padding: 15px; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;"><h3 style="margin-top: 0;">💰 Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong></p><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.</p><p style="margin-bottom: 10px;"><a href="' + meldUrl + '" target="_blank" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">💳 Onramp USDC Polygon via Meld</a></p><p style="margin-bottom: 0; font-size: 12px; color: #666;">💡 <strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</p></div></div>');
             
-            <h4>Step 1: Get Your Stablecoin Pay Credentials</h4>
-            <ol style="line-height: 1.8;">
-                <li>Log in to your account</li>
-                <li>Navigate to <strong>Settings</strong> in your dashboard</li>
-                <li>Copy your <strong>Merchant ID</strong></li>
-                <li>Create and copy your <strong>API Key</strong></li>
-                <li>Paste both into the fields below</li>
-            </ol>
+            // Insert after the h2 title (which is the first h2 in the form)
+            $('h2').first().after(instructions);
             
-            <h4>Step 2: Configure Webhook (CRITICAL)</h4>
-            <ol style="line-height: 1.8;">
-                <li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)</li>
-                <li>Go back to your dashboard <strong>Settings</strong></li>
-                <li>Find the <strong>Webhook URL</strong> field</li>
-                <li><strong>Paste your webhook URL</strong> into that field and save</li>
-                <li><em>This is essential - without this, orders won't update when payments complete!</em></li>
-            </ol>
+            // CRITICAL FIX: Ensure form action is set (run multiple times to catch dynamic form generation)
+            function ensureFormAction() {
+                var $form = $('form');
+                if ($form.length > 0) {
+                    var currentAction = $form.attr('action');
+                    console.log('🔔 CoinSub: Form action check:', currentAction || 'EMPTY - THIS IS THE PROBLEM!');
+                    console.log('🔔 CoinSub: Form method:', $form.attr('method'));
+                    
+                    // If form action is empty, set it to the FULL current URL with query params
+                    // WooCommerce needs the full URL with page, tab, and section parameters
+                    if (!currentAction || currentAction === '' || currentAction === '#') {
+                        // Get the FULL current URL including query parameters
+                        var currentUrl = window.location.href;
+                        $form.attr('action', currentUrl);
+                        console.log('🔔 CoinSub: ⚠️ Form action was empty! Fixed to:', currentUrl);
+                        return true; // Fixed
+                    } else {
+                        console.log('🔔 CoinSub: ✅ Form action is set correctly:', currentAction);
+                        return false; // Already set
+                    }
+                }
+                return false; // Form not found
+            }
             
-            <h4>Step 3: Fix WordPress Checkout Page</h4>
-            <ol style="line-height: 1.8;">
-                <li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong></li>
-                <li>In the page editor, click the <strong>⋮</strong> (three vertical dots) in the top right</li>
-                <li>Select <strong>Code Editor</strong></li>
-                <li>Replace any block content with: <code>[woocommerce_checkout]</code></li>
-                <li>Click <strong>Update</strong> to save</li>
-            </ol>
+            // Run immediately
+            ensureFormAction();
             
-            <h4>Step 4: Remove Payment Blocks (Important)</h4>
-            <ol style="line-height: 1.8;">
-                <li>In the page editor, click the <strong>⋮</strong> (three vertical dots) again</li>
-                <li>Select <strong>Preferences</strong></li>
-                <li>In the search bar, type <strong>"payments"</strong></li>
-                <li><strong>Uncheck all blocks related to payments</strong></li>
-                <li>Close preferences and update the page</li>
-            </ol>
+            // Run again after a short delay (in case form is generated dynamically)
+            setTimeout(function() {
+                if (ensureFormAction()) {
+                    console.log('🔔 CoinSub: ✅ Form action fixed on delayed check');
+                }
+            }, 100);
             
-            <h4>Step 5: Enable Stablecoin Pay</h4>
-            <ol style="line-height: 1.8;">
-                <li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below</li>
-                <li>Click <strong>Save changes</strong></li>
-                <li>Done! Customers will now see the payment option at checkout (whitelabeled if configured, or "Pay with Coinsub" by default)</li>
-            </ol>
+            // Run one more time after a longer delay (for very slow form generation)
+            setTimeout(function() {
+                if (ensureFormAction()) {
+                    console.log('🔔 CoinSub: ✅ Form action fixed on final delayed check');
+                }
+            }, 500);
             
-            <p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p>
+            // CRITICAL: WooCommerce may use AJAX or regular form submission
+            // We need to catch BOTH scenarios
             
-            <div style="margin-top: 20px; padding: 15px; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;">
-                <h3 style="margin-top: 0;">💰 Add USDC Polygon for Refunds</h3>
-                <p><strong>All refunds are processed as USDC on Polygon.</strong></p>
-                <p>To process refunds, you'll need USDC tokens on the Polygon network in your merchant wallet.</p>
-                <p style="margin-bottom: 10px;">
-                    <a href="<?php echo esc_url($this->get_meld_onramp_url()); ?>" target="_blank" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">
-                        💳 Onramp USDC Polygon via Meld
-                    </a>
-                </p>
-                <p style="margin-bottom: 0; font-size: 12px; color: #666;">
-                    💡 <strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.
-                </p>
-            </div>
-        </div>
-        
-        <table class="form-table">
-        <?php $this->generate_settings_html(); ?>
-        </table>
+            // Method 1: Listen for form submit (regular POST)
+            $('form').on('submit', function(e) {
+                var $submitForm = $(this);
+                console.log('🔔 CoinSub: ✅✅✅ FORM SUBMIT EVENT FIRED! ✅✅✅');
+                console.log('🔔 CoinSub: Form action:', $submitForm.attr('action'));
+                console.log('🔔 CoinSub: Form method:', $submitForm.attr('method'));
+                console.log('🔔 CoinSub: Merchant ID value:', $('#woocommerce_coinsub_merchant_id').val());
+                console.log('🔔 CoinSub: API Key value:', $('#woocommerce_coinsub_api_key').val() ? '***SET***' : 'EMPTY');
+                
+                // Ensure form action is set before submission
+                if (!$submitForm.attr('action') || $submitForm.attr('action') === '') {
+                    var currentUrl = window.location.href;
+                    $submitForm.attr('action', currentUrl);
+                    console.log('🔔 CoinSub: ⚠️ Form action was empty on submit! Fixed to:', currentUrl);
+                }
+                
+                // CRITICAL: Verify all required fields are present
+                var merchantId = $('#woocommerce_coinsub_merchant_id').val();
+                var apiKey = $('#woocommerce_coinsub_api_key').val();
+                console.log('🔔 CoinSub: Pre-submit check - Merchant ID:', merchantId ? 'SET (' + merchantId.length + ' chars)' : 'EMPTY');
+                console.log('🔔 CoinSub: Pre-submit check - API Key:', apiKey ? 'SET (' + apiKey.length + ' chars)' : 'EMPTY');
+                
+                // Ensure enabled checkbox is included
+                var enabledCheckbox = $('#woocommerce_coinsub_enabled');
+                if (enabledCheckbox.length > 0) {
+                    console.log('🔔 CoinSub: Enabled checkbox found, checked:', enabledCheckbox.is(':checked'));
+                }
+                
+                console.log('🔔 CoinSub: Form will submit now...');
+                // Don't prevent default - let form submit normally
+            });
+            
+            // Also listen for form submission via AJAX (WooCommerce might use AJAX)
+            $(document).on('submit', 'form', function(e) {
+                console.log('🔔 CoinSub: 🔄 Form submit event (document level) - Form action:', $(this).attr('action'));
+            });
+            
+            // Method 2: Listen for save button clicks (BEFORE form submit)
+            $(document).on('click', 'button[name="save"], input[name="save"], .button-primary[name="save"]', function(e) {
+                var $form = $('form');
+                var $button = $(this);
+                console.log('🔔 CoinSub: ✅✅✅ SAVE BUTTON CLICKED! ✅✅✅');
+                console.log('🔔 CoinSub: Button type:', $button.attr('type'));
+                console.log('🔔 CoinSub: Button name:', $button.attr('name'));
+                console.log('🔔 CoinSub: Merchant ID value:', $('#woocommerce_coinsub_merchant_id').val());
+                console.log('🔔 CoinSub: API Key value:', $('#woocommerce_coinsub_api_key').val() ? '***SET***' : 'EMPTY');
+                console.log('🔔 CoinSub: Form exists:', $form.length > 0);
+                console.log('🔔 CoinSub: Form action:', $form.attr('action'));
+                
+                // CRITICAL: Ensure form action is set before button click submits
+                if ($form.length > 0) {
+                    var currentAction = $form.attr('action');
+                    if (!currentAction || currentAction === '' || currentAction === '#') {
+                        var currentUrl = window.location.href;
+                        $form.attr('action', currentUrl);
+                        console.log('🔔 CoinSub: ⚠️ Form action was empty on button click! Fixed to:', currentUrl);
+                    }
+                    
+                    // CRITICAL: Also ensure the form has the correct method
+                    if ($form.attr('method') !== 'post') {
+                        $form.attr('method', 'post');
+                        console.log('🔔 CoinSub: ⚠️ Form method was not POST! Fixed to POST');
+                    }
+                    
+                    // CRITICAL: Ensure nonce field exists (WooCommerce requires this)
+                    if ($form.find('input[name="_wpnonce"]').length === 0) {
+                        console.error('🔔 CoinSub: ⚠️ WARNING: No nonce field found! This might prevent form submission.');
+                    } else {
+                        console.log('🔔 CoinSub: ✅ Nonce field found');
+                    }
+                    
+                    // Verify form will submit
+                    console.log('🔔 CoinSub: Final form action:', $form.attr('action'));
+                    console.log('🔔 CoinSub: Final form method:', $form.attr('method'));
+                    console.log('🔔 CoinSub: Form will submit in 100ms...');
+                    
+                    // Force form submission if it doesn't happen automatically
+                    setTimeout(function() {
+                        if ($form.length > 0 && $form.attr('action')) {
+                            console.log('🔔 CoinSub: 🔄 Ensuring form submission...');
+                            // Don't actually force submit - let WooCommerce handle it
+                            // But log that we're ready
+                        }
+                    }, 100);
+                } else {
+                    console.error('🔔 CoinSub: ❌❌❌ NO FORM FOUND! This is a critical error!');
+                }
+                
+                // Don't prevent default - let button submit form normally
+            });
+            
+            // Method 3: Listen for WooCommerce AJAX submission (if it uses AJAX)
+            $(document).ajaxComplete(function(event, xhr, settings) {
+                if (settings.url && settings.url.indexOf('wc-settings') !== -1) {
+                    console.log('🔔 CoinSub: ✅✅✅ WOOCOMMERCE AJAX REQUEST DETECTED! ✅✅✅');
+                    console.log('🔔 CoinSub: AJAX URL:', settings.url);
+                    console.log('🔔 CoinSub: AJAX Method:', settings.type);
+                }
+            });
+            
+            // Also check for any JavaScript errors that might prevent submission
+            window.addEventListener('error', function(e) {
+                console.error('🔔 CoinSub: ❌ JavaScript Error detected:', e.message, e.filename, e.lineno);
+            });
+            
+            // DIAGNOSTIC: Check form structure after page load
+            setTimeout(function() {
+                var $form = $('form');
+                console.log('🔔 CoinSub: 🔍 FORM DIAGNOSTICS:');
+                console.log('🔔 CoinSub: - Form exists:', $form.length > 0);
+                if ($form.length > 0) {
+                    console.log('🔔 CoinSub: - Form action:', $form.attr('action'));
+                    console.log('🔔 CoinSub: - Form method:', $form.attr('method'));
+                    console.log('🔔 CoinSub: - Form ID:', $form.attr('id'));
+                    console.log('🔔 CoinSub: - Form class:', $form.attr('class'));
+                    console.log('🔔 CoinSub: - Has nonce:', $form.find('input[name="_wpnonce"]').length > 0);
+                    console.log('🔔 CoinSub: - Has merchant_id field:', $('#woocommerce_coinsub_merchant_id').length > 0);
+                    console.log('🔔 CoinSub: - Has api_key field:', $('#woocommerce_coinsub_api_key').length > 0);
+                    console.log('🔔 CoinSub: - Has enabled checkbox:', $('#woocommerce_coinsub_enabled').length > 0);
+                    console.log('🔔 CoinSub: - Has save button:', $('button[name="save"], input[name="save"]').length > 0);
+                }
+            }, 1000);
+        });
+        </script>
         <?php
     }
     
@@ -167,7 +330,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Initialize form fields
      */
     public function init_form_fields() {
-        error_log('🏗️ CoinSub - init_form_fields() called');
+        // Only log on checkout, not in admin (reduces log noise)
+        if (is_checkout()) {
+            error_log('🏗️ CoinSub - init_form_fields() called');
+        }
         $this->form_fields = array(
             'enabled' => array(
                 'title' => __('Enable/Disable', 'coinsub'),
@@ -182,14 +348,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'description' => __('Get this from your merchant dashboard', 'coinsub'),
                 'default' => '',
                 'placeholder' => 'e.g., 12345678-abcd-1234-abcd-123456789abc',
-                'required' => true,
             ),
             'api_key' => array(
                 'title' => __('API Key', 'coinsub'),
                 'type' => 'password',
                 'description' => __('Get this from your merchant dashboard', 'coinsub'),
                 'default' => '',
-                'required' => true,
             ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
@@ -220,10 +384,35 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     /**
      * Load whitelabel branding
      * 
+     * CRITICAL: This method ONLY affects checkout (frontend), NOT admin!
+     * Admin/settings page always shows "Stablecoin Pay" regardless of whitelabel.
+     * 
      * @param bool $force_refresh If true, force API call to refresh branding. If false, use cache only.
      */
     private function load_whitelabel_branding($force_refresh = false) {
-        error_log('CoinSub Whitelabel: Loading branding (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
+        error_log('CoinSub Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
+        
+        // CRITICAL FIX: Check if credentials exist before loading branding
+        // If no credentials, clear any old branding and use defaults
+        // This prevents old branding (e.g., "Vantack") from showing when credentials are removed
+        $merchant_id = $this->get_option('merchant_id');
+        $api_key = $this->get_option('api_key');
+        
+        if (empty($merchant_id) || empty($api_key)) {
+            error_log('CoinSub Whitelabel: ⚠️ No credentials found - clearing old branding and using defaults');
+            $branding = new CoinSub_Whitelabel_Branding();
+            $branding->clear_cache(); // Clear any old branding from previous merchant
+            $this->brand_company = 'Coinsub';
+            // Store checkout-specific data (NOT $this->title which is for admin)
+            $this->checkout_title = 'Pay with Coinsub';
+            $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $this->button_company_name = 'Coinsub';
+            error_log('CoinSub Whitelabel: ✅ Using default branding (no credentials) - Checkout Title: "Pay with Coinsub"');
+            return;
+        }
+        
+        // Credentials exist - proceed with branding load
         $branding = new CoinSub_Whitelabel_Branding();
         $branding_data = $branding->get_branding($force_refresh);
         
@@ -231,70 +420,133 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if (!empty($branding_data) && isset($branding_data['company']) && !empty($branding_data['company'])) {
             $company_name = $branding_data['company'];
             $this->brand_company = $company_name;
-            $this->title = 'Pay with ' . $company_name;
+            // Store checkout-specific title (NOT $this->title which is for admin)
+            $this->checkout_title = 'Pay with ' . $company_name;
             
-            error_log('CoinSub Whitelabel: ✅ NAME SET - Title: "' . $this->title . '" | Company: "' . $company_name . '" | brand_company property: "' . $this->brand_company . '"');
+            error_log('CoinSub Whitelabel: ✅ CHECKOUT TITLE SET - Title: "' . $this->checkout_title . '" | Company: "' . $company_name . '" | brand_company property: "' . $this->brand_company . '"');
             
-            // Update icon with whitelabel logo (use default light logo)
+            // Update checkout icon with whitelabel logo (use default light logo)
             $logo_url = $branding->get_logo_url('default', 'light');
             if ($logo_url) {
-                $this->icon = $logo_url;
+                $this->checkout_icon = $logo_url;
                 // Also set button logo URL for JavaScript injection
                 $this->button_logo_url = $logo_url;
                 $this->button_company_name = $company_name;
-                error_log('CoinSub Whitelabel: 🖼️ ✅ Set icon to: ' . $logo_url);
+                error_log('CoinSub Whitelabel: 🖼️ ✅ Set checkout icon to: ' . $logo_url);
                 error_log('CoinSub Whitelabel: 🔘 Button logo URL set: ' . $this->button_logo_url);
             } else {
                 error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo URL returned, keeping default icon');
+                $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             }
         } else {
             // No branding found - use default "Pay with Coinsub" and CoinSub logo
             error_log('CoinSub Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub" and CoinSub logo');
             $this->brand_company = 'Coinsub';
-            $this->title = 'Pay with Coinsub';
-            $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $this->checkout_title = 'Pay with Coinsub';
+            $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             // Set default button logo URL
             $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_company_name = 'Coinsub';
-            error_log('CoinSub Whitelabel: ✅ Set default title: "' . $this->title . '" and default icon: ' . $this->icon);
+            error_log('CoinSub Whitelabel: ✅ Set default checkout title: "' . $this->checkout_title . '" and default icon: ' . $this->checkout_icon);
             error_log('CoinSub Whitelabel: 🔘 Button logo URL set to default: ' . $this->button_logo_url);
         }
     }
     
     /**
+     * Backup method: Try to catch form submission via admin_init hook
+     * This is a fallback in case process_admin_options() isn't being called
+     */
+    public function maybe_process_admin_options() {
+        // Only run on WooCommerce settings page for this gateway
+        if (!isset($_GET['page']) || $_GET['page'] !== 'wc-settings') {
+            return;
+        }
+        if (!isset($_GET['tab']) || $_GET['tab'] !== 'checkout') {
+            return;
+        }
+        if (!isset($_GET['section']) || $_GET['section'] !== $this->id) {
+            return;
+        }
+        
+        // Check if form was submitted (save button clicked)
+        if (isset($_POST['save']) && isset($_POST['woocommerce_' . $this->id . '_enabled'])) {
+            error_log('CoinSub Whitelabel: 🔔🔔🔔 maybe_process_admin_options() DETECTED FORM SUBMISSION! 🔔🔔🔔');
+            error_log('CoinSub Whitelabel: POST data keys: ' . implode(', ', array_keys($_POST)));
+            error_log('CoinSub Whitelabel: Merchant ID in POST: ' . (isset($_POST['woocommerce_coinsub_merchant_id']) ? 'YES - Value: ' . substr($_POST['woocommerce_coinsub_merchant_id'], 0, 20) . '...' : 'NO'));
+            error_log('CoinSub Whitelabel: API Key in POST: ' . (isset($_POST['woocommerce_coinsub_api_key']) ? 'YES - Length: ' . strlen($_POST['woocommerce_coinsub_api_key']) : 'NO'));
+            
+            // CRITICAL FIX: WooCommerce's process_admin_options() isn't being called automatically
+            // So we need to call it manually as a backup to ensure settings are saved
+            error_log('CoinSub Whitelabel: ⚠️ WooCommerce process_admin_options() not called automatically - calling manually as backup...');
+            $this->process_admin_options();
+            error_log('CoinSub Whitelabel: ✅ process_admin_options() called manually - settings should now be saved');
+        }
+    }
+    
+    /**
      * Update API client settings when gateway settings are saved
-     * This can be called by:
-     * 1. process_admin_options() override (when WooCommerce saves settings)
-     * 2. Direct hook: woocommerce_update_options_payment_gateways_coinsub
+     * This is called by the hook: woocommerce_update_options_payment_gateways_coinsub
+     * This hook fires AFTER WooCommerce has saved the settings to the database
+     * 
+     * NOTE: This is also called directly from process_admin_options() to ensure it runs
+     * We use a static flag to prevent duplicate execution
      */
     public function update_api_client_settings() {
+        // Prevent duplicate execution (could be called from hook AND process_admin_options)
+        static $executed = false;
+        if ($executed) {
+            error_log('CoinSub Whitelabel: ⚠️ update_api_client_settings() already executed, skipping duplicate call');
+            return;
+        }
+        $executed = true;
+        
         error_log('═══════════════════════════════════════════════════════════');
         error_log('CoinSub Whitelabel: 🔔🔔🔔 SETTINGS SAVE DETECTED! 🔔🔔🔔');
         error_log('CoinSub Whitelabel: update_api_client_settings() CALLED');
         error_log('═══════════════════════════════════════════════════════════');
         
+        // Reload settings from database (they were just saved by WooCommerce)
+        $this->init_settings();
+        
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
         $api_base_url = 'https://dev-api.coinsub.io/v1';
         
-        error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . $merchant_id);
+        error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Base URL: ' . $api_base_url);
         
+        // Only update if we have credentials
+        if (empty($merchant_id) || empty($api_key)) {
+            error_log('CoinSub Whitelabel: ⚠️ Skipping API client update - merchant_id or api_key is empty');
+            return;
+        }
+        
         $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
         
-        // Clear whitelabel branding cache when credentials change
-        error_log('CoinSub Whitelabel: ⚙️ Settings saved - Clearing cache and fetching fresh branding from API');
-        $branding = new CoinSub_Whitelabel_Branding();
-        $branding->clear_cache();
+        // CRITICAL FIX: Defer branding fetch to prevent timeout/crash during save
+        // Branding fetch involves multiple API calls that can take several seconds
+        // Instead of doing it synchronously (which causes timeouts), we'll:
+        // 1. Clear the cache immediately
+        // 2. Set a flag to fetch branding on next page load (fast save, slow fetch later)
+        error_log('CoinSub Whitelabel: ⚙️ Settings saved - Deferring branding fetch to prevent timeout');
         
-        // Reload branding with force refresh (only when settings are saved)
-        // This will make API calls to get submerchant data and environment configs
-        error_log('CoinSub Whitelabel: 🔄 Calling load_whitelabel_branding(true) to fetch from API...');
-        $this->load_whitelabel_branding(true);
-        
-        // Log the result
-        error_log('CoinSub Whitelabel: ✅ Branding refresh complete. Title: ' . $this->title . ' | Company: ' . $this->brand_company);
+        try {
+            $branding = new CoinSub_Whitelabel_Branding();
+            $branding->clear_cache();
+            
+            // Set a flag to trigger branding fetch on next page load
+            // This prevents the save from timing out due to slow API calls
+            set_transient('coinsub_refresh_branding_on_load', true, 60); // Flag expires in 60 seconds
+            error_log('CoinSub Whitelabel: ✅ Settings saved successfully! Branding will be fetched on next page load.');
+            
+        } catch (Exception $e) {
+            error_log('CoinSub Whitelabel: ❌ ERROR clearing cache: ' . $e->getMessage());
+            // Continue - don't break the save process
+        } catch (Error $e) {
+            error_log('CoinSub Whitelabel: ❌ FATAL ERROR clearing cache: ' . $e->getMessage());
+            // Continue - don't break the save process
+        }
     }
     
     /**
@@ -302,16 +554,74 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * This is called automatically by WooCommerce when settings are saved
      */
     public function process_admin_options() {
+        // Prevent duplicate execution (could be called from WooCommerce AND maybe_process_admin_options)
+        static $executed = false;
+        if ($executed) {
+            error_log('CoinSub Whitelabel: ⚠️ process_admin_options() already executed, skipping duplicate call');
+            return parent::process_admin_options(); // Still call parent to save, but skip our custom logic
+        }
+        $executed = true;
+        
+        error_log('═══════════════════════════════════════════════════════════');
         error_log('CoinSub Whitelabel: 🔔🔔🔔 process_admin_options() CALLED - Settings are being saved! 🔔🔔🔔');
+        error_log('═══════════════════════════════════════════════════════════');
         error_log('CoinSub Whitelabel: POST data keys: ' . implode(', ', array_keys($_POST)));
+        
+        // Log POST data for merchant_id and api_key
+        if (isset($_POST['woocommerce_coinsub_merchant_id'])) {
+            $merchant_id_preview = substr($_POST['woocommerce_coinsub_merchant_id'], 0, 20);
+            error_log('CoinSub Whitelabel: 📝 POST merchant_id: ' . $merchant_id_preview . '... (length: ' . strlen($_POST['woocommerce_coinsub_merchant_id']) . ')');
+        } else {
+            error_log('CoinSub Whitelabel: ⚠️ POST merchant_id NOT SET');
+        }
+        
+        if (isset($_POST['woocommerce_coinsub_api_key'])) {
+            $api_key_length = strlen($_POST['woocommerce_coinsub_api_key']);
+            error_log('CoinSub Whitelabel: 📝 POST api_key: ' . ($api_key_length > 0 ? substr($_POST['woocommerce_coinsub_api_key'], 0, 10) . '... (length: ' . $api_key_length . ')' : 'EMPTY'));
+        } else {
+            error_log('CoinSub Whitelabel: ⚠️ POST api_key NOT SET - This is normal for password fields if unchanged');
+        }
+        
+        // IMPORTANT: For password fields, WooCommerce only sends them in POST if they're changed
+        // If api_key is not in POST, we need to preserve the existing value
+        $existing_api_key = $this->get_option('api_key', '');
+        if (!isset($_POST['woocommerce_coinsub_api_key']) && !empty($existing_api_key)) {
+            // Password field not in POST means user didn't change it - preserve existing value
+            $_POST['woocommerce_coinsub_api_key'] = $existing_api_key;
+            error_log('CoinSub Whitelabel: 🔒 Preserving existing API key (password field unchanged)');
+        }
         
         // Call parent to save settings first
         $result = parent::process_admin_options();
         
-        error_log('CoinSub Whitelabel: 🔔 Parent process_admin_options() returned, now calling update_api_client_settings()');
+        error_log('CoinSub Whitelabel: 🔔 Parent process_admin_options() returned. Result: ' . ($result ? 'SUCCESS (true)' : 'FAILED (false)'));
         
-        // Now fetch branding
-        $this->update_api_client_settings();
+        // Verify settings were saved
+        $saved_merchant_id = $this->get_option('merchant_id', '');
+        $saved_api_key = $this->get_option('api_key', '');
+        error_log('CoinSub Whitelabel: ✅ Saved merchant_id: ' . (empty($saved_merchant_id) ? 'EMPTY' : substr($saved_merchant_id, 0, 20) . '... (length: ' . strlen($saved_merchant_id) . ')'));
+        error_log('CoinSub Whitelabel: ✅ Saved api_key: ' . (empty($saved_api_key) ? 'EMPTY' : substr($saved_api_key, 0, 10) . '... (length: ' . strlen($saved_api_key) . ')'));
+        
+        // Now fetch branding (only if we have credentials)
+        // Wrap in try-catch to prevent fatal errors from breaking the save process
+        if (!empty($saved_merchant_id) && !empty($saved_api_key)) {
+            try {
+                error_log('CoinSub Whitelabel: 🔔 Calling update_api_client_settings() to fetch branding...');
+                $this->update_api_client_settings();
+            } catch (Exception $e) {
+                error_log('CoinSub Whitelabel: ❌ ERROR fetching branding: ' . $e->getMessage());
+                error_log('CoinSub Whitelabel: ❌ Stack trace: ' . $e->getTraceAsString());
+                // Don't break the save process - settings were saved successfully
+            } catch (Error $e) {
+                error_log('CoinSub Whitelabel: ❌ FATAL ERROR fetching branding: ' . $e->getMessage());
+                error_log('CoinSub Whitelabel: ❌ Stack trace: ' . $e->getTraceAsString());
+                // Don't break the save process - settings were saved successfully
+            }
+        } else {
+            error_log('CoinSub Whitelabel: ⚠️ Skipping branding fetch - merchant_id or api_key is empty');
+        }
+        
+        error_log('═══════════════════════════════════════════════════════════');
         
         return $result;
     }
@@ -1070,14 +1380,43 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
+     * Get payment method title
+     * CRITICAL: Returns "Stablecoin Pay" in admin, whitelabel name on checkout
+     */
+    public function get_title() {
+        // In admin, always return "Stablecoin Pay" (no whitelabel)
+        if (is_admin()) {
+            return __('Stablecoin Pay', 'coinsub');
+        }
+        
+        // On checkout (frontend), use whitelabel title if available
+        if (!empty($this->checkout_title)) {
+            return $this->checkout_title;
+        }
+        
+        // Fallback to default
+        return $this->title ?: __('Pay with Coinsub', 'coinsub');
+    }
+    
+    /**
      * Get payment method icon
-     * Uses whitelabel logo if available, otherwise default CoinSub logo
+     * CRITICAL: Returns default CoinSub logo in admin, whitelabel logo on checkout
      */
     public function get_icon() {
-        // Use the icon set by load_whitelabel_branding() (could be whitelabel or default)
-        $icon_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        $icon_url = '';
         
-        error_log('CoinSub Whitelabel: 🖼️ get_icon() called - Using icon URL: ' . $icon_url);
+        // In admin, always use default CoinSub logo (no whitelabel)
+        if (is_admin()) {
+            $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        } else {
+            // On checkout (frontend), use whitelabel icon if available
+            $icon_url = !empty($this->checkout_icon) ? $this->checkout_icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        }
+        
+        // Only log on checkout, not in admin (reduces log noise)
+        if (is_checkout()) {
+            error_log('CoinSub Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
+        }
         
         $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; height: auto;" />';
         return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
@@ -1085,18 +1424,29 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     
     /**
      * Customize the payment button text
+     * CRITICAL: Only used on checkout (frontend), uses whitelabel data
      */
     public function get_order_button_text() {
-        // Get logo URL (whitelabel or default)
-        $logo_url = !empty($this->icon) ? $this->icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-        $company_name = !empty($this->brand_company) ? $this->brand_company : 'Coinsub';
+        // Get logo URL and company name from checkout-specific data
+        $logo_url = !empty($this->button_logo_url) ? $this->button_logo_url : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        $company_name = !empty($this->button_company_name) ? $this->button_company_name : 'Coinsub';
         
-        error_log('CoinSub Whitelabel: 🔘 Button text - Company: "' . $company_name . '" | Logo URL: ' . $logo_url);
+        // If we have checkout title, extract company name from it
+        if (!empty($this->checkout_title) && empty($this->button_company_name)) {
+            // Extract company name from "Pay with CompanyName"
+            if (preg_match('/Pay with (.+)/', $this->checkout_title, $matches)) {
+                $company_name = $matches[1];
+                $this->button_company_name = $company_name;
+            }
+        }
         
-        // Store logo URL for JavaScript to inject (WooCommerce escapes HTML in button text)
-        // We'll inject the logo via JavaScript instead
-        $this->button_logo_url = $logo_url;
-        $this->button_company_name = $company_name;
+        // Use checkout icon if available
+        if (!empty($this->checkout_icon)) {
+            $logo_url = $this->checkout_icon;
+            $this->button_logo_url = $logo_url;
+        }
+        
+        error_log('CoinSub Whitelabel: 🔘 Button text (CHECKOUT) - Company: "' . $company_name . '" | Logo URL: ' . $logo_url);
         
         // Return text only - logo will be added via JavaScript
         return sprintf(__('Pay with %s', 'coinsub'), $company_name);
@@ -1591,12 +1941,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Check if the gateway is available
      */
     public function is_available() {
-        // Debug: Log availability check with context
+        // Only log availability checks on checkout page (not admin) to reduce log noise
         $context = is_checkout() ? 'CHECKOUT PAGE' : (is_admin() ? 'ADMIN' : 'OTHER');
-        error_log('=== CoinSub Gateway - Availability Check [' . $context . '] ===');
-        error_log('CoinSub - Enabled setting: ' . $this->get_option('enabled'));
-        error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
-        error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
+        
+        // Only log detailed debug info on checkout page, not admin
+        if (is_checkout()) {
+            error_log('=== CoinSub Gateway - Availability Check [' . $context . '] ===');
+            error_log('CoinSub - Enabled setting: ' . $this->get_option('enabled'));
+            error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
+            error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
+        }
         
         // Check cart (only on frontend)
         if (!is_admin() && WC()->cart) {
@@ -1631,39 +1985,57 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Basic validation - always check these first
         if ($this->get_option('enabled') !== 'yes') {
-            error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings ❌');
+            // Only log on checkout, not in admin (reduces log noise)
+            if (is_checkout()) {
+                error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings ❌');
+            }
             return false;
         }
         
         if (empty($this->get_option('merchant_id'))) {
-            error_log('CoinSub - UNAVAILABLE: No merchant ID configured ❌');
+            // Only log on checkout, not in admin (reduces log noise)
+            if (is_checkout()) {
+                error_log('CoinSub - UNAVAILABLE: No merchant ID configured ❌');
+            }
             return false;
         }
         
         if (empty($this->get_option('api_key'))) {
-            error_log('CoinSub - UNAVAILABLE: No API key configured ❌');
+            // Only log on checkout, not in admin (reduces log noise)
+            if (is_checkout()) {
+                error_log('CoinSub - UNAVAILABLE: No API key configured ❌');
+            }
             return false;
         }
         
         // Call parent method to ensure WooCommerce core checks pass
         $parent_available = parent::is_available();
-        error_log('CoinSub - Parent is_available(): ' . ($parent_available ? 'TRUE' : 'FALSE'));
+        // Only log on checkout, not in admin
+        if (is_checkout()) {
+            error_log('CoinSub - Parent is_available(): ' . ($parent_available ? 'TRUE' : 'FALSE'));
+        }
         
         if (!$parent_available) {
-            error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering) ❌');
-            error_log('CoinSub - Common reasons: cart empty, order total 0, shipping required but not selected, terms & conditions page not set');
-            
-            // Check specifically for terms & conditions issue
-            $terms_page_id = wc_get_page_id('terms');
-            if (empty($terms_page_id)) {
-                error_log('CoinSub - DIAGNOSIS: Terms & Conditions page is not set! This often blocks payment gateways.');
-                error_log('CoinSub - SOLUTION: Set a Terms & Conditions page in WooCommerce > Settings > Advanced');
+            // Only log on checkout, not in admin (reduces log noise)
+            if (is_checkout()) {
+                error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering) ❌');
+                error_log('CoinSub - Common reasons: cart empty, order total 0, shipping required but not selected, terms & conditions page not set');
+                
+                // Check specifically for terms & conditions issue
+                $terms_page_id = wc_get_page_id('terms');
+                if (empty($terms_page_id)) {
+                    error_log('CoinSub - DIAGNOSIS: Terms & Conditions page is not set! This often blocks payment gateways.');
+                    error_log('CoinSub - SOLUTION: Set a Terms & Conditions page in WooCommerce > Settings > Advanced');
+                }
             }
             
             return false;
         }
         
-        error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅✅✅');
+        // Only log on checkout, not in admin
+        if (is_checkout()) {
+            error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅✅✅');
+        }
         return true;
     }
     

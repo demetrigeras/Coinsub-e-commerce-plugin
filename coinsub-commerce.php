@@ -235,22 +235,26 @@ add_filter('woocommerce_is_checkout_block', function($is_block) {
 });
 
 // Force gateway availability for debugging (lower priority to avoid conflicts)
+// Only log on checkout page to reduce log noise
 add_filter('woocommerce_available_payment_gateways', 'coinsub_force_availability', 20);
 
 function coinsub_force_availability($gateways) {
-    $page_context = is_checkout() ? 'CHECKOUT' : (is_admin() ? 'ADMIN' : 'OTHER');
-    error_log('🔧 CoinSub - woocommerce_available_payment_gateways filter called on [' . $page_context . ']');
-    error_log('🔧 CoinSub - All available gateways: ' . implode(', ', array_keys($gateways)));
-    error_log('🔧 CoinSub - Total gateways count: ' . count($gateways));
-    
-    if (isset($gateways['coinsub'])) {
-        error_log('🔧 CoinSub - ✅ Gateway IS in available list! Coinsub should be visible!');
-        error_log('🔧 CoinSub - Gateway object type: ' . get_class($gateways['coinsub']));
-        error_log('🔧 CoinSub - Gateway title: ' . $gateways['coinsub']->title);
-        error_log('🔧 CoinSub - Gateway enabled: ' . $gateways['coinsub']->enabled);
-    } else {
-        error_log('🔧 CoinSub - ❌ Gateway NOT in available list! Being filtered out by WooCommerce!');
-        error_log('🔧 CoinSub - This means is_available() returned false OR gateway not registered');
+    // Only log detailed debug info on checkout page, not admin (reduces log noise)
+    if (is_checkout()) {
+        $page_context = 'CHECKOUT';
+        error_log('🔧 CoinSub - woocommerce_available_payment_gateways filter called on [' . $page_context . ']');
+        error_log('🔧 CoinSub - All available gateways: ' . implode(', ', array_keys($gateways)));
+        error_log('🔧 CoinSub - Total gateways count: ' . count($gateways));
+        
+        if (isset($gateways['coinsub'])) {
+            error_log('🔧 CoinSub - ✅ Gateway IS in available list! Coinsub should be visible!');
+            error_log('🔧 CoinSub - Gateway object type: ' . get_class($gateways['coinsub']));
+            error_log('🔧 CoinSub - Gateway title: ' . $gateways['coinsub']->title);
+            error_log('🔧 CoinSub - Gateway enabled: ' . $gateways['coinsub']->enabled);
+        } else {
+            error_log('🔧 CoinSub - ❌ Gateway NOT in available list! Being filtered out by WooCommerce!');
+            error_log('🔧 CoinSub - This means is_available() returned false OR gateway not registered');
+        }
     }
     
     return $gateways;
