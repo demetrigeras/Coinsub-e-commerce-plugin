@@ -77,10 +77,34 @@ class WC_CoinSub_Cart_Sync {
         // Validate cart contents (subscriptions vs single products)
         $this->validate_cart_contents();
         
-        // Calculate totals from WooCommerce cart
+        // Calculate totals from WooCommerce cart (includes discounts/coupons)
         $subtotal = (float) $cart->get_subtotal();
         $shipping = (float) $cart->get_shipping_total();
         $tax = (float) $cart->get_total_tax();
+        
+        // Get discount information (coupons/discounts)
+        $discount_total = (float) $cart->get_discount_total();
+        $discount_tax = (float) $cart->get_discount_tax();
+        $applied_coupons = $cart->get_applied_coupons();
+        
+        // Get coupon details
+        $coupon_details = array();
+        if (!empty($applied_coupons)) {
+            foreach ($applied_coupons as $coupon_code) {
+                $coupon = new WC_Coupon($coupon_code);
+                if ($coupon->get_id()) {
+                    $coupon_discount = $cart->get_coupon_discount_amount($coupon_code, $cart->display_prices_including_tax());
+                    $coupon_details[] = array(
+                        'code' => $coupon_code,
+                        'discount' => (float) $coupon_discount,
+                        'type' => $coupon->get_discount_type(),
+                        'description' => $coupon->get_description()
+                    );
+                }
+            }
+        }
+        
+        // Calculate final total (WooCommerce already applies discounts to get_total())
         $total = (float) $cart->get_total('edit');
         
         // Ensure total is never 0
@@ -113,10 +137,14 @@ class WC_CoinSub_Cart_Sync {
             'subtotal' => $subtotal,
             'shipping' => $shipping,
             'tax' => $tax,
+            'discount' => $discount_total,
+            'discount_tax' => $discount_tax,
             'total' => $total,
             'currency' => get_woocommerce_currency(),
             'has_subscription' => $has_subscription,
             'subscription_data' => $subscription_data,
+            'applied_coupons' => $applied_coupons,
+            'coupon_details' => $coupon_details,
             'items' => $this->get_cart_items_data()
         );
         
@@ -126,6 +154,10 @@ class WC_CoinSub_Cart_Sync {
         error_log('  Subtotal: $' . $subtotal);
         error_log('  Shipping: $' . $shipping);
         error_log('  Tax: $' . $tax);
+        error_log('  Discount: $' . $discount_total);
+        if (!empty($applied_coupons)) {
+            error_log('  Applied Coupons: ' . implode(', ', $applied_coupons));
+        }
         error_log('  TOTAL: $' . $total);
         error_log('  Has Subscription: ' . ($has_subscription ? 'YES' : 'NO'));
         
@@ -178,18 +210,29 @@ class WC_CoinSub_Cart_Sync {
     
     /**
      * Get cart items data for metadata
+     * Includes discount information for each item
      */
     private function get_cart_items_data() {
         $items = array();
         $cart = WC()->cart;
         
-        foreach ($cart->get_cart() as $cart_item) {
+        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
             $product = $cart_item['data'];
+            
+            // Get original price and discounted price
+            $original_price = (float) $product->get_price();
+            $line_subtotal = (float) $cart_item['line_subtotal']; // Price before discount
+            $line_total = (float) $cart_item['line_total']; // Price after discount
+            $line_discount = $line_subtotal - $line_total; // Discount amount for this line
+            
             $items[] = array(
                 'product_id' => $product->get_id(),
                 'name' => $product->get_name(),
                 'quantity' => (int) $cart_item['quantity'],
-                'price' => (float) $product->get_price(),
+                'price' => $original_price,
+                'line_subtotal' => $line_subtotal, // Before discount
+                'line_total' => $line_total, // After discount
+                'line_discount' => $line_discount, // Discount amount
                 'is_subscription' => $product->get_meta('_coinsub_subscription') === 'yes'
             );
         }

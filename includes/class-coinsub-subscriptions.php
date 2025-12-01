@@ -150,7 +150,7 @@ class CoinSub_Subscriptions {
         
         woocommerce_wp_checkbox(array(
             'id' => '_coinsub_subscription',
-            'label' => __('Coinsub Subscription', 'coinsub'),
+            'label' => __('Stablecoin Pay Subscription', 'coinsub'),
             'description' => __('Enable this to make this a recurring subscription product', 'coinsub'),
             'value' => get_post_meta($post->ID, '_coinsub_subscription', true)
         ));
