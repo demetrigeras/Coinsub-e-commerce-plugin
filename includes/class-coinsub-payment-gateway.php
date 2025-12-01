@@ -149,7 +149,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
             var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var instructions = $('<div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;"><h3 style="margin-top: 0;">📋 Setup Instructions</h3><h4>Step 1: Get Your Stablecoin Pay Credentials</h4><ol style="line-height: 1.8;"><li>Log in to your account</li><li>Navigate to <strong>Settings</strong> in your dashboard</li><li>Copy your <strong>Merchant ID</strong></li><li>Create and copy your <strong>API Key</strong></li><li>Paste both into the fields below</li></ol><h4>Step 2: Configure Webhook (CRITICAL)</h4><ol style="line-height: 1.8;"><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)</li><li>Go back to your dashboard <strong>Settings</strong></li><li>Find the <strong>Webhook URL</strong> field</li><li><strong>Paste your webhook URL</strong> into that field and save</li><li><em>This is essential - without this, orders won\'t update when payments complete!</em></li></ol><h4>Step 3: Fix WordPress Checkout Page</h4><ol style="line-height: 1.8;"><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong></li><li>In the page editor, click the <strong>⋮</strong> (three vertical dots) in the top right</li><li>Select <strong>Code Editor</strong></li><li>Replace any block content with: <code>[woocommerce_checkout]</code></li><li>Click <strong>Update</strong> to save</li></ol><h4>Step 4: Remove Payment Blocks (Important)</h4><ol style="line-height: 1.8;"><li>In the page editor, click the <strong>⋮</strong> (three vertical dots) again</li><li>Select <strong>Preferences</strong></li><li>In the search bar, type <strong>"payments"</strong></li><li><strong>Uncheck all blocks related to payments</strong></li><li>Close preferences and update the page</li></ol><h4>Step 5: Enable Stablecoin Pay</h4><ol style="line-height: 1.8;"><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below</li><li>Click <strong>Save changes</strong></li><li>Done! Customers will now see the payment option at checkout (whitelabeled if configured, or "Pay with Coinsub" by default)</li></ol><div style="margin-top: 20px; padding: 15px; background: #fee2e2; border-left: 4px solid #dc2626; border-radius: 4px;"><h3 style="margin-top: 0; color: #991b1b;">⚠️ Subscription Products - Action Required</h3><p style="color: #7f1d1d; margin-bottom: 10px;"><strong>Important:</strong> If you have existing subscription products in your store, they need to be updated before they will work with Stablecoin Pay.</p><ol style="line-height: 1.8; color: #7f1d1d;"><li>Go to <strong>Products</strong> → Find your subscription product → Click <strong>Edit</strong></li><li>Make any change to the product (even just updating the description or clicking "Update")</li><li>This ensures the product is properly configured for Stablecoin Pay subscriptions</li><li>Repeat for each subscription product in your store</li></ol><p style="color: #7f1d1d; margin-top: 10px; margin-bottom: 0;"><strong>Note:</strong> Single-time payment products work immediately - no editing required. Only subscription products need to be updated.</p></div><p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p><div style="margin-top: 20px; padding: 15px; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;"><h3 style="margin-top: 0;">💰 Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong></p><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.</p><p style="margin-bottom: 10px;"><a href="' + meldUrl + '" target="_blank" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">💳 Onramp USDC Polygon via Meld</a></p><p style="margin-bottom: 0; font-size: 12px; color: #666;">💡 <strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</p></div></div>');
+            var instructions = $('<div style="background: #f9fafb; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0;"><h3 style="margin-top: 0;">📋 Setup Instructions</h3><h4>Step 1: Get Your Stablecoin Pay Credentials</h4><ol style="line-height: 1.8;"><li>Log in to your account</li><li>Navigate to <strong>Settings</strong> in your dashboard</li><li>Copy your <strong>Merchant ID</strong></li><li>Create and copy your <strong>API Key</strong></li><li>Paste both into the fields below</li></ol><h4>Step 2: Configure Webhook (CRITICAL)</h4><ol style="line-height: 1.8;"><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)</li><li>Go back to your dashboard <strong>Settings</strong></li><li>Find the <strong>Webhook URL</strong> field</li><li><strong>Paste your webhook URL</strong> into that field and save</li><li><em>This is essential - without this, orders won\'t update when payments complete!</em></li></ol><h4>Step 3: Verify Checkout Page (If Needed)</h4><ol style="line-height: 1.8;"><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong></li><li><strong>IMPORTANT:</strong> The page MUST contain <code>[woocommerce_checkout]</code> shortcode</li><li>If using Classic Editor: The shortcode should already be there</li><li>If using Block Editor: Use the <strong>"Shortcode"</strong> block and add <code>[woocommerce_checkout]</code></li><li><em>Do NOT remove this shortcode - it\'s required for checkout to work!</em></li></ol><h4>Step 4: Enable Stablecoin Pay</h4><ol style="line-height: 1.8;"><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below</li><li>Click <strong>Save changes</strong></li><li>Done! Customers will now see the payment option at checkout (whitelabeled if configured, or "Pay with Coinsub" by default)</li></ol><div style="margin-top: 15px; padding: 12px; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;"><h4 style="margin-top: 0;">🔧 Automatic Checkout Configuration</h4><p style="margin: 0; font-size: 14px;">When Stablecoin Pay is enabled, the plugin <strong>automatically</strong>:</p><ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 14px;"><li>Uses classic checkout (required for Stablecoin Pay)</li><li>Works alongside other payment methods (Stripe, PayPal, etc.)</li><li>Only affects checkout when Stablecoin Pay is enabled</li></ul><p style="margin: 10px 0 0 0; font-size: 14px;"><strong>💡 Compatibility:</strong> Stablecoin Pay is designed to work with other payment gateways. If you experience issues, the plugin only affects checkout when enabled - you can disable it anytime without affecting other payment methods.</p></div><div style="margin-top: 15px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;"><h4 style="margin-top: 0;">⚠️ Troubleshooting Payment Conflicts</h4><p style="margin: 0; font-size: 14px;">If checkout behaves unexpectedly with multiple payment providers:</p><ol style="margin: 10px 0 0 0; padding-left: 20px; font-size: 14px;"><li>Clear your browser cache and WooCommerce transients</li><li>Test with only Stablecoin Pay enabled first</li><li>Then enable other payment methods one at a time</li><li>If issues persist, check for JavaScript errors in browser console (F12)</li></ol><p style="margin: 10px 0 0 0; font-size: 14px;"><strong>Note:</strong> Some payment plugins may conflict if they also try to control checkout behavior. This is normal with multiple payment gateways.</p></div><div style="margin-top: 20px; padding: 15px; background: #fee2e2; border-left: 4px solid #dc2626; border-radius: 4px;"><h3 style="margin-top: 0; color: #991b1b;">⚠️ Subscription Products - Action Required</h3><p style="color: #7f1d1d; margin-bottom: 10px;"><strong>Important:</strong> If you have existing subscription products in your store, they need to be updated before they will work with Stablecoin Pay.</p><ol style="line-height: 1.8; color: #7f1d1d;"><li>Go to <strong>Products</strong> → Find your subscription product → Click <strong>Edit</strong></li><li>Make any change to the product (even just updating the description or clicking "Update")</li><li>This ensures the product is properly configured for Stablecoin Pay subscriptions</li><li>Repeat for each subscription product in your store</li></ol><p style="color: #7f1d1d; margin-top: 10px; margin-bottom: 0;"><strong>Note:</strong> Single-time payment products work immediately - no editing required. Only subscription products need to be updated.</p></div><p style="margin-bottom: 0; padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!</p><div style="margin-top: 20px; padding: 15px; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;"><h3 style="margin-top: 0;">💰 Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong></p><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.</p><p style="margin-bottom: 10px;"><a href="' + meldUrl + '" target="_blank" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">💳 Onramp USDC Polygon via Meld</a></p><p style="margin-bottom: 0; font-size: 12px; color: #666;">💡 <strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</p></div></div>');
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
@@ -2119,7 +2119,24 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
         }
         
-        // Calculate final total (WooCommerce already applies discounts to get_total())
+        // Get cart fees (additional charges like handling fees, processing fees, etc.)
+        $fees = $cart->get_fees();
+        $fee_total = 0;
+        $fee_details = array();
+        if (!empty($fees)) {
+            foreach ($fees as $fee) {
+                $fee_amount = (float) $fee->amount;
+                $fee_total += $fee_amount;
+                $fee_details[] = array(
+                    'name' => $fee->name,
+                    'amount' => $fee_amount,
+                    'taxable' => $fee->taxable,
+                    'tax_class' => $fee->tax_class
+                );
+            }
+        }
+        
+        // Calculate final total (WooCommerce already applies discounts and fees to get_total())
         $total = (float) $cart->get_total('edit');
         
         // Ensure total is never 0
@@ -2152,6 +2169,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'tax' => $tax,
             'discount' => $discount_total,
             'discount_tax' => $discount_tax,
+            'fees' => $fee_total,
+            'fee_details' => $fee_details,
             'total' => $total,
             'currency' => get_woocommerce_currency(),
             'has_subscription' => $has_subscription,
@@ -2226,6 +2245,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'tax' => $cart_data['tax'],
                 'discount' => isset($cart_data['discount']) ? $cart_data['discount'] : 0,
                 'discount_tax' => isset($cart_data['discount_tax']) ? $cart_data['discount_tax'] : 0,
+                'fees' => isset($cart_data['fees']) ? $cart_data['fees'] : 0,
+                'fee_details' => isset($cart_data['fee_details']) ? $cart_data['fee_details'] : array(),
                 'applied_coupons' => isset($cart_data['applied_coupons']) ? $cart_data['applied_coupons'] : array(),
                 'coupon_details' => isset($cart_data['coupon_details']) ? $cart_data['coupon_details'] : array(),
                 'total' => $cart_data['total'],
@@ -2315,6 +2336,17 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $discount_text .= ' (' . implode(', ', $cart_data['applied_coupons']) . ')';
             }
             $details[] = $discount_text;
+        }
+        
+        // Add fees if any
+        if (isset($cart_data['fees']) && $cart_data['fees'] > 0) {
+            if (isset($cart_data['fee_details']) && !empty($cart_data['fee_details'])) {
+                foreach ($cart_data['fee_details'] as $fee) {
+                    $details[] = $fee['name'] . ': $' . number_format($fee['amount'], 2);
+                }
+            } else {
+                $details[] = 'Fees: $' . number_format($cart_data['fees'], 2);
+            }
         }
         
         if ($cart_data['shipping'] > 0) {

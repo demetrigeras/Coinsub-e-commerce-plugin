@@ -104,7 +104,24 @@ class WC_CoinSub_Cart_Sync {
             }
         }
         
-        // Calculate final total (WooCommerce already applies discounts to get_total())
+        // Get cart fees (additional charges like handling fees, processing fees, etc.)
+        $fees = $cart->get_fees();
+        $fee_total = 0;
+        $fee_details = array();
+        if (!empty($fees)) {
+            foreach ($fees as $fee) {
+                $fee_amount = (float) $fee->amount;
+                $fee_total += $fee_amount;
+                $fee_details[] = array(
+                    'name' => $fee->name,
+                    'amount' => $fee_amount,
+                    'taxable' => $fee->taxable,
+                    'tax_class' => $fee->tax_class
+                );
+            }
+        }
+        
+        // Calculate final total (WooCommerce already applies discounts and fees to get_total())
         $total = (float) $cart->get_total('edit');
         
         // Ensure total is never 0
@@ -139,6 +156,8 @@ class WC_CoinSub_Cart_Sync {
             'tax' => $tax,
             'discount' => $discount_total,
             'discount_tax' => $discount_tax,
+            'fees' => $fee_total,
+            'fee_details' => $fee_details,
             'total' => $total,
             'currency' => get_woocommerce_currency(),
             'has_subscription' => $has_subscription,
@@ -155,6 +174,9 @@ class WC_CoinSub_Cart_Sync {
         error_log('  Shipping: $' . $shipping);
         error_log('  Tax: $' . $tax);
         error_log('  Discount: $' . $discount_total);
+        if ($fee_total > 0) {
+            error_log('  Fees: $' . $fee_total);
+        }
         if (!empty($applied_coupons)) {
             error_log('  Applied Coupons: ' . implode(', ', $applied_coupons));
         }
