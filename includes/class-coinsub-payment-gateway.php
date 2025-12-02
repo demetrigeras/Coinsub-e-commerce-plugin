@@ -24,7 +24,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function __construct() {
         // Only log on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-            error_log('🏗️ Coinsub - Gateway constructor called');
+        error_log('🏗️ Coinsub - Gateway constructor called');
         }
         
         $this->id = 'coinsub';
@@ -41,7 +41,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only log on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-            error_log('🏗️ Coinsub - Supports: ' . json_encode($this->supports));
+        error_log('🏗️ Coinsub - Supports: ' . json_encode($this->supports));
         }
         
         // Load settings
@@ -83,13 +83,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only log constructor details on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-            error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
-            error_log('🏗️ CoinSub - Constructor - Title: ' . $this->title);
-            error_log('🏗️ CoinSub - Constructor - Description: ' . $this->description);
-            error_log('🏗️ CoinSub - Constructor - Enabled: ' . $this->enabled);
-            error_log('🏗️ CoinSub - Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
-            error_log('🏗️ CoinSub - Constructor - Method Title: ' . $this->method_title);
-            error_log('🏗️ CoinSub - Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
+        error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
+        error_log('🏗️ CoinSub - Constructor - Title: ' . $this->title);
+        error_log('🏗️ CoinSub - Constructor - Description: ' . $this->description);
+        error_log('🏗️ CoinSub - Constructor - Enabled: ' . $this->enabled);
+        error_log('🏗️ CoinSub - Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
+        error_log('🏗️ CoinSub - Constructor - Method Title: ' . $this->method_title);
+        error_log('🏗️ CoinSub - Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
         }
         
         // Add hooks
@@ -102,7 +102,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
         add_action('wp_head', array($this, 'add_payment_button_styles'));
-        add_filter('woocommerce_order_button_text', array($this, 'get_order_button_text'));
+        // Removed woocommerce_order_button_text filter - using default "Place order" for all payment methods
         
         // Customize refund UI for CoinSub orders (hide manual refund, only show CoinSub API refund)
         add_action('admin_head', array($this, 'hide_manual_refund_ui_for_coinsub'));
@@ -332,7 +332,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function init_form_fields() {
         // Only log on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-            error_log('🏗️ CoinSub - init_form_fields() called');
+        error_log('🏗️ CoinSub - init_form_fields() called');
         }
         $this->form_fields = array(
             'enabled' => array(
@@ -400,7 +400,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         if (empty($merchant_id) || empty($api_key)) {
             error_log('CoinSub Whitelabel: ⚠️ No credentials found - clearing old branding and using defaults');
-            $branding = new CoinSub_Whitelabel_Branding();
+        $branding = new CoinSub_Whitelabel_Branding();
             $branding->clear_cache(); // Clear any old branding from previous merchant
             $this->brand_company = 'Coinsub';
             // Store checkout-specific data (NOT $this->title which is for admin)
@@ -418,16 +418,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only update if branding data exists and has company name
         if (!empty($branding_data) && isset($branding_data['company']) && !empty($branding_data['company'])) {
-            $company_name = $branding_data['company'];
+        $company_name = $branding_data['company'];
             $this->brand_company = $company_name;
             // Store checkout-specific title (NOT $this->title which is for admin)
             $this->checkout_title = 'Pay with ' . $company_name;
-            
+        
             error_log('CoinSub Whitelabel: ✅ CHECKOUT TITLE SET - Title: "' . $this->checkout_title . '" | Company: "' . $company_name . '" | brand_company property: "' . $this->brand_company . '"');
             
             // Update checkout icon with whitelabel logo (use default light logo)
-            $logo_url = $branding->get_logo_url('default', 'light');
-            if ($logo_url) {
+        $logo_url = $branding->get_logo_url('default', 'light');
+        if ($logo_url) {
                 $this->checkout_icon = $logo_url;
                 // Also set button logo URL for JavaScript injection
                 $this->button_logo_url = $logo_url;
@@ -532,9 +532,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('CoinSub Whitelabel: ⚙️ Settings saved - Deferring branding fetch to prevent timeout');
         
         try {
-            $branding = new CoinSub_Whitelabel_Branding();
-            $branding->clear_cache();
-            
+        $branding = new CoinSub_Whitelabel_Branding();
+        $branding->clear_cache();
+        
             // Set a flag to trigger branding fetch on next page load
             // This prevents the save from timing out due to slow API calls
             set_transient('coinsub_refresh_branding_on_load', true, 60); // Flag expires in 60 seconds
@@ -1025,6 +1025,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Initialize empty checkout URL for the template
         $checkout_url = '';
+        
+        // Get CoinSub button text for JavaScript
+        $coinsub_button_text = $this->get_order_button_text();
         
         // Include the modal template
         include plugin_dir_path(__FILE__) . 'coinsub-checkout-modal.php';
@@ -1946,10 +1949,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only log detailed debug info on checkout page, not admin
         if (is_checkout()) {
-            error_log('=== CoinSub Gateway - Availability Check [' . $context . '] ===');
-            error_log('CoinSub - Enabled setting: ' . $this->get_option('enabled'));
-            error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
-            error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
+        error_log('=== CoinSub Gateway - Availability Check [' . $context . '] ===');
+        error_log('CoinSub - Enabled setting: ' . $this->get_option('enabled'));
+        error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
+        error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
         }
         
         // Check cart (only on frontend)
@@ -1987,7 +1990,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if ($this->get_option('enabled') !== 'yes') {
             // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-                error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings ❌');
+            error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings ❌');
             }
             return false;
         }
@@ -1995,7 +1998,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if (empty($this->get_option('merchant_id'))) {
             // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-                error_log('CoinSub - UNAVAILABLE: No merchant ID configured ❌');
+            error_log('CoinSub - UNAVAILABLE: No merchant ID configured ❌');
             }
             return false;
         }
@@ -2003,7 +2006,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if (empty($this->get_option('api_key'))) {
             // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-                error_log('CoinSub - UNAVAILABLE: No API key configured ❌');
+            error_log('CoinSub - UNAVAILABLE: No API key configured ❌');
             }
             return false;
         }
@@ -2012,20 +2015,20 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $parent_available = parent::is_available();
         // Only log on checkout, not in admin
         if (is_checkout()) {
-            error_log('CoinSub - Parent is_available(): ' . ($parent_available ? 'TRUE' : 'FALSE'));
+        error_log('CoinSub - Parent is_available(): ' . ($parent_available ? 'TRUE' : 'FALSE'));
         }
         
         if (!$parent_available) {
             // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-                error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering) ❌');
-                error_log('CoinSub - Common reasons: cart empty, order total 0, shipping required but not selected, terms & conditions page not set');
-                
-                // Check specifically for terms & conditions issue
-                $terms_page_id = wc_get_page_id('terms');
-                if (empty($terms_page_id)) {
-                    error_log('CoinSub - DIAGNOSIS: Terms & Conditions page is not set! This often blocks payment gateways.');
-                    error_log('CoinSub - SOLUTION: Set a Terms & Conditions page in WooCommerce > Settings > Advanced');
+            error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering) ❌');
+            error_log('CoinSub - Common reasons: cart empty, order total 0, shipping required but not selected, terms & conditions page not set');
+            
+            // Check specifically for terms & conditions issue
+            $terms_page_id = wc_get_page_id('terms');
+            if (empty($terms_page_id)) {
+                error_log('CoinSub - DIAGNOSIS: Terms & Conditions page is not set! This often blocks payment gateways.');
+                error_log('CoinSub - SOLUTION: Set a Terms & Conditions page in WooCommerce > Settings > Advanced');
                 }
             }
             
@@ -2034,7 +2037,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only log on checkout, not in admin
         if (is_checkout()) {
-            error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅✅✅');
+        error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅✅✅');
         }
         return true;
     }

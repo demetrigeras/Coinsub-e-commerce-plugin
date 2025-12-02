@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# CoinSub Commerce Plugin Package Creator
+# Stablecoin Pay Plugin Package Creator
 # This script creates a deployable WordPress plugin package
 
-echo "🚀 Creating Coinsub Commerce Plugin Package..."
+echo "🚀 Creating Stablecoin Pay Plugin Package..."
 
 # Create package directory
-PACKAGE_DIR="coinsub-commerce-plugin"
+PACKAGE_DIR="stablecoin-pay-plugin"
 mkdir -p "$PACKAGE_DIR"
 
 # Copy main plugin file
@@ -35,7 +35,7 @@ echo "📦 Creating uninstall script..."
 cat > "$PACKAGE_DIR/uninstall.php" << 'EOF'
 <?php
 /**
- * Uninstall script for CoinSub Commerce
+ * Uninstall script for Stablecoin Pay
  */
 
 // Prevent direct access
@@ -93,7 +93,7 @@ EOF
 # Create zip package
 echo "📦 Creating ZIP package..."
 cd "$PACKAGE_DIR"
-zip -r "../coinsub-commerce.zip" . -x "*.DS_Store" "*.git*"
+zip -r "../stablecoin-pay.zip" . -x "*.DS_Store" "*.git*"
 cd ..
 
 # Clean up
@@ -101,11 +101,11 @@ echo "🧹 Cleaning up..."
 rm -rf "$PACKAGE_DIR"
 
 echo "✅ Plugin package created successfully!"
-echo "📁 Package: coinsub-commerce.zip"
-echo "📋 Size: $(du -h coinsub-commerce.zip | cut -f1)"
+echo "📁 Package: stablecoin-pay.zip"
+echo "📋 Size: $(du -h stablecoin-pay.zip | cut -f1)"
 echo ""
 echo "🚀 Ready for deployment!"
-echo "1. Upload coinsub-commerce.zip to WordPress"
+echo "1. Upload stablecoin-pay.zip to WordPress"
 echo "2. Activate the plugin"
 echo "3. Configure settings in WooCommerce"
-echo "4. Set up webhook in Coinsub dashboard"
+echo "4. Set up webhook in your dashboard"

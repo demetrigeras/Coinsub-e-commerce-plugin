@@ -134,6 +134,14 @@ class CoinSub_Webhook_Handler {
         error_log('CoinSub Webhook: Searching for order with origin ID: ' . $origin_id);
         $order = $this->find_order_by_purchase_session_id($origin_id);
         
+        if ($order) {
+            error_log('✅ CoinSub Webhook: Order found by purchase session ID: Order #' . $order->get_id());
+            error_log('CoinSub Webhook: Order status: ' . $order->get_status());
+            error_log('CoinSub Webhook: Order payment method: ' . $order->get_payment_method());
+        } else {
+            error_log('⚠️ CoinSub Webhook: Order NOT found by purchase session ID: ' . $origin_id);
+        }
+        
         // For recurring payments, also try to find by agreement_id
         if (!$order && isset($data['agreement_id'])) {
             $agreement_id = $data['agreement_id'];
@@ -361,13 +369,59 @@ class CoinSub_Webhook_Handler {
             }
         }
         
-        // Update WooCommerce order status based on shipping requirement
-        if (method_exists($order, 'needs_shipping') && $order->needs_shipping()) {
-            $order->update_status('processing', __('Payment received via CoinSub (awaiting fulfillment)', 'coinsub'));
-            error_log('CoinSub Webhook: Updated order status to processing (needs shipping)');
-        } else {
-            $order->update_status('completed', __('Payment completed via CoinSub', 'coinsub'));
-            error_log('CoinSub Webhook: Updated order status to completed (no shipping)');
+        // CRITICAL: Update WooCommerce order status based on shipping requirement
+        // Use wp_update_post directly as fallback if update_status fails
+        $current_status = $order->get_status();
+        error_log('CoinSub Webhook: Current order status BEFORE update: ' . $current_status);
+        error_log('CoinSub Webhook: Order needs shipping: ' . (method_exists($order, 'needs_shipping') && $order->needs_shipping() ? 'YES' : 'NO'));
+        
+        // Determine target status
+        $target_status = 'processing';
+        if (method_exists($order, 'needs_shipping') && !$order->needs_shipping()) {
+            $target_status = 'completed';
+        }
+        
+        error_log('CoinSub Webhook: Target status: ' . $target_status);
+        
+        // Update status with error handling
+        try {
+            $status_updated = $order->update_status($target_status, __('Payment received via CoinSub', 'coinsub'));
+            error_log('CoinSub Webhook: update_status() returned: ' . ($status_updated ? 'TRUE' : 'FALSE'));
+            
+            // Verify status was actually updated
+            $order->save(); // Ensure changes are persisted
+            $new_status = $order->get_status();
+            error_log('CoinSub Webhook: Order status AFTER update: ' . $new_status);
+            
+            if ($new_status !== $target_status) {
+                error_log('⚠️ CoinSub Webhook: WARNING - Status update may have failed! Expected: ' . $target_status . ', Got: ' . $new_status);
+                
+                // Try direct database update as fallback
+                wp_update_post(array(
+                    'ID' => $order->get_id(),
+                    'post_status' => 'wc-' . $target_status
+                ));
+                
+                // Reload order and verify
+                $order = wc_get_order($order->get_id());
+                $final_status = $order->get_status();
+                error_log('CoinSub Webhook: Final status after fallback update: ' . $final_status);
+                
+                if ($final_status === $target_status) {
+                    error_log('✅ CoinSub Webhook: Status updated successfully via fallback method');
+                } else {
+                    error_log('❌ CoinSub Webhook: CRITICAL - Status update failed even with fallback!');
+                    error_log('❌ CoinSub Webhook: This may be caused by another plugin blocking status updates');
+                }
+            } else {
+                error_log('✅ CoinSub Webhook: Status updated successfully to: ' . $target_status);
+            }
+        } catch (Exception $e) {
+            error_log('❌ CoinSub Webhook: Exception during status update: ' . $e->getMessage());
+            error_log('❌ CoinSub Webhook: Stack trace: ' . $e->getTraceAsString());
+        } catch (Error $e) {
+            error_log('❌ CoinSub Webhook: Fatal error during status update: ' . $e->getMessage());
+            error_log('❌ CoinSub Webhook: Stack trace: ' . $e->getTraceAsString());
         }
         
         // Debug: Check payment method

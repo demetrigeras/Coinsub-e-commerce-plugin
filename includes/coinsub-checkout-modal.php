@@ -27,6 +27,12 @@ if (!defined('ABSPATH')) {
     border: none;
 }
 
+/* ONLY hide button when CoinSub iframe is visible - don't interfere with other payment methods */
+body.coinsub-iframe-visible .woocommerce-checkout .form-row.place-order,
+body.coinsub-iframe-visible .woocommerce-checkout #place_order {
+    display: none !important;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     #coinsub-checkout-container {
@@ -51,6 +57,108 @@ jQuery(document).ready(function($) {
     if (typeof window.coinsubSubmitting === 'undefined') {
         window.coinsubSubmitting = false;
     }
+    
+    // SIMPLIFIED: Just remove CoinSub logo when switching away, don't touch button text at all
+    // Let WooCommerce handle button text completely - it will use "Place order" for all methods
+    function removeCoinSubLogo() {
+        var $placeOrderButton = $('#place_order');
+        if ($placeOrderButton.length === 0) {
+            return;
+        }
+        
+        var currentHtml = $placeOrderButton.html();
+        if (currentHtml.includes('coinsub-button-logo')) {
+            // Remove CoinSub logo only, preserve everything else
+            var textWithoutLogo = currentHtml.replace(/<img[^>]*class="coinsub-button-logo"[^>]*>/gi, '');
+            $placeOrderButton.html(textWithoutLogo);
+            console.log('✅ CoinSub: Removed CoinSub logo - letting WooCommerce handle button text');
+        }
+    }
+    
+    // ONLY handle CoinSub button visibility - completely ignore other payment methods
+    function ensurePlaceOrderButtonVisibility() {
+        var paymentMethod = $('input[name="payment_method"]:checked').val();
+        
+        // Only handle CoinSub - completely ignore other payment methods
+        if (paymentMethod !== 'coinsub') {
+            // For non-CoinSub methods, just hide CoinSub iframe
+            // DO NOT touch the button at all - let WooCommerce and their plugin handle it completely
+            $('#coinsub-checkout-container').hide();
+            $('body').removeClass('coinsub-iframe-visible');
+            
+            // Note: Logo removal is handled in the payment method change handler
+            // We don't touch the button here to avoid interfering with WooCommerce's button text updates
+            
+            return; // Completely step back - don't interfere with other payment methods
+        }
+        
+        // For CoinSub, handle button visibility based on iframe state
+        var $placeOrderRow = $('.woocommerce-checkout .form-row.place-order');
+        var $placeOrderButton = $('#place_order');
+        
+        if ($('#coinsub-checkout-container').is(':visible')) {
+            // Hide button when CoinSub iframe is visible
+            $placeOrderRow.hide();
+            $placeOrderButton.hide();
+            $('body').addClass('coinsub-iframe-visible');
+            console.log('🔒 CoinSub: Hiding Place Order button (CoinSub iframe visible)');
+        } else {
+            // Show button when CoinSub is selected but iframe not visible yet
+            $placeOrderRow.show();
+            $placeOrderButton.show();
+            $('body').removeClass('coinsub-iframe-visible');
+            // Don't touch button text - let WooCommerce handle it (will be "Place order")
+            console.log('✅ CoinSub: Showing Place Order button (CoinSub selected, no iframe)');
+        }
+    }
+    
+    // Watch for payment method changes - ONLY handle CoinSub
+    $('body').on('change', 'input[name="payment_method"]', function() {
+        var newMethod = $(this).val();
+        console.log('🔄 CoinSub: Payment method changed to: ' + newMethod);
+        
+        // Only handle CoinSub iframe visibility, don't touch button text
+        if (newMethod === 'coinsub') {
+            // Just handle visibility for CoinSub
+            ensurePlaceOrderButtonVisibility();
+        } else {
+            // For other payment methods, remove CoinSub logo and hide iframe
+            removeCoinSubLogo();
+            $('#coinsub-checkout-container').hide();
+            $('body').removeClass('coinsub-iframe-visible');
+            // Let WooCommerce handle button text completely (will be "Place order")
+        }
+        
+        // Set up watcher
+        setupButtonTextWatcher();
+    });
+    
+    // SIMPLIFIED: No button text watcher needed - let WooCommerce handle button text completely
+    // We only need to remove CoinSub logo when switching away
+    function setupButtonTextWatcher() {
+        // Removed - no longer needed since we're using "Place order" for everything
+        // This function kept for compatibility but does nothing
+    }
+    
+    // SIMPLIFIED: Just handle CoinSub iframe visibility, don't touch button text
+    function initializeButtonText() {
+        var paymentMethod = $('input[name="payment_method"]:checked').val();
+        
+        if (paymentMethod === 'coinsub') {
+            ensurePlaceOrderButtonVisibility();
+        } else {
+            // Remove CoinSub logo if present, hide iframe
+            removeCoinSubLogo();
+            $('#coinsub-checkout-container').hide();
+            $('body').removeClass('coinsub-iframe-visible');
+            // Let WooCommerce handle button text (will be "Place order")
+        }
+    }
+    
+    // Run initialization with delays to catch delayed rendering
+    setTimeout(initializeButtonText, 100);
+    setTimeout(initializeButtonText, 300);
+    setTimeout(initializeButtonText, 600);
     
     // Override the place order button ONLY for CoinSub
     // This ensures we don't interfere with other payment gateways like Coinbase, Stripe, etc.
@@ -129,9 +237,14 @@ jQuery(document).ready(function($) {
                         
                         // Show the iframe container
                         $('#coinsub-checkout-container').show();
+                        $('body').addClass('coinsub-iframe-visible');
                         
-                        // Hide the payment button since iframe is now visible
-                        $('.woocommerce-checkout .form-row.place-order').hide();
+                        // Hide the payment button ONLY if CoinSub is still selected
+                        var currentPaymentMethod = $('input[name="payment_method"]:checked').val();
+                        if (currentPaymentMethod === 'coinsub') {
+                            $('.woocommerce-checkout .form-row.place-order').hide();
+                            $('#place_order').hide();
+                        }
                         
                         // Set up iframe redirect detection
                         setupIframeRedirectDetection();
@@ -153,7 +266,8 @@ jQuery(document).ready(function($) {
                             errorMsg += 'Unknown error - no data received';
                         }
                         alert(errorMsg);
-                        $('#place_order').prop('disabled', false).text('Place order');
+                        $('#place_order').prop('disabled', false);
+                        // Let WooCommerce handle button text (will be "Place order")
                         window.coinsubSubmitting = false;
                     }
                 },
@@ -176,7 +290,8 @@ jQuery(document).ready(function($) {
                     }
                     
                     alert(errorMsg);
-                    $('#place_order').prop('disabled', false).text('Place order');
+                    $('#place_order').prop('disabled', false);
+                    // Let WooCommerce handle button text (will be "Place order")
                     window.coinsubSubmitting = false;
                 }
             });
@@ -289,11 +404,56 @@ jQuery(document).ready(function($) {
     // Check for checkout URL on page load
     checkForCoinSubCheckout();
     
+    // Ensure button visibility after a short delay (only if CoinSub is selected)
+    setTimeout(function() {
+        var paymentMethod = $('input[name="payment_method"]:checked').val();
+        if (paymentMethod === 'coinsub') {
+            ensurePlaceOrderButtonVisibility();
+        }
+    }, 500);
+    
+    // Also check when WooCommerce updates checkout (AJAX)
+    // Only update if CoinSub is selected
+    $(document.body).on('updated_checkout', function() {
+        console.log('🔄 CoinSub: WooCommerce checkout updated via AJAX');
+        var paymentMethod = $('input[name="payment_method"]:checked').val();
+        
+        if (paymentMethod === 'coinsub') {
+            initializeButtonText();
+        } else {
+            // Remove CoinSub logo and hide iframe
+            removeCoinSubLogo();
+            $('#coinsub-checkout-container').hide();
+            $('body').removeClass('coinsub-iframe-visible');
+            // Let WooCommerce handle button text (will be "Place order")
+        }
+    });
+    
+    // Also watch for when payment methods are loaded/updated
+    $(document.body).on('payment_method_selected', function() {
+        console.log('🔄 CoinSub: Payment method selected event fired');
+        var paymentMethod = $('input[name="payment_method"]:checked').val();
+        
+        if (paymentMethod === 'coinsub') {
+            initializeButtonText();
+        } else {
+            // Remove CoinSub logo and hide iframe
+            removeCoinSubLogo();
+            $('#coinsub-checkout-container').hide();
+            $('body').removeClass('coinsub-iframe-visible');
+            // Let WooCommerce handle button text (will be "Place order")
+        }
+    });
+    
     // Make functions available globally for debugging
     window.showPaymentButton = function() {
         $('.woocommerce-checkout .form-row.place-order').show();
-        $('#coinsub-checkout-container').remove();
+        $('#place_order').show();
+        $('#coinsub-checkout-container').hide();
+        $('body').removeClass('coinsub-iframe-visible');
+        ensurePlaceOrderButtonVisibility();
     };
     window.handleIframeLoad = handleIframeLoad;
+    window.ensurePlaceOrderButtonVisibility = ensurePlaceOrderButtonVisibility;
 });
 </script>
