@@ -1,6 +1,6 @@
-# CoinSub for WooCommerce
+# Stablecoin Pay for WooCommerce
 
-Accept cryptocurrency payments in your WooCommerce store.
+Accept cryptocurrency payments in your WooCommerce store with Stablecoin Pay.
 
 ---
 
@@ -8,12 +8,12 @@ Accept cryptocurrency payments in your WooCommerce store.
 
 ### **Installation**
 
-1. Download `coinsub-commerce.zip`
+1. Download `stablecoin-pay.zip`
 2. Go to WordPress Admin → Plugins → Add New → Upload Plugin
 3. Upload the zip file and activate
-4. Go to WooCommerce → Settings → Payments → CoinSub
+4. Go to WooCommerce → Settings → Payments → Stablecoin Pay
 5. Enter your Merchant ID and API Key
-6. Copy the Webhook URL to your CoinSub dashboard
+6. Copy the Webhook URL to your merchant dashboard
 7. Enable the payment method
 
 **Done! ✅**
@@ -23,14 +23,15 @@ Accept cryptocurrency payments in your WooCommerce store.
 ## ⚙️ Configuration
 
 **Required Settings:**
-- **Merchant ID** - From your CoinSub dashboard
-- **API Key** - From your CoinSub dashboard  
-- **Webhook URL** - Auto-generated, copy to CoinSub dashboard
+- **Merchant ID** - From your merchant dashboard
+- **API Key** - From your merchant dashboard  
+- **Webhook URL** - Auto-generated, copy to your merchant dashboard
 
 **Optional:**
-- **Test Mode** - Use dev API for testing
-- **Title** - What customers see at checkout (default: "CoinSub")
+- **Title** - What customers see at checkout (default: "Stablecoin Pay")
 - **Description** - Payment method description
+
+**Note:** The plugin automatically applies white-label branding based on your merchant credentials. The checkout will display your white-label company name and logo.
 
 ---
 
@@ -39,9 +40,9 @@ Accept cryptocurrency payments in your WooCommerce store.
 ### **Customer Flow:**
 1. Customer adds products to cart
 2. Proceeds to checkout
-3. Selects "CoinSub" payment method
+3. Selects "Stablecoin Pay" (or white-label name) payment method
 4. Clicks "Place Order"
-5. Redirected to crypto checkout page
+5. Redirected to crypto checkout page (white-labeled)
 6. Pays with crypto wallet
 7. Payment confirmed automatically
 
@@ -76,7 +77,7 @@ TOTAL:     $123.25  ← Customer pays this in crypto
 
 ## 🔔 Webhooks
 
-The plugin automatically receives payment confirmations from CoinSub.
+The plugin automatically receives payment confirmations from Stablecoin Pay.
 
 **Webhook URL:** `https://yoursite.com/wp-json/coinsub/v1/webhook`
 
@@ -101,7 +102,7 @@ The plugin automatically receives payment confirmations from CoinSub.
 - Or use flat rate shipping
 - Or use ShipStation/Shippo
 
-**The CoinSub plugin just reads the shipping cost and includes it in the crypto payment.**
+**The Stablecoin Pay plugin just reads the shipping cost and includes it in the crypto payment.**
 
 ---
 
@@ -117,7 +118,7 @@ This creates a test order with products, shipping, and tax.
 ### **Test With WordPress:**
 1. Create a test product
 2. Add to cart
-3. Checkout with CoinSub
+3. Checkout with Stablecoin Pay
 4. Use test crypto wallet
 5. Verify webhook updates order
 
@@ -126,7 +127,7 @@ This creates a test order with products, shipping, and tax.
 ## 📁 File Structure
 
 ```
-coinsub-commerce/
+stablecoin-pay/
 ├── coinsub-commerce.php                    ← Main plugin file
 ├── includes/
 │   ├── class-coinsub-api-client.php        ← API communication
@@ -144,7 +145,7 @@ coinsub-commerce/
 ## 🔧 Troubleshooting
 
 **Order not updating after payment?**
-- Check webhook URL is correct in CoinSub dashboard
+- Check webhook URL is correct in your merchant dashboard
 - Check WordPress error logs
 
 **Checkout URL not opening?**
@@ -158,6 +159,11 @@ coinsub-commerce/
 **Products not syncing?**
 - Check API credentials
 - Check merchant ID matches
+
+**White-label branding not showing?**
+- Ensure Merchant ID and API Key are saved in settings
+- Click "Save changes" to trigger branding fetch
+- Check that your merchant account has white-label branding configured
 
 ---
 
@@ -175,25 +181,30 @@ coinsub-commerce/
 - WooCommerce 5.0+
 - PHP 7.4+
 - SSL certificate (HTTPS)
-- CoinSub merchant account
+- Stablecoin Pay merchant account
 
 ---
 
 ## 🎯 What This Plugin Does
 
 **IN:**
-- Reads WooCommerce order data (products, shipping, tax)
-- Creates CoinSub checkout session
-- Generates crypto payment URL
+- Reads WooCommerce order data (products, shipping, tax, discounts, fees)
+- Creates Stablecoin Pay checkout session
+- Generates crypto payment URL (white-labeled if configured)
 
 **OUT:**
 - Receives webhook when payment succeeds
 - Updates WooCommerce order status
 - Stores transaction hash
 
+**White-Label Support:**
+- Automatically applies white-label branding based on merchant credentials
+- Displays white-label company name and logo at checkout
+- Works with parent white-labelers and their sub-merchants
+
 **That's it!** Simple payments plugin. WooCommerce handles everything else (cart, shipping, taxes, inventory, emails).
 
 ---
 
 **Version:** 1.0.0  
-**Last Updated:** October 2025
+**Last Updated:** November 2025

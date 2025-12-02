@@ -1,8 +1,9 @@
 <?php
 /**
- * CoinSub Checkout Integration
+ * Stablecoin Pay Checkout Integration
  * 
- * This file contains the HTML, CSS, and JavaScript for the CoinSub checkout iframe
+ * This file contains the HTML, CSS, and JavaScript for the checkout iframe
+ * The iframe URL is whitelabeled based on merchant credentials
  */
 
 if (!defined('ABSPATH')) {
@@ -10,7 +11,7 @@ if (!defined('ABSPATH')) {
 }
 ?>
 
-<!-- CoinSub Checkout Styles -->
+<!-- Stablecoin Pay Checkout Styles -->
 <style>
 #coinsub-checkout-container {
     margin: 20px 0;
@@ -27,7 +28,7 @@ if (!defined('ABSPATH')) {
     border: none;
 }
 
-/* ONLY hide button when CoinSub iframe is visible - don't interfere with other payment methods */
+/* Hide button when checkout iframe is visible - don't interfere with other payment methods */
 body.coinsub-iframe-visible .woocommerce-checkout .form-row.place-order,
 body.coinsub-iframe-visible .woocommerce-checkout #place_order {
     display: none !important;
@@ -45,7 +46,7 @@ body.coinsub-iframe-visible .woocommerce-checkout #place_order {
 }
 </style>
 
-<!-- CoinSub Checkout JavaScript -->
+<!-- Stablecoin Pay Checkout JavaScript -->
 <script type="text/javascript">
 jQuery(document).ready(function($) {
     // Only load CoinSub checkout functionality if we're on checkout page
@@ -223,13 +224,16 @@ jQuery(document).ready(function($) {
                     }
                     
                     if (checkoutUrl) {
-                        console.log('Opening CoinSub checkout iframe:', checkoutUrl);
+                        console.log('Opening checkout iframe:', checkoutUrl);
                         
-                        // Remove any existing CoinSub iframe to prevent duplicates
+                        // Remove any existing iframe to prevent duplicates
                         $('#coinsub-checkout-iframe').remove();
                         $('#coinsub-checkout-container').remove();
                         
                         // Create iframe container above the payment button
+                        // IMPORTANT: The checkoutUrl from the API is already whitelabeled
+                        // It will use the whitelabel domain (e.g., buy.vantack.com) based on merchant credentials
+                        // The iframe content will display the whitelabel branding automatically
                         var iframeContainer = $('<div id="coinsub-checkout-container" style="margin: 20px 0; background: white; border-radius: 16px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); overflow: hidden;"><iframe id="coinsub-checkout-iframe" src="' + checkoutUrl + '" style="width: 100%; height: 800px; border: none;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *" onload="handleIframeLoad()"></iframe></div>');
                         
                         // Insert above the payment button
@@ -249,7 +253,7 @@ jQuery(document).ready(function($) {
                         // Set up iframe redirect detection
                         setupIframeRedirectDetection();
                         
-                        console.log('✅ CoinSub checkout iframe embedded above payment button');
+                        console.log('✅ Checkout iframe embedded above payment button');
                     } else {
                         console.log('Payment failed - response details:', response);
                         // Show detailed error
