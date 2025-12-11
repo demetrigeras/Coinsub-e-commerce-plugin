@@ -41,7 +41,5 @@ jobs:
     - name: Run PHPCS
       working-directory: ${{ github.workspace }}
       run: |
-        $HOME/.composer/vendor/bin/phpcs --version
-        ls -la .phpcs.xml
-        $HOME/.composer/vendor/bin/phpcs --standard=.phpcs.xml --report=summary
+        $HOME/.composer/vendor/bin/phpcs --standard=WordPress --report=summary --extensions=php --ignore=vendor,node_modules,*.min.js,*.min.css,*.zip --runtime-set text_domain coinsub .
 
