@@ -33,17 +33,5 @@ jobs:
         
     - name: Run PHPCS
       run: |
-        $HOME/.composer/vendor/bin/phpcs --standard=.phpcs.xml --report=checkstyle --report-file=phpcs-report.xml || true
-        
-    - name: Upload PHPCS results
-      uses: codecov/codecov-action@v3
-      if: always()
-      with:
-        files: ./phpcs-report.xml
-        flags: phpcs
-        name: phpcs-results
-        
-    - name: Check PHPCS results
-      run: |
         $HOME/.composer/vendor/bin/phpcs --standard=.phpcs.xml --report=summary
 
