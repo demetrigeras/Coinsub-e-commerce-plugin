@@ -32,7 +32,7 @@ jobs:
         
     - name: Install WordPress Coding Standards
       run: |
-        composer global require wp-coding-standards/wpcs:"^3.0" --no-interaction --prefer-dist
+        composer global require wp-coding-standards/wpcs:"^2.3" --no-interaction --prefer-dist
         
     - name: Configure PHPCS
       run: |
@@ -41,5 +41,5 @@ jobs:
     - name: Run PHPCS
       working-directory: ${{ github.workspace }}
       run: |
-        $HOME/.composer/vendor/bin/phpcs --standard=WordPress --report=summary --extensions=php --ignore=vendor,node_modules,*.min.js,*.min.css,*.zip --runtime-set text_domain coinsub .
+        $HOME/.composer/vendor/bin/phpcs --standard=WordPress-Extra --report=summary --extensions=php --ignore=vendor,node_modules,*.min.js,*.min.css,*.zip --runtime-set text_domain coinsub .
 
