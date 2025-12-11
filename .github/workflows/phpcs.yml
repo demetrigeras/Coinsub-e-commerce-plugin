@@ -38,9 +38,13 @@ jobs:
       run: |
         $HOME/.composer/vendor/bin/phpcs --config-set installed_paths $HOME/.composer/vendor/wp-coding-standards/wpcs
         
-    - name: Run PHPCS
+    - name: Run PHPCS (Report Only)
       working-directory: ${{ github.workspace }}
       continue-on-error: true
       run: |
+        echo "Running WordPress Coding Standards check..."
+        echo "Note: Most violations are minor formatting issues (spacing, indentation)"
         $HOME/.composer/vendor/bin/phpcs --standard=WordPress-Extra --report=summary --extensions=php --ignore=vendor,node_modules,*.min.js,*.min.css,*.zip --runtime-set text_domain coinsub . || true
+        echo ""
+        echo "💡 Tip: Most violations can be auto-fixed. This is just a report, not blocking."
 
