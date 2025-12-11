@@ -1,0 +1,49 @@
+name: WordPress Coding Standards
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  phpcs:
+    name: PHP_CodeSniffer
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.0'
+        tools: composer
+        coverage: none
+        
+    - name: Install PHP_CodeSniffer
+      run: |
+        composer global require squizlabs/php_codesniffer --no-interaction --prefer-dist
+        
+    - name: Install WordPress Coding Standards
+      run: |
+        composer global require wp-coding-standards/wpcs --no-interaction --prefer-dist
+        phpcs --config-set installed_paths $HOME/.composer/vendor/wp-coding-standards/wpcs
+        
+    - name: Run PHPCS
+      run: |
+        $HOME/.composer/vendor/bin/phpcs --standard=.phpcs.xml --report=checkstyle --report-file=phpcs-report.xml || true
+        
+    - name: Upload PHPCS results
+      uses: codecov/codecov-action@v3
+      if: always()
+      with:
+        files: ./phpcs-report.xml
+        flags: phpcs
+        name: phpcs-results
+        
+    - name: Check PHPCS results
+      run: |
+        $HOME/.composer/vendor/bin/phpcs --standard=.phpcs.xml --report=summary
+
