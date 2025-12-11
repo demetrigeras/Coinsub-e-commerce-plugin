@@ -24,11 +24,11 @@ jobs:
         
     - name: Install PHP_CodeSniffer
       run: |
-        composer global require squizlabs/php_codesniffer --no-interaction --prefer-dist
+        composer global require squizlabs/php_codesniffer:"^3.7" --no-interaction --prefer-dist
         
     - name: Install WordPress Coding Standards
       run: |
-        composer global require wp-coding-standards/wpcs --no-interaction --prefer-dist
+        composer global require wp-coding-standards/wpcs:"^3.0" --no-interaction --prefer-dist
         phpcs --config-set installed_paths $HOME/.composer/vendor/wp-coding-standards/wpcs
         
     - name: Run PHPCS
