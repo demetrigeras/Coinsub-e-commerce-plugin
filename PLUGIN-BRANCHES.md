@@ -10,7 +10,7 @@ This repository maintains two separate branches for different plugin versions:
 - **API**: Always uses `https://app.coinsub.io/v1`
 - **Distribution**: ✅ **PUBLIC** - Distribute to merchants
 - **ZIP File**: `coinsub-commerce.zip`
-
+//
 ### `dev` branch (Development - INTERNAL USE ONLY)
 - **Plugin Name**: "Coinsub Dev"
 - **Features**: Environment selector (dev, test, staging, production)
