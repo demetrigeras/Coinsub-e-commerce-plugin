@@ -103,6 +103,17 @@ rm -rf "$PACKAGE_DIR"
 echo "✅ Plugin package created successfully!"
 echo "📁 Package: stablecoin-pay.zip"
 echo "📋 Size: $(du -h stablecoin-pay.zip | cut -f1)"
+
+# Copy to Downloads folder
+DOWNLOADS_DIR="$HOME/Downloads"
+if [ -d "$DOWNLOADS_DIR" ]; then
+    echo "📥 Copying to Downloads folder..."
+    cp stablecoin-pay.zip "$DOWNLOADS_DIR/"
+    echo "✅ Also saved to: $DOWNLOADS_DIR/stablecoin-pay.zip"
+else
+    echo "⚠️  Downloads folder not found, skipping copy"
+fi
+
 echo ""
 echo "🚀 Ready for deployment!"
 echo "1. Upload stablecoin-pay.zip to WordPress"
