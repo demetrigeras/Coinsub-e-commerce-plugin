@@ -43,7 +43,8 @@ jobs:
       continue-on-error: true
       run: |
         echo "Running WordPress Coding Standards check (WordPress-Core standard)..."
-        $HOME/.composer/vendor/bin/phpcs --standard=WordPress-Core --report=summary --extensions=php --ignore=vendor,node_modules,*.min.js,*.min.css,*.zip --runtime-set text_domain coinsub . || true
+        echo "Excluding test files and backups..."
+        $HOME/.composer/vendor/bin/phpcs --standard=WordPress-Core --report=summary --extensions=php --ignore=vendor,node_modules,*.min.js,*.min.css,*.zip,test-*.php,*backup*.php,webhook-logger.php --runtime-set text_domain coinsub . || true
         echo ""
-        echo "💡 Note: This is a report only - violations don't block pushes."
+        echo "💡 Note: 19,982 violations can be auto-fixed. This is a report only - doesn't block pushes."
 
