@@ -11,7 +11,7 @@ The repository includes `.github/workflows/phpcs.yml` which will automatically:
 - ✅ Prevents merging code that doesn't meet standards
 
 ---
-
+//
 ## 🚀 Quick Setup (GitHub Actions)
 
 ### Step 1: Push the Workflow File
