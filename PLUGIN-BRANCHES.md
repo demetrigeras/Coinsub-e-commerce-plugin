@@ -3,7 +3,7 @@
 This repository maintains two separate branches for different plugin versions:
 
 ## Branches
-////
+//////
 ### `main` branch (Production - FOR MERCHANTS)
 - **Plugin Name**: "Coinsub"
 - **Features**: Production-ready, no environment selector
