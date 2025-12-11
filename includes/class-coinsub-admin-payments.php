@@ -150,70 +150,84 @@ class CoinSub_Admin_Payments {
                     <p><?php _e('No payments found.', 'coinsub'); ?></p>
                 </div>
             <?php else: ?>
-                <table class="wp-list-table widefat fixed striped" style="margin-top: 20px;">
-                    <thead>
-                        <tr>
-                            <th><?php _e('Order', 'coinsub'); ?></th>
-                            <th><?php _e('Customer', 'coinsub'); ?></th>
-                            <th><?php _e('Amount', 'coinsub'); ?></th>
-                            <th><?php _e('Status', 'coinsub'); ?></th>
-                            <th><?php _e('Transaction Hash', 'coinsub'); ?></th>
-                            <th><?php _e('Date', 'coinsub'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($payments_with_orders as $payment): ?>
-                        <tr>
-                            <td>
-                                <?php if ($payment['order']): ?>
-                                    <a href="<?php echo esc_url(admin_url('post.php?post=' . $payment['order']->get_id() . '&action=edit')); ?>">
-                                        #<?php echo esc_html($payment['order']->get_order_number()); ?>
-                                    </a>
-                                <?php else: ?>
-                                    <span style="color: #999;">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if ($payment['order']): ?>
-                                    <?php echo esc_html($payment['customer_name']); ?><br>
-                                    <small><?php echo esc_html($payment['customer_email']); ?></small>
-                                <?php else: ?>
-                                    <?php echo esc_html($payment['customer_email'] ?? $payment['customer_name'] ?? '—'); ?>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php 
-                                $amount = isset($payment['amount']) ? (float)$payment['amount'] : 0;
-                                $currency = isset($payment['currency']) ? $payment['currency'] : 'USD';
-                                echo wc_price($amount, array('currency' => $currency)); 
-                                ?>
-                            </td>
-                            <td>
-                                <span class="payment-status status-<?php echo esc_attr(strtolower($payment['status'] ?? 'unknown')); ?>">
-                                    <?php echo esc_html(ucfirst($payment['status'] ?? 'Unknown')); ?>
-                                </span>
-                            </td>
-                            <td>
-                                <?php if (!empty($payment['transaction_hash'])): ?>
-                                    <code style="font-size: 11px;"><?php echo esc_html(substr($payment['transaction_hash'], 0, 20)) . '...'; ?></code>
-                                <?php else: ?>
-                                    <span style="color: #999;">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php 
-                                if (!empty($payment['created_at'])) {
-                                    $ts = is_numeric($payment['created_at']) ? (int)$payment['created_at'] : strtotime($payment['created_at']);
-                                    echo esc_html($ts ? date_i18n('Y-m-d h:i:s A', $ts) : $payment['created_at']);
-                                } else {
-                                    echo '—';
-                                }
-                                ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <div class="coinsub-table-scroll">
+                    <table class="wp-list-table widefat fixed striped" style="margin-top: 20px; min-width: 900px;">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;"><?php _e('Order', 'coinsub'); ?></th>
+                                <th style="width: 300px;"><?php _e('Customer', 'coinsub'); ?></th>
+                                <th style="width: 100px;"><?php _e('Amount', 'coinsub'); ?></th>
+                                <th style="width: 100px;"><?php _e('Status', 'coinsub'); ?></th>
+                                <th style="width: 150px;"><?php _e('Transaction Hash', 'coinsub'); ?></th>
+                                <th><?php _e('Date', 'coinsub'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($payments_with_orders as $payment): ?>
+                            <tr style="height: 70px;">
+                                <td style="vertical-align: middle; width: 50px;">
+                                    <?php if ($payment['order']): ?>
+                                        <a style="font-weight: bold;" href="<?php echo esc_url(admin_url('post.php?post=' . $payment['order']->get_id() . '&action=edit')); ?>">
+                                            #<?php echo esc_html($payment['order']->get_order_number()); ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <span style="color: #999;">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="vertical-align: middle; width: 320px;">
+                                    <?php if ($payment['order']): ?>
+                                        <?php echo esc_html($payment['customer_name']); ?><br>
+                                        <small style="color: #222; font-size: 13px;"><?php echo esc_html($payment['customer_email']); ?></small>
+                                    <?php else: ?>
+                                        <?php echo esc_html($payment['customer_email'] ?? $payment['customer_name'] ?? '—'); ?>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="vertical-align: middle; width: 100px;">
+                                    <?php 
+                                    $amount = isset($payment['amount']) ? (float)$payment['amount'] : 0;
+                                    $currency = isset($payment['currency']) ? $payment['currency'] : 'USD';
+    
+                                    $formatted_amount = number_format($amount, 2, '.', ',');
+    
+                                    echo $formatted_amount . ' ' . esc_html($currency);
+                                    ?>
+                                </td>
+                                <td style="vertical-align: middle; width: 100px;">
+                                    <span style="font-weight: bold;" class="payment-status status-<?php echo esc_attr(strtolower($payment['status'] ?? 'unknown')); ?>">
+                                        <?php echo esc_html(ucfirst($payment['status'] ?? 'Unknown')); ?>
+                                    </span>
+                                </td>
+                                <td style="vertical-align: middle; width: 150px;">
+                                    <?php if (!empty($payment['transaction_hash'])): ?>
+                                        <a style="font-weight: bold; text-decoration: underline;" href="<?php echo esc_url($payment['block_explorer_url']); ?>" target="_blank" > 
+                                            <?php echo esc_html(substr($payment['transaction_hash'], 0, 10)) . '...'; ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <span style="color: #999;">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="vertical-align: middle;">
+                                    <?php 
+                                    if (!empty($payment['created_at'])) {
+                                        $ts = is_numeric($payment['created_at']) ? (int)$payment['created_at'] : strtotime($payment['created_at']);
+                                        
+                                        if ($ts) {
+                                            $date = date_i18n('M d, Y', $ts);       // e.g., Nov 18, 2026
+                                            $time = date_i18n('h:i:s A', $ts);      // e.g., 03:37:27 PM
+                                            echo esc_html($date) . "<br>" . esc_html($time);
+                                        } else {
+                                            echo esc_html($payment['created_at']);
+                                        }
+                                    } else {
+                                        echo '—';
+                                    }
+                                    ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             <?php endif; ?>
         </div>
         
@@ -241,6 +255,11 @@ class CoinSub_Admin_Payments {
             background: #e2e3e5;
             color: #383d41;
         }
+        .coinsub-table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
         
         </style>
         
@@ -365,6 +384,7 @@ class CoinSub_Admin_Payments {
                 'currency' => $payment['currency'] ?? 'USD',
                 'status' => $payment['status'] ?? 'unknown',
                 'transaction_hash' => $payment['transaction_hash'] ?? $payment['tx_hash'] ?? '',
+                'block_explorer_url' => $payment['block_explorer_url'] ?? '',
                 'created_at' => $created_at
             );
         }
