@@ -128,47 +128,60 @@ class CoinSub_Admin_Subscriptions {
                     <p><?php _e('No subscriptions found. Subscriptions will appear here after customers complete subscription payments.', 'coinsub'); ?></p>
                 </div>
             <?php else: ?>
-                <table class="wp-list-table widefat fixed striped" style="margin-top: 20px;">
+                <table class="wp-list-table widefat fixed striped" style="margin-top: 20px; min-width: 1300px;">
                     <thead>
                         <tr>
-                            <th><?php _e('Order', 'coinsub'); ?></th>
-                            <th><?php _e('Customer', 'coinsub'); ?></th>
-                            <th><?php _e('Product', 'coinsub'); ?></th>
-                            <th><?php _e('Amount', 'coinsub'); ?></th>
-                            <th><?php _e('Frequency', 'coinsub'); ?></th>
-                            <th><?php _e('Created At', 'coinsub'); ?></th>
-                            <th><?php _e('Next Processing', 'coinsub'); ?></th>
-                            <th><?php _e('Cancelled At', 'coinsub'); ?></th>
-                            <th><?php _e('Status', 'coinsub'); ?></th>
+                            <th style="width: 50px;"><?php _e('Order', 'coinsub'); ?></th>
+                            <th style="width: 250px;"><?php _e('Customer', 'coinsub'); ?></th>
+                            <th style="width: 125px;"><?php _e('Product', 'coinsub'); ?></th>
+                            <th style="width: 100px;"><?php _e('Amount', 'coinsub'); ?></th>
+                            <th style="width: 125px;"><?php _e('Frequency', 'coinsub'); ?></th>
+                            <th style="width: 100px;"><?php _e('Created At', 'coinsub'); ?></th>
+                            <th style="width: 105px;"><?php _e('Next Processing', 'coinsub'); ?></th>
+                            <th style="width: 100px;"><?php _e('Cancelled At', 'coinsub'); ?></th>
+                            <th style="width: 100px;"><?php _e('Status', 'coinsub'); ?></th>
                             <th><?php _e('Actions', 'coinsub'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($subscriptions as $sub): ?>
-                        <tr>
-                            <td>
-                                <a href="<?php echo esc_url(admin_url('post.php?post=' . $sub['order_id'] . '&action=edit')); ?>">
+                        <tr style="height: 70px;">
+                            <td style="vertical-align: middle; width: 50px;">
+                                <a style="font-weight: bold;" href="<?php echo esc_url(admin_url('post.php?post=' . $sub['order_id'] . '&action=edit')); ?>">
                                     #<?php echo esc_html($sub['order_number']); ?>
                                 </a>
                             </td>
-                            <td>
+                            <td style="vertical-align: middle; width: 250px;">
                                 <?php echo esc_html($sub['customer_name']); ?><br>
-                                <small><?php echo esc_html($sub['customer_email']); ?></small>
+                                <small style="color: #222; font-size: 13px;"><?php echo esc_html($sub['customer_email']); ?></small>
                             </td>
-                            <td><?php echo esc_html($sub['product_name']); ?></td>
-                            <td><?php echo wc_price($sub['amount']); ?></td>
-                            <td><?php echo esc_html($sub['frequency_text']); ?></td>
-                            <td><?php echo esc_html($sub['created_at'] ?? '—'); ?></td>
-                            <td><?php echo esc_html($sub['next_processing'] ?? '—'); ?></td>
-                            <td><?php echo esc_html($sub['cancelled_at'] ?? '—'); ?></td>
-                            <td>
+                            <td style="vertical-align: middle; width: 125px;">
+                                <?php echo esc_html($sub['product_name']); ?>
+                            </td>
+                            <td style="vertical-align: middle; width: 100px;">
+                                <?php echo wc_price($sub['amount']); ?>
+                            </td>
+                            <td style="vertical-align: middle; width: 125px;">
+                                <?php echo esc_html($sub['frequency_text']); ?>
+                            </td>
+                            <!-- Date Columns -->
+                            <td style="vertical-align: middle; width: 100px;">
+                                <?php $this->render_date_cell($sub['created_at']); ?>
+                            </td>
+                            <td style="vertical-align: middle; width: 100px;">
+                                <?php $this->render_date_cell($sub['next_processing']); ?>
+                            </td>
+                            <td style="vertical-align: middle; width: 100px;">
+                                <?php $this->render_date_cell($sub['cancelled_at']); ?>
+                            </td>
+                            <td style="vertical-align: middle; width: 100px;">
                                 <span class="subscription-status <?php echo esc_attr($sub['status_class']); ?>">
                                     <?php echo esc_html($sub['status_text']); ?>
                                 </span>
                             </td>
-                            <td>
+                            <td style="vertical-align: middle;">
                                 <?php if ($sub['status'] === 'active'): ?>
-                                    <button class="button button-small coinsub-cancel-sub" 
+                                    <button type="button" class="coinsub-cancel-sub" 
                                             data-order-id="<?php echo esc_attr($sub['order_id']); ?>"
                                             data-agreement-id="<?php echo esc_attr($sub['agreement_id']); ?>">
                                         <?php _e('Cancel', 'coinsub'); ?>
@@ -199,6 +212,33 @@ class CoinSub_Admin_Subscriptions {
         .status-cancelled {
             background: #f8d7da;
             color: #721c24;
+        }
+
+        button.coinsub-cancel-sub {
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 0;
+            color: #900; /* Dark Red */
+            font-weight: bold;
+            text-decoration: underline;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: inherit;
+        }
+        button.coinsub-cancel-sub:hover {
+            color: #d00; /* Brighter Red */
+            background: none;
+        }
+        button.coinsub-cancel-sub:focus {
+            outline: none;
+            box-shadow: none;
+            color: #d00;
+        }
+        button.coinsub-cancel-sub:disabled {
+            color: #999;
+            text-decoration: none;
+            cursor: default;
         }
         </style>
         
@@ -244,6 +284,23 @@ class CoinSub_Admin_Subscriptions {
         });
         </script>
         <?php
+    }
+
+    private function render_date_cell($date_value) {
+        if (empty($date_value) || $date_value === '—') {
+            echo '<span style="color: #999;">—</span>';
+            return;
+        }
+
+        $ts = is_numeric($date_value) ? (int)$date_value : strtotime($date_value);
+        
+        if ($ts) {
+            $date = date_i18n('M d, Y', $ts);
+            $time = date_i18n('h:i:s A', $ts);
+            echo esc_html($date) . "<br>" . esc_html($time);
+        } else {
+            echo esc_html($date_value);
+        }
     }
     
     /**

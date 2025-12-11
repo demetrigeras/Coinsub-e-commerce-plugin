@@ -398,7 +398,8 @@ class CoinSub_Whitelabel_Branding {
      * @return array Normalized logo data
      */
     private function normalize_logo_urls($logo) {
-        $api_base = 'https://dev-api.coinsub.io'; // Base URL for API assets
+        // $api_base = 'https://dev-api.coinsub.io'; // Base URL for API assets
+        $abi_base = 'https://app.coinsub.io/';
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $api_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
