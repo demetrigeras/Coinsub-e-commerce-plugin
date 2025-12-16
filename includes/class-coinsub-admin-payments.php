@@ -76,9 +76,7 @@ class CoinSub_Admin_Payments {
      * Add admin menu item
      */
     public function add_admin_menu() {
-        // Get company name (whitelabel if settings saved, otherwise "Stablecoin Pay")
-        $company_name = $this->get_display_company_name();
-        $menu_title = sprintf(__('%s Payments', 'coinsub'), $company_name);
+        $menu_title = __('Payments', 'coinsub');
         
         add_submenu_page(
             'woocommerce',
@@ -105,9 +103,7 @@ class CoinSub_Admin_Payments {
      * Render payments management page
      */
     public function render_payments_page() {
-        // Get company name for page title (whitelabel if settings saved, otherwise "Stablecoin Pay")
-        $company_name = $this->get_display_company_name();
-        $page_title = sprintf(__('%s Payments', 'coinsub'), $company_name);
+        $page_title = __('Payments', 'coinsub');
         
         // Get payments from API
         $api_client = $this->get_api_client();
@@ -119,11 +115,18 @@ class CoinSub_Admin_Payments {
         }
         
         $payments = array();
-        if (!is_wp_error($payments_response) && isset($payments_response['data']) && is_array($payments_response['data'])) {
-            $payments = $payments_response['data'];
-        } elseif (!is_wp_error($payments_response) && is_array($payments_response)) {
-            // Sometimes the API might return the array directly without 'data' wrapper
-            $payments = $payments_response;
+        if (!is_wp_error($payments_response)) {
+            if (isset($payments_response['data']) && is_array($payments_response['data'])) {
+                $payments = $payments_response['data'];
+            } elseif (is_array($payments_response)) {
+                // Sometimes the API might return the array directly without 'data' wrapper
+                $payments = $payments_response;
+            } else {
+                // API returned something unexpected - log it
+                error_log('⚠️ CoinSub Payments: Unexpected API response format: ' . json_encode($payments_response));
+            }
+        } else {
+            error_log('❌ CoinSub Payments: API error - ' . $payments_response->get_error_message());
         }
         
         // Match payments with WooCommerce orders
@@ -272,7 +275,19 @@ class CoinSub_Admin_Payments {
     private function match_payments_with_orders($payments) {
         $matched_payments = array();
         
+        // Ensure $payments is an array
+        if (!is_array($payments)) {
+            error_log('⚠️ CoinSub Payments: $payments is not an array, returning empty');
+            return array();
+        }
+        
         foreach ($payments as $payment) {
+            // Skip if payment is not an array
+            if (!is_array($payment)) {
+                error_log('⚠️ CoinSub Payments: Skipping invalid payment item (not an array)');
+                continue;
+            }
+            
             $order = null;
             $customer_name = '';
             $customer_email = '';
@@ -363,8 +378,12 @@ class CoinSub_Admin_Payments {
             
             // Log for debugging if still empty
             if (empty($created_at)) {
-                error_log('🔍 Payment data keys: ' . json_encode(array_keys($payment)));
-                error_log('🔍 Full payment data: ' . json_encode($payment));
+                if (is_array($payment)) {
+                    error_log('🔍 Payment data keys: ' . json_encode(array_keys($payment)));
+                    error_log('🔍 Full payment data: ' . json_encode($payment));
+                } else {
+                    error_log('🔍 Payment data is not an array: ' . json_encode($payment));
+                }
             }
             
             // Normalize milliseconds timestamps to seconds if needed

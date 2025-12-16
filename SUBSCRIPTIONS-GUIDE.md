@@ -94,7 +94,7 @@ Customers can:
 
 **Cancel Subscription:**
 ```
-POST https://dev-api.coinsub.io/v1/agreements/cancel/{agreement_id}
+POST https://app.coinsub.io/v1/agreements/cancel/{agreement_id}
 Headers:
   - Merchant-ID: {merchant_id}
   - API-Key: {api_key}

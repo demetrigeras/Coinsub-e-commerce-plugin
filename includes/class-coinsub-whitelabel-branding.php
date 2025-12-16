@@ -37,7 +37,23 @@ class CoinSub_Whitelabel_Branding {
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
-        $api_base_url = 'https://dev-api.coinsub.io/v1';
+        
+        // Get whitelabel-aware API URL
+        // Default: api.coinsub.io/v1
+        // Whitelabel: api.{{domain}}/v1
+        $api_base_url = 'https://api.coinsub.io/v1'; // Default
+        $branding = get_option('coinsub_whitelabel_branding', false);
+        if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
+            $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+            
+            // Validate domain is not empty after extraction
+            if (!empty($domain) && $domain !== 'coinsub.io') {
+                $api_base_url = 'https://api.' . $domain . '/v1';
+            }
+        }
+        // Dev URL (commented out): https://dev-api.coinsub.io/v1
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -110,7 +126,20 @@ class CoinSub_Whitelabel_Branding {
         }
         
         // Ensure API client has the latest base URL (merchant ID is passed directly to the method)
-        $api_base_url = 'https://dev-api.coinsub.io/v1';
+        // Get whitelabel-aware API URL
+        $api_base_url = 'https://api.coinsub.io/v1'; // Default
+        $branding = get_option('coinsub_whitelabel_branding', false);
+        if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
+            $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+            
+            // Validate domain is not empty after extraction
+            if (!empty($domain) && $domain !== 'coinsub.io') {
+                $api_base_url = 'https://api.' . $domain . '/v1';
+            }
+        }
+        // Dev URL (commented out): https://dev-api.coinsub.io/v1
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
         error_log('CoinSub Whitelabel: Updated API client - Merchant ID: ' . $merchant_id . ' (no API key needed for merchant-info endpoint)');
@@ -392,14 +421,16 @@ class CoinSub_Whitelabel_Branding {
     /**
      * Normalize logo URLs (convert relative to absolute if needed)
      * Logo URLs from config_data are relative paths like "/img/domain/vantack/vantack.light.svg"
-     * Need to convert to full URL: "https://dev-api.coinsub.io/img/domain/vantack/vantack.light.svg"
+     * Default: https://api.coinsub.io/img/domain/vantack/vantack.light.svg
+     * Whitelabel: https://api.{{domain}}/img/domain/vantack/vantack.light.svg (e.g., api.vantack.com)
      * 
      * @param array $logo Logo data
      * @return array Normalized logo data
      */
     private function normalize_logo_urls($logo) {
-        // $api_base = 'https://dev-api.coinsub.io'; // Base URL for API assets
-        $abi_base = 'https://app.coinsub.io/';
+        // Default: $api_base = 'https://api.coinsub.io';
+        // Whitelabel: $api_base = 'https://api.{{domain}}'; (e.g., api.vantack.com)
+        $abi_base = 'https://api.coinsub.io/';
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $api_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));

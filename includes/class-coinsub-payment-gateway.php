@@ -149,7 +149,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
             var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Remove Payment Blocks (IMPORTANT)</h4><ol style=line-height:1.6;margin-top:0><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) again<li>Select <strong>Preferences</strong><li>In the search bar, type "payments"<li>Uncheck all blocks related to payments<li>Close preferences and update the page</ol><h4 style="margin:1.5em 0 .5em">Step 5: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/coinsub/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
@@ -372,10 +372,28 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get API base URL based on selected environment
+     * Get API base URL - whitelabel aware
+     * Default: api.coinsub.io/v1
+     * Whitelabel: api.{{domain}}/v1 (e.g., api.vantack.com/v1)
      */
     public function get_api_base_url() {
-        return 'https://dev-api.coinsub.io/v1';
+        // Check for whitelabel domain from branding
+        $branding = get_option('coinsub_whitelabel_branding', false);
+        if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
+            // Extract domain from buyurl (e.g., "vantack.com" from "https://app.vantack.com")
+            $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+            
+            // Validate domain is not empty after extraction
+            if (!empty($domain) && $domain !== 'coinsub.io') {
+                return 'https://api.' . $domain . '/v1';
+            }
+        }
+        
+        // Default: api.coinsub.io/v1
+        return 'https://api.coinsub.io/v1';
+        // Dev URL (commented out): https://dev-api.coinsub.io/v1
     }
     
     /**
@@ -510,7 +528,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
-        $api_base_url = 'https://dev-api.coinsub.io/v1';
+        // Use whitelabel-aware API URL
+        $api_base_url = $this->get_api_base_url();
         
         error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
@@ -674,11 +693,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $purchase_session_data = $this->prepare_purchase_session_from_cart($order, $cart_data);
             
             $purchase_session = $this->api_client->create_purchase_session($purchase_session_data);
-            error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
             
+            // Check for errors BEFORE trying to access as array
             if (is_wp_error($purchase_session)) {
+                error_log('❌ CoinSub - Purchase session failed: ' . $purchase_session->get_error_message());
                 throw new Exception($purchase_session->get_error_message());
             }
+            
+            error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
             
             // Store CoinSub data in order meta
             $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session['purchase_session_id']);

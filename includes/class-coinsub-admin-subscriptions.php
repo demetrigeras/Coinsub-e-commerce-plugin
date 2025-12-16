@@ -76,9 +76,7 @@ class CoinSub_Admin_Subscriptions {
      * Add admin menu item
      */
     public function add_admin_menu() {
-        // Get company name (whitelabel if settings saved, otherwise "Stablecoin Pay")
-        $company_name = $this->get_display_company_name();
-        $menu_title = sprintf(__('%s Subscriptions', 'coinsub'), $company_name);
+        $menu_title = __('Subscriptions', 'coinsub');
         
         add_submenu_page(
             'woocommerce',
@@ -105,9 +103,7 @@ class CoinSub_Admin_Subscriptions {
      * Render subscriptions management page
      */
     public function render_subscriptions_page() {
-        // Get company name for page title (whitelabel if settings saved, otherwise "Stablecoin Pay")
-        $company_name = $this->get_display_company_name();
-        $page_title = sprintf(__('%s Subscriptions', 'coinsub'), $company_name);
+        $page_title = __('Subscriptions', 'coinsub');
         
         // Get all subscription orders
         $subscriptions = $this->get_all_subscriptions();
@@ -128,54 +124,55 @@ class CoinSub_Admin_Subscriptions {
                     <p><?php _e('No subscriptions found. Subscriptions will appear here after customers complete subscription payments.', 'coinsub'); ?></p>
                 </div>
             <?php else: ?>
-                <table class="wp-list-table widefat fixed striped" style="margin-top: 20px; min-width: 1300px;">
+                <div class="coinsub-table-scroll">
+                    <table class="wp-list-table widefat fixed striped" style="margin-top: 20px; min-width: 1000px;">
                     <thead>
                         <tr>
-                            <th style="width: 50px;"><?php _e('Order', 'coinsub'); ?></th>
-                            <th style="width: 250px;"><?php _e('Customer', 'coinsub'); ?></th>
-                            <th style="width: 125px;"><?php _e('Product', 'coinsub'); ?></th>
-                            <th style="width: 100px;"><?php _e('Amount', 'coinsub'); ?></th>
-                            <th style="width: 125px;"><?php _e('Frequency', 'coinsub'); ?></th>
-                            <th style="width: 100px;"><?php _e('Created At', 'coinsub'); ?></th>
-                            <th style="width: 105px;"><?php _e('Next Processing', 'coinsub'); ?></th>
-                            <th style="width: 100px;"><?php _e('Cancelled At', 'coinsub'); ?></th>
-                            <th style="width: 100px;"><?php _e('Status', 'coinsub'); ?></th>
+                            <th style="width: 40px;"><?php _e('Order', 'coinsub'); ?></th>
+                            <th style="width: 200px;"><?php _e('Customer', 'coinsub'); ?></th>
+                            <th style="width: 100px;"><?php _e('Product', 'coinsub'); ?></th>
+                            <th style="width: 80px;"><?php _e('Amount', 'coinsub'); ?></th>
+                            <th style="width: 100px;"><?php _e('Regularity', 'coinsub'); ?></th>
+                            <th style="width: 90px;"><?php _e('Start Date', 'coinsub'); ?></th>
+                            <th style="width: 90px;"><?php _e('Next Payment', 'coinsub'); ?></th>
+                            <th style="width: 90px;"><?php _e('Cancelled At', 'coinsub'); ?></th>
+                            <th style="width: 80px;"><?php _e('Status', 'coinsub'); ?></th>
                             <th><?php _e('Actions', 'coinsub'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($subscriptions as $sub): ?>
                         <tr style="height: 70px;">
-                            <td style="vertical-align: middle; width: 50px;">
+                            <td style="vertical-align: middle; width: 40px;">
                                 <a style="font-weight: bold;" href="<?php echo esc_url(admin_url('post.php?post=' . $sub['order_id'] . '&action=edit')); ?>">
                                     #<?php echo esc_html($sub['order_number']); ?>
                                 </a>
                             </td>
-                            <td style="vertical-align: middle; width: 250px;">
+                            <td style="vertical-align: middle; width: 200px;">
                                 <?php echo esc_html($sub['customer_name']); ?><br>
                                 <small style="color: #222; font-size: 13px;"><?php echo esc_html($sub['customer_email']); ?></small>
                             </td>
-                            <td style="vertical-align: middle; width: 125px;">
+                            <td style="vertical-align: middle; width: 100px;">
                                 <?php echo esc_html($sub['product_name']); ?>
                             </td>
-                            <td style="vertical-align: middle; width: 100px;">
+                            <td style="vertical-align: middle; width: 80px;">
                                 <?php echo wc_price($sub['amount']); ?>
                             </td>
-                            <td style="vertical-align: middle; width: 125px;">
+                            <td style="vertical-align: middle; width: 100px;">
                                 <?php echo esc_html($sub['frequency_text']); ?>
                             </td>
                             <!-- Date Columns -->
-                            <td style="vertical-align: middle; width: 100px;">
+                            <td style="vertical-align: middle; width: 90px;">
                                 <?php $this->render_date_cell($sub['created_at']); ?>
                             </td>
-                            <td style="vertical-align: middle; width: 100px;">
+                            <td style="vertical-align: middle; width: 90px;">
                                 <?php $this->render_date_cell($sub['next_processing']); ?>
                             </td>
-                            <td style="vertical-align: middle; width: 100px;">
+                            <td style="vertical-align: middle; width: 90px;">
                                 <?php $this->render_date_cell($sub['cancelled_at']); ?>
                             </td>
-                            <td style="vertical-align: middle; width: 100px;">
-                                <span class="subscription-status <?php echo esc_attr($sub['status_class']); ?>">
+                            <td style="vertical-align: middle; width: 80px;">
+                                <span style="font-weight: bold;" class="subscription-status <?php echo esc_attr($sub['status_class']); ?>">
                                     <?php echo esc_html($sub['status_text']); ?>
                                 </span>
                             </td>
@@ -194,6 +191,7 @@ class CoinSub_Admin_Subscriptions {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+                </div>
             <?php endif; ?>
         </div>
         
@@ -212,6 +210,10 @@ class CoinSub_Admin_Subscriptions {
         .status-cancelled {
             background: #f8d7da;
             color: #721c24;
+        }
+        .coinsub-table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         button.coinsub-cancel-sub {

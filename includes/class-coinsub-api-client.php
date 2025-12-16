@@ -40,8 +40,25 @@ class CoinSub_API_Client {
         // Try to get settings from payment gateway first, then fallback to global options
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
-        // Default to dev API while testing
-        $this->api_base_url = 'https://dev-api.coinsub.io/v1';
+        // Get whitelabel-aware API URL
+        // Default: api.coinsub.io/v1
+        // Whitelabel: api.{{domain}}/v1 (e.g., api.vantack.com/v1)
+        $branding = get_option('coinsub_whitelabel_branding', false);
+        if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
+            $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+            
+            // Validate domain is not empty after extraction
+            if (!empty($domain) && $domain !== 'coinsub.io') {
+                $this->api_base_url = 'https://api.' . $domain . '/v1';
+            } else {
+                $this->api_base_url = 'https://api.coinsub.io/v1';
+            }
+        } else {
+            $this->api_base_url = 'https://api.coinsub.io/v1';
+        }
+        // Dev URL (commented out): https://dev-api.coinsub.io/v1
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
@@ -307,6 +324,12 @@ class CoinSub_API_Client {
     public function get_all_payments() {
         $endpoint = rtrim($this->api_base_url, '/') . '/payments/all';
         
+        // Log API request details
+        error_log('🔍 CoinSub API - Get All Payments');
+        error_log('🔍 Endpoint: ' . $endpoint);
+        error_log('🔍 Merchant ID: ' . (empty($this->merchant_id) ? 'EMPTY!' : substr($this->merchant_id, 0, 8) . '...'));
+        error_log('🔍 API Key: ' . (empty($this->api_key) ? 'EMPTY!' : 'SET'));
+        
         $headers = array(
             'Content-Type' => 'application/json',
             'Merchant-ID' => $this->merchant_id,
@@ -316,14 +339,21 @@ class CoinSub_API_Client {
         $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
         
         if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - WP Error: ' . $response->get_error_message());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
+        $response_code = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
         
-        if (wp_remote_retrieve_response_code($response) !== 200) {
-            return new WP_Error('api_error', isset($data['error']) ? $data['error'] : 'API request failed');
+        error_log('🔍 Response Code: ' . $response_code);
+        error_log('🔍 Response Body: ' . substr($body, 0, 500));
+        
+        if ($response_code !== 200) {
+            $error_message = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('❌ CoinSub API - Error: ' . $error_message);
+            return new WP_Error('api_error', $error_message);
         }
         
         return $data;
