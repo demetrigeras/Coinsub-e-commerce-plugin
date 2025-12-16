@@ -1,11 +1,9 @@
 <?php
 /**
  * Plugin Name: Stablecoin Pay
- * Plugin URI: https://coinsub.io
  * Description: Accept cryptocurrency payments with Stablecoin Pay. Simple crypto payments for WooCommerce.
  * Version: 1.0.0
- * Author: CoinSub
- * Author URI: https://coinsub.io
+ * Author: Stablecoin Pay
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: coinsub
@@ -317,15 +315,13 @@ function coinsub_add_settings_link($links) {
     return $links;
 }
 
-// Add review page link to plugin meta (below description)
-add_filter('plugin_row_meta', 'coinsub_add_review_page_link', 10, 2);
+// Remove default plugin page links (Visit plugin site, Review)
+add_filter('plugin_row_meta', 'coinsub_remove_plugin_meta_links', 10, 2);
 
-function coinsub_add_review_page_link($links, $file) {
-    // Only add link for this plugin
-    if (plugin_basename(__FILE__) === $file) {
-        $review_url = home_url('/stablecoin-pay-review');
-        $review_link = '<a href="' . esc_url($review_url) . '" target="_blank">' . __('Review Page', 'coinsub') . '</a>';
-        $links[] = $review_link;
+function coinsub_remove_plugin_meta_links($links, $file) {
+    if (strpos($file, 'coinsub-commerce.php') !== false) {
+        // Remove all default meta links
+        return array();
     }
     return $links;
 }
