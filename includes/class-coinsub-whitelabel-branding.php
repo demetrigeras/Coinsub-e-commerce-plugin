@@ -41,7 +41,8 @@ class CoinSub_Whitelabel_Branding {
         // Get whitelabel-aware API URL
         // Default: api.coinsub.io/v1
         // Whitelabel: api.{{domain}}/v1
-        $api_base_url = 'https://api.coinsub.io/v1'; // Default
+        // $api_base_url = 'https://api.coinsub.io/v1'; // Production (commented out for testing)
+        $api_base_url = 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
         $branding = get_option('coinsub_whitelabel_branding', false);
         if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
             $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
@@ -53,7 +54,6 @@ class CoinSub_Whitelabel_Branding {
                 $api_base_url = 'https://api.' . $domain . '/v1';
             }
         }
-        // Dev URL (commented out): https://dev-api.coinsub.io/v1
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -127,7 +127,8 @@ class CoinSub_Whitelabel_Branding {
         
         // Ensure API client has the latest base URL (merchant ID is passed directly to the method)
         // Get whitelabel-aware API URL
-        $api_base_url = 'https://api.coinsub.io/v1'; // Default
+        // $api_base_url = 'https://api.coinsub.io/v1'; // Production (commented out for testing)
+        $api_base_url = 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
         $branding = get_option('coinsub_whitelabel_branding', false);
         if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
             $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
@@ -139,7 +140,6 @@ class CoinSub_Whitelabel_Branding {
                 $api_base_url = 'https://api.' . $domain . '/v1';
             }
         }
-        // Dev URL (commented out): https://dev-api.coinsub.io/v1
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
         error_log('CoinSub Whitelabel: Updated API client - Merchant ID: ' . $merchant_id . ' (no API key needed for merchant-info endpoint)');
@@ -430,7 +430,8 @@ class CoinSub_Whitelabel_Branding {
     private function normalize_logo_urls($logo) {
         // Default: $api_base = 'https://api.coinsub.io';
         // Whitelabel: $api_base = 'https://api.{{domain}}'; (e.g., api.vantack.com)
-        $abi_base = 'https://api.coinsub.io/';
+        // $api_base = 'https://api.coinsub.io/'; // Production (commented out for testing)
+        $api_base = 'https://dev-api.coinsub.io/'; // Dev URL (active for testing)
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $api_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
@@ -509,6 +510,43 @@ class CoinSub_Whitelabel_Branding {
         // No logo found - return default CoinSub logo
         $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo found in branding, using default: ' . $default_logo);
+        return $default_logo;
+    }
+    
+    /**
+     * Get favicon URL
+     * 
+     * @return string Favicon URL (or default if not found)
+     */
+    public function get_favicon_url() {
+        $branding = $this->get_branding();
+        
+        error_log('CoinSub Whitelabel: 🖼️ get_favicon_url() called');
+        error_log('CoinSub Whitelabel: 🖼️ Branding data: ' . json_encode($branding, JSON_PRETTY_PRINT));
+        
+        if (!empty($branding) && isset($branding['favicon']) && !empty($branding['favicon'])) {
+            $favicon_url = $branding['favicon'];
+            
+            // If URL doesn't start with http, it's relative - make it absolute
+            if (strpos($favicon_url, 'http') !== 0) {
+                // $api_base = 'https://api.coinsub.io'; // Production (commented out for testing)
+                $api_base = 'https://dev-api.coinsub.io'; // Dev URL (active for testing)
+                
+                if (strpos($favicon_url, '/') === 0) {
+                    $favicon_url = $api_base . $favicon_url;
+                } else {
+                    $favicon_url = $api_base . '/' . $favicon_url;
+                }
+                error_log('CoinSub Whitelabel: 🖼️ Converted relative favicon URL to: ' . $favicon_url);
+            }
+            
+            error_log('CoinSub Whitelabel: 🖼️ ✅ Found favicon URL: ' . $favicon_url);
+            return $favicon_url;
+        }
+        
+        // No favicon found - return default CoinSub logo
+        $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        error_log('CoinSub Whitelabel: 🖼️ ⚠️ No favicon found in branding, using default: ' . $default_logo);
         return $default_logo;
     }
     

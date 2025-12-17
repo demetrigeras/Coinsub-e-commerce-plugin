@@ -392,8 +392,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         
         // Default: api.coinsub.io/v1
-        return 'https://api.coinsub.io/v1';
-        // Dev URL (commented out): https://dev-api.coinsub.io/v1
+        // return 'https://api.coinsub.io/v1'; // Production (commented out for testing)
+        return 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
     }
     
     /**
@@ -443,19 +443,28 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
             error_log('CoinSub Whitelabel: ✅ CHECKOUT TITLE SET - Title: "' . $this->checkout_title . '" | Company: "' . $company_name . '" | brand_company property: "' . $this->brand_company . '"');
             
-            // Update checkout icon with whitelabel logo (use default light logo)
-        $logo_url = $branding->get_logo_url('default', 'light');
-        if ($logo_url) {
-                $this->checkout_icon = $logo_url;
-                // Also set button logo URL for JavaScript injection
-                $this->button_logo_url = $logo_url;
-                $this->button_company_name = $company_name;
-                error_log('CoinSub Whitelabel: 🖼️ ✅ Set checkout icon to: ' . $logo_url);
-                error_log('CoinSub Whitelabel: 🔘 Button logo URL set: ' . $this->button_logo_url);
+            // Update checkout icon - prefer favicon (smaller, better for payment method icon)
+            $favicon_url = $branding->get_favicon_url();
+            if ($favicon_url) {
+                $this->checkout_icon = $favicon_url;
+                error_log('CoinSub Whitelabel: 🖼️ ✅ Set checkout icon to favicon: ' . $favicon_url);
             } else {
-                error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo URL returned, keeping default icon');
-                $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+                // Fallback to default logo
+                $logo_url = $branding->get_logo_url('default', 'light');
+                if ($logo_url) {
+                    $this->checkout_icon = $logo_url;
+                    error_log('CoinSub Whitelabel: 🖼️ ✅ Set checkout icon to logo: ' . $logo_url);
+                } else {
+                    error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo URL returned, keeping default icon');
+                    $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+                }
             }
+            
+            // For button logo (larger), use the default logo
+            $logo_url = $branding->get_logo_url('default', 'light');
+            $this->button_logo_url = $logo_url ?: COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $this->button_company_name = $company_name;
+            error_log('CoinSub Whitelabel: 🔘 Button logo URL set: ' . $this->button_logo_url);
         } else {
             // No branding found - use default "Pay with Coinsub" and CoinSub logo
             error_log('CoinSub Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub" and CoinSub logo');
@@ -1443,7 +1452,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
         }
         
-        $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; height: auto;" />';
+        // Ensure we have a valid URL before creating HTML
+        if (empty($icon_url)) {
+            $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            error_log('CoinSub Whitelabel: ⚠️ Empty icon URL detected, using default');
+        }
+        
+        $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 30px; max-height: 30px; height: auto; vertical-align: middle; margin-left: 8px;" />';
         return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
     }
     

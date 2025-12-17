@@ -53,12 +53,13 @@ class CoinSub_API_Client {
             if (!empty($domain) && $domain !== 'coinsub.io') {
                 $this->api_base_url = 'https://api.' . $domain . '/v1';
             } else {
-                $this->api_base_url = 'https://api.coinsub.io/v1';
+                // $this->api_base_url = 'https://api.coinsub.io/v1'; // Production (commented out for testing)
+                $this->api_base_url = 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
             }
         } else {
-            $this->api_base_url = 'https://api.coinsub.io/v1';
+            // $this->api_base_url = 'https://api.coinsub.io/v1'; // Production (commented out for testing)
+            $this->api_base_url = 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
         }
-        // Dev URL (commented out): https://dev-api.coinsub.io/v1
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
