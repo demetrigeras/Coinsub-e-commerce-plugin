@@ -358,7 +358,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'payment_provider_name' => array(
                 'title' => __('Payment Provider Name (Optional)', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Enter your payment provider company name (e.g., "Payment Servers"). Leave blank if you signed up directly with CoinSub. This is case-insensitive and will be validated.', 'coinsub'),
+                'description' => __('Enter your payment provider company name (e.g., "Company Name"). Leave blank if you signed up directly with CoinSub. This is case-insensitive and will be validated.', 'coinsub'),
                 'default' => '',
                 'placeholder' => 'e.g., Company Name',
             ),
