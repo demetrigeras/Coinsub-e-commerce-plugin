@@ -40,8 +40,8 @@ class CoinSub_Whitelabel_Branding {
         
         // API URL is centralized - ALL merchants use the same API endpoint
         // The API determines the merchant based on Merchant ID, not domain
-        // $api_base_url = 'https://api.coinsub.io/v1'; // Production (uncomment for prod)
-        $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment (active for testing)
+        $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
         error_log('CoinSub API: Using centralized API URL: ' . $api_base_url);
         
         if (!empty($merchant_id) && !empty($api_key)) {
@@ -116,8 +116,8 @@ class CoinSub_Whitelabel_Branding {
         
         // Ensure API client has the latest base URL (merchant ID is passed directly to the method)
         // API URL is centralized - ALL merchants use the same API endpoint
-        // $api_base_url = 'https://api.coinsub.io/v1'; // Production (uncomment for prod)
-        $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment (active for testing)
+        $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
         error_log('CoinSub API: Using centralized API URL: ' . $api_base_url);
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
@@ -407,11 +407,11 @@ class CoinSub_Whitelabel_Branding {
      * @return array Normalized logo data
      */
     private function normalize_logo_urls($logo) {
-        // API base for asset URLs (logos, favicons, etc.)
-        // $api_base = 'https://api.coinsub.io/'; // Production (commented out for testing)
-        $api_base = 'https://test-api.coinsub.io/'; // Test environment (active for testing)
+        // Asset base for static files (logos, favicons, etc.) - NOT the API endpoint
+        $asset_base = 'https://coinsub.io/'; // Production
+        // $asset_base = 'https://test.coinsub.io/'; // Test environment
         
-        error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $api_base);
+        error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $asset_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
         
         foreach ($logo as $type => &$variants) {
@@ -425,9 +425,9 @@ class CoinSub_Whitelabel_Branding {
                     if (strpos($url, 'http') !== 0) {
                         // Relative URL, make it absolute
                         if (strpos($url, '/') === 0) {
-                            $url = $api_base . $url;
+                            $url = $asset_base . $url;
                         } else {
-                            $url = $api_base . '/' . $url;
+                            $url = $asset_base . '/' . $url;
                         }
                         error_log('CoinSub Whitelabel: 🖼️ Converted relative logo URL to: ' . $url);
                     } else {
@@ -485,6 +485,18 @@ class CoinSub_Whitelabel_Branding {
             return $logo_url;
         }
         
+        // FALLBACK: Auto-construct logo URL from company name
+        if (!empty($branding) && isset($branding['company']) && !empty($branding['company'])) {
+            $company_slug = $this->get_company_slug($branding['company']);
+            $asset_base = 'https://coinsub.io'; // Production
+            // $asset_base = 'https://test.coinsub.io'; // Test environment
+            // Construct URL pattern: /img/domain/{slug}/{slug}.{type}.{theme}.svg
+            $filename = $company_slug . '.' . $type . '.' . $theme . '.svg';
+            $constructed_url = $asset_base . '/img/domain/' . $company_slug . '/' . $filename;
+            error_log('CoinSub Whitelabel: 🖼️ 🔧 Auto-constructed logo URL: ' . $constructed_url);
+            return $constructed_url;
+        }
+        
         // No logo found - return default CoinSub logo
         $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo found in branding, using default: ' . $default_logo);
@@ -507,13 +519,13 @@ class CoinSub_Whitelabel_Branding {
             
             // If URL doesn't start with http, it's relative - make it absolute
             if (strpos($favicon_url, 'http') !== 0) {
-                // $api_base = 'https://api.coinsub.io'; // Production (commented out for testing)
-                $api_base = 'https://test-api.coinsub.io'; // Test environment (active for testing)
+                $asset_base = 'https://coinsub.io'; // Production
+                // $asset_base = 'https://test.coinsub.io'; // Test environment
                 
                 if (strpos($favicon_url, '/') === 0) {
-                    $favicon_url = $api_base . $favicon_url;
+                    $favicon_url = $asset_base . $favicon_url;
                 } else {
-                    $favicon_url = $api_base . '/' . $favicon_url;
+                    $favicon_url = $asset_base . '/' . $favicon_url;
                 }
                 error_log('CoinSub Whitelabel: 🖼️ Converted relative favicon URL to: ' . $favicon_url);
             }
@@ -522,10 +534,36 @@ class CoinSub_Whitelabel_Branding {
             return $favicon_url;
         }
         
+        // FALLBACK: Auto-construct favicon URL from company name
+        if (!empty($branding) && isset($branding['company']) && !empty($branding['company'])) {
+            $company_slug = $this->get_company_slug($branding['company']);
+            $asset_base = 'https://coinsub.io'; // Production
+            // $asset_base = 'https://test.coinsub.io'; // Test environment
+            $constructed_url = $asset_base . '/img/domain/' . $company_slug . '/favicon.png';
+            error_log('CoinSub Whitelabel: 🖼️ 🔧 Auto-constructed favicon URL: ' . $constructed_url);
+            return $constructed_url;
+        }
+        
         // No favicon found - return default CoinSub logo
         $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         error_log('CoinSub Whitelabel: 🖼️ ⚠️ No favicon found in branding, using default: ' . $default_logo);
         return $default_logo;
+    }
+    
+    /**
+     * Convert company name to slug for constructing logo URLs
+     * Examples: "Payment Servers" -> "paymentservers", "Vantack" -> "vantack"
+     * 
+     * @param string $company_name Company name from branding
+     * @return string Company slug for URL paths
+     */
+    private function get_company_slug($company_name) {
+        // Convert to lowercase and remove spaces
+        $slug = strtolower($company_name);
+        $slug = str_replace(' ', '', $slug);
+        // Remove special characters
+        $slug = preg_replace('/[^a-z0-9]/', '', $slug);
+        return $slug;
     }
     
     /**

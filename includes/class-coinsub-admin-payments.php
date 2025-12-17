@@ -117,10 +117,10 @@ class CoinSub_Admin_Payments {
         $payments = array();
         if (!is_wp_error($payments_response)) {
             if (isset($payments_response['data']) && is_array($payments_response['data'])) {
-                $payments = $payments_response['data'];
+            $payments = $payments_response['data'];
             } elseif (is_array($payments_response)) {
-                // Sometimes the API might return the array directly without 'data' wrapper
-                $payments = $payments_response;
+            // Sometimes the API might return the array directly without 'data' wrapper
+            $payments = $payments_response;
             } else {
                 // API returned something unexpected - log it
                 error_log('⚠️ CoinSub Payments: Unexpected API response format: ' . json_encode($payments_response));
@@ -379,8 +379,8 @@ class CoinSub_Admin_Payments {
             // Log for debugging if still empty
             if (empty($created_at)) {
                 if (is_array($payment)) {
-                    error_log('🔍 Payment data keys: ' . json_encode(array_keys($payment)));
-                    error_log('🔍 Full payment data: ' . json_encode($payment));
+                error_log('🔍 Payment data keys: ' . json_encode(array_keys($payment)));
+                error_log('🔍 Full payment data: ' . json_encode($payment));
                 } else {
                     error_log('🔍 Payment data is not an array: ' . json_encode($payment));
                 }

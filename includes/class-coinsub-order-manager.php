@@ -574,10 +574,7 @@ class CoinSub_Order_Manager {
             <p><strong><?php _e('Coinsub Payment', 'coinsub-commerce'); ?></strong></p>
             
             <?php if ($payment_id): ?>
-            <p>
-                <strong><?php _e('Payment ID:', 'coinsub-commerce'); ?></strong><br>
-                <code><?php echo esc_html($payment_id); ?></code>
-            </p>
+            
             <?php endif; ?>
             
             <?php if ($transaction_hash): ?>

@@ -379,8 +379,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function get_api_base_url() {
         // API URL is centralized - ALL merchants use the same API endpoint
         // The API determines the merchant based on Merchant ID, not domain
-        // return 'https://api.coinsub.io/v1'; // Production (uncomment for prod)
-        return 'https://test-api.coinsub.io/v1'; // Test environment (active for testing)
+        return 'https://api.coinsub.io/v1'; // Production
+        // return 'https://test-api.coinsub.io/v1'; // Test environment
     }
     
     /**
