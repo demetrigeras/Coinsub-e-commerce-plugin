@@ -40,26 +40,10 @@ class CoinSub_API_Client {
         // Try to get settings from payment gateway first, then fallback to global options
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
-        // Get whitelabel-aware API URL
-        // Default: api.coinsub.io/v1
-        // Whitelabel: api.{{domain}}/v1 (e.g., api.vantack.com/v1)
-        $branding = get_option('coinsub_whitelabel_branding', false);
-        if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
-            $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
-            
-            // Validate domain is not empty after extraction
-            if (!empty($domain) && $domain !== 'coinsub.io') {
-                $this->api_base_url = 'https://api.' . $domain . '/v1';
-            } else {
-                // $this->api_base_url = 'https://api.coinsub.io/v1'; // Production (commented out for testing)
-                $this->api_base_url = 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
-            }
-        } else {
-            // $this->api_base_url = 'https://api.coinsub.io/v1'; // Production (commented out for testing)
-            $this->api_base_url = 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
-        }
+        // API URL is centralized - ALL merchants use the same API endpoint
+        // The API determines the merchant based on Merchant ID, not domain
+        // $this->api_base_url = 'https://api.coinsub.io/v1'; // Production (uncomment for prod)
+        $this->api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment (active for testing)
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';

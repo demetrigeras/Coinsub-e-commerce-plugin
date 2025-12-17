@@ -377,23 +377,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Whitelabel: api.{{domain}}/v1 (e.g., api.vantack.com/v1)
      */
     public function get_api_base_url() {
-        // Check for whitelabel domain from branding
-        $branding = get_option('coinsub_whitelabel_branding', false);
-        if ($branding && is_array($branding) && isset($branding['buyurl']) && !empty($branding['buyurl'])) {
-            // Extract domain from buyurl (e.g., "vantack.com" from "https://app.vantack.com")
-            $domain = preg_replace('#^https?://app\.#', '', $branding['buyurl']);
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
-            
-            // Validate domain is not empty after extraction
-            if (!empty($domain) && $domain !== 'coinsub.io') {
-                return 'https://api.' . $domain . '/v1';
-            }
-        }
-        
-        // Default: api.coinsub.io/v1
-        // return 'https://api.coinsub.io/v1'; // Production (commented out for testing)
-        return 'https://dev-api.coinsub.io/v1'; // Dev URL (active for testing)
+        // API URL is centralized - ALL merchants use the same API endpoint
+        // The API determines the merchant based on Merchant ID, not domain
+        // return 'https://api.coinsub.io/v1'; // Production (uncomment for prod)
+        return 'https://test-api.coinsub.io/v1'; // Test environment (active for testing)
     }
     
     /**
