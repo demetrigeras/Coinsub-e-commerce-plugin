@@ -103,15 +103,37 @@ class CoinSub_Whitelabel_Branding {
         set_transient(self::BRANDING_FETCH_LOCK_KEY, true, 30); // Lock for 30 seconds
         error_log('CoinSub Whitelabel: 🔒 Acquired fetch lock for 30 seconds');
         
-        // Get merchant ID from settings
+        // Get merchant ID and payment provider name from settings
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
+        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
         
         if (empty($merchant_id) || empty($api_key)) {
             // No credentials, return empty
             error_log('CoinSub Whitelabel: ❌ No merchant ID or API key in settings - cannot fetch branding');
             return array(); // Return empty array, no default
+        }
+        
+        // If payment provider name is provided, use it for branding
+        if (!empty($payment_provider_name)) {
+            error_log('CoinSub Whitelabel: 🏢 Payment Provider Name found in settings: "' . $payment_provider_name . '"');
+            $company_slug = $this->get_company_slug($payment_provider_name);
+            error_log('CoinSub Whitelabel: 🔧 Using company slug: "' . $company_slug . '" for branding');
+            
+            // Construct basic branding from the provider name
+            $branding_data = array(
+                'company' => $payment_provider_name, // Use the original casing from settings
+                'company_slug' => $company_slug,
+                'logo' => array(), // Will be auto-constructed by get_logo_url()
+                'favicon' => '', // Will be auto-constructed by get_favicon_url()
+            );
+            
+            // Store in database
+            update_option(self::BRANDING_OPTION_KEY, $branding_data, false);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            error_log('CoinSub Whitelabel: ✅ Branding created from payment provider name and stored');
+            return $branding_data;
         }
         
         // Ensure API client has the latest base URL (merchant ID is passed directly to the method)

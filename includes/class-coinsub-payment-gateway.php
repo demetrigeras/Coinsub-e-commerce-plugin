@@ -355,6 +355,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'description' => __('Get this from your merchant dashboard', 'coinsub'),
                 'default' => '',
             ),
+            'payment_provider_name' => array(
+                'title' => __('Payment Provider Name (Optional)', 'coinsub'),
+                'type' => 'text',
+                'description' => __('Enter your payment provider company name (e.g., "Payment Servers"). Leave blank if you signed up directly with CoinSub. This is case-insensitive and will be validated.', 'coinsub'),
+                'default' => '',
+                'placeholder' => 'e.g., Company Name',
+            ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
@@ -606,6 +613,26 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: 🔒 Preserving existing API key (password field unchanged)');
         }
         
+        // Validate payment_provider_name if provided
+        if (isset($_POST['woocommerce_coinsub_payment_provider_name']) && !empty($_POST['woocommerce_coinsub_payment_provider_name'])) {
+            $provider_name = trim($_POST['woocommerce_coinsub_payment_provider_name']);
+            error_log('CoinSub Whitelabel: 🏢 Payment Provider Name entered: "' . $provider_name . '"');
+            
+            // Normalize the provider name (lowercase, remove spaces)
+            $normalized_name = $this->normalize_provider_name($provider_name);
+            error_log('CoinSub Whitelabel: 🔧 Normalized to: "' . $normalized_name . '"');
+            
+            // Validate against known providers
+            if (!$this->validate_provider_name($normalized_name)) {
+                error_log('CoinSub Whitelabel: ❌ Invalid/misspelled payment provider name: "' . $provider_name . '"');
+                WC_Admin_Settings::add_error(__('Invalid payment provider name. Please check spelling or leave blank for CoinSub.', 'coinsub'));
+                // Clear the invalid value
+                $_POST['woocommerce_coinsub_payment_provider_name'] = '';
+            } else {
+                error_log('CoinSub Whitelabel: ✅ Valid payment provider: "' . $provider_name . '"');
+            }
+        }
+        
         // Call parent to save settings first
         $result = parent::process_admin_options();
         
@@ -639,6 +666,42 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('═══════════════════════════════════════════════════════════');
         
         return $result;
+    }
+    
+    /**
+     * Normalize payment provider name (lowercase, no spaces)
+     * Example: "Payment Servers" -> "paymentservers"
+     */
+    private function normalize_provider_name($name) {
+        $normalized = strtolower(trim($name));
+        $normalized = str_replace(' ', '', $normalized);
+        $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
+        return $normalized;
+    }
+    
+    /**
+     * Validate payment provider name against known whitelabels
+     * Returns true if valid, false if not found/misspelled
+     */
+    private function validate_provider_name($normalized_name) {
+        // Skip validation for empty or "coinsub"
+        if (empty($normalized_name) || $normalized_name === 'coinsub') {
+            return true;
+        }
+        
+        // TODO: Call API to get list of valid provider names
+        // For now, validate against common known providers
+        $known_providers = array(
+            'coinsub',
+            'paymentservers',
+            'vantack',
+            // More will be added dynamically from API in the future
+        );
+        
+        $is_valid = in_array($normalized_name, $known_providers);
+        error_log('CoinSub Whitelabel: 🔍 Validating "' . $normalized_name . '" against known providers: ' . ($is_valid ? 'FOUND ✅' : 'NOT FOUND ❌'));
+        
+        return $is_valid;
     }
     
     /**
