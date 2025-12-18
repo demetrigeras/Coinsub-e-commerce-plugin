@@ -140,10 +140,16 @@ class CoinSub_API_Client {
         
         // WHITELABEL BUY URL: Reconstruct the buy URL using branding data if available
         // This ensures we use the correct whitelabeled buy domain even if API returns default
+        error_log('🔍 CHECKING FOR BRANDING DATA TO RECONSTRUCT BUY URL...');
         $stored_branding = get_option('coinsub_whitelabel_branding', false);
+        
+        error_log('📦 Stored branding data: ' . json_encode($stored_branding));
+        error_log('📦 Branding is array? ' . (is_array($stored_branding) ? 'YES' : 'NO'));
+        error_log('📦 Has company_slug? ' . (isset($stored_branding['company_slug']) ? 'YES - ' . $stored_branding['company_slug'] : 'NO'));
         
         if ($stored_branding !== false && is_array($stored_branding) && isset($stored_branding['company_slug']) && !empty($checkout_url)) {
             $company_slug = $stored_branding['company_slug'];
+            error_log('✅ BRANDING FOUND - Company Slug: ' . $company_slug);
             
             // Only reconstruct if NOT CoinSub (CoinSub uses default buy.coinsub.io)
             if ($company_slug !== 'coinsub') {
@@ -180,7 +186,13 @@ class CoinSub_API_Client {
                 error_log('✅ CoinSub merchant - using default buy.coinsub.io URL');
             }
         } else {
-            error_log('⚠️ No branding data found or not whitelabel - using API URL as-is');
+            error_log('❌ BRANDING DATA NOT FOUND OR INCOMPLETE!');
+            error_log('   - Branding exists: ' . ($stored_branding !== false ? 'YES' : 'NO'));
+            error_log('   - Is array: ' . (is_array($stored_branding) ? 'YES' : 'NO'));
+            error_log('   - Has company_slug: ' . (isset($stored_branding['company_slug']) ? 'YES' : 'NO'));
+            error_log('   - Checkout URL not empty: ' . (!empty($checkout_url) ? 'YES' : 'NO'));
+            error_log('⚠️ USING API URL AS-IS (will show CoinSub buy app)');
+            error_log('💡 FIX: Go to WooCommerce → Settings → Payments → CoinSub and click "Save changes" to fetch branding');
         }
         
         error_log('FINAL CHECKOUT URL: ' . $checkout_url);

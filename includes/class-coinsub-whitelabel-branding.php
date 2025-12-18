@@ -309,8 +309,13 @@ class CoinSub_Whitelabel_Branding {
                 $logo_data = $this->extract_logo_data($app_data);
                 error_log('CoinSub Whitelabel: 🖼️ Extracted logo data: ' . json_encode($logo_data));
                 
+                // Get company slug for URL construction
+                $company_slug = $this->get_company_slug($company_name);
+                error_log('CoinSub Whitelabel: 🔧 Generated company slug: "' . $company_slug . '" from company name: "' . $company_name . '"');
+                
                 $branding = array(
                     'company' => $company_name, // Use company name from app.company
+                    'company_slug' => $company_slug, // CRITICAL: Needed for buy URL reconstruction!
                     'powered_by' => 'Powered by CoinSub', // Always show this
                     'logo' => $logo_data,
                     'favicon' => isset($app_data['favicon']) ? $app_data['favicon'] : '',
@@ -324,7 +329,7 @@ class CoinSub_Whitelabel_Branding {
                 // Convert relative logo URLs to absolute if needed
                 $branding['logo'] = $this->normalize_logo_urls($branding['logo']);
                 
-                error_log('CoinSub Whitelabel: ✅✅✅ Final branding data - Company: "' . $branding['company'] . '" | Logo: ' . json_encode($branding['logo']));
+                error_log('CoinSub Whitelabel: ✅✅✅ Final branding data - Company: "' . $branding['company'] . '" | Company Slug: "' . $branding['company_slug'] . '" | Logo: ' . json_encode($branding['logo']));
                 
                 return $branding;
             }
