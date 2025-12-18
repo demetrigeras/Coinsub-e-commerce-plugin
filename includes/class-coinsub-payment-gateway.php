@@ -402,6 +402,26 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * @param bool $force_refresh If true, force API call to refresh branding. If false, use cache only.
      */
     private function load_whitelabel_branding($force_refresh = false) {
+        // Prevent multiple loads in the same request (gateway is instantiated multiple times)
+        static $branding_loaded = false;
+        static $cached_branding = null;
+        
+        error_log('CoinSub Whitelabel: 🔍 Cache check - branding_loaded: ' . ($branding_loaded ? 'YES' : 'NO') . ', force_refresh: ' . ($force_refresh ? 'YES' : 'NO'));
+        
+        if ($branding_loaded && !$force_refresh) {
+            error_log('CoinSub Whitelabel: ⚡ Using cached branding from previous load in same request');
+            // Restore cached values
+            if ($cached_branding) {
+                $this->brand_company = $cached_branding['brand_company'];
+                $this->checkout_title = $cached_branding['checkout_title'];
+                $this->checkout_icon = $cached_branding['checkout_icon'];
+                $this->button_logo_url = $cached_branding['button_logo_url'];
+                $this->button_company_name = $cached_branding['button_company_name'];
+                error_log('CoinSub Whitelabel: ⚡ Restored branding - Title: "' . $this->checkout_title . '", Company: "' . $this->brand_company . '"');
+            }
+            return;
+        }
+        
         error_log('CoinSub Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
         
         // CRITICAL FIX: Check if credentials OR payment provider name exist before loading branding
@@ -422,6 +442,17 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_company_name = 'Coinsub';
             error_log('CoinSub Whitelabel: ✅ Using default branding (no credentials, no payment provider) - Checkout Title: "Pay with Coinsub"');
+            
+            // Cache this for subsequent loads
+            $branding_loaded = true;
+            $cached_branding = array(
+                'brand_company' => $this->brand_company,
+                'checkout_title' => $this->checkout_title,
+                'checkout_icon' => $this->checkout_icon,
+                'button_logo_url' => $this->button_logo_url,
+                'button_company_name' => $this->button_company_name,
+            );
+            error_log('CoinSub Whitelabel: 💾 Cached default branding');
             return;
         }
         
@@ -472,6 +503,18 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: ✅ Set default checkout title: "' . $this->checkout_title . '" and default icon: ' . $this->checkout_icon);
             error_log('CoinSub Whitelabel: 🔘 Button logo URL set to default: ' . $this->button_logo_url);
         }
+        
+        // Cache the branding for subsequent gateway instances in the same request
+        // This prevents the second instance from clearing the branding
+        $branding_loaded = true;
+        $cached_branding = array(
+            'brand_company' => $this->brand_company,
+            'checkout_title' => $this->checkout_title,
+            'checkout_icon' => $this->checkout_icon,
+            'button_logo_url' => $this->button_logo_url,
+            'button_company_name' => $this->button_company_name,
+        );
+        error_log('CoinSub Whitelabel: 💾 Cached branding for subsequent loads - Title: "' . $this->checkout_title . '", Company: "' . $this->brand_company . '"');
     }
     
     /**
@@ -1499,12 +1542,23 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function get_icon() {
         $icon_url = '';
         
+        // Normalize company name once for all checks
+        $normalized_company = !empty($this->brand_company) ? strtolower(str_replace(' ', '', $this->brand_company)) : '';
+        
         // In admin, always use default CoinSub logo (no whitelabel)
         if (is_admin()) {
             $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
         } else {
-            // On checkout (frontend), use whitelabel icon if available
-            $icon_url = !empty($this->checkout_icon) ? $this->checkout_icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            // SPECIAL CASE: Payment Servers - use local high-res PNG (300x300)
+            if ($normalized_company === 'paymentservers') {
+                $icon_url = COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
+                if (is_checkout()) {
+                    error_log('CoinSub Whitelabel: 🖼️ 📌 Using LOCAL Payment Servers PNG logo (300x300): ' . $icon_url);
+                }
+            } else {
+                // On checkout (frontend), use whitelabel icon if available
+                $icon_url = !empty($this->checkout_icon) ? $this->checkout_icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            }
         }
         
         // Only log on checkout, not in admin (reduces log noise)
@@ -1518,7 +1572,28 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: ⚠️ Empty icon URL detected, using default');
         }
         
-        $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; max-height: 50px; height: auto; vertical-align: middle; margin-left: 8px;" />';
+        // Special sizing for Payment Servers (their favicon needs to be larger)
+        // Other whitelabels use standard size
+        $icon_size = '30px'; // Default size for all whitelabels and CoinSub
+        
+        if (is_checkout()) {
+            error_log('CoinSub Whitelabel: 🖼️ DEBUG - brand_company: "' . $this->brand_company . '" | normalized: "' . $normalized_company . '"');
+        }
+        
+        if ($normalized_company === 'paymentservers') {
+            $icon_size = '70px'; // Enhanced size for Payment Servers only
+            if (is_checkout()) {
+                error_log('CoinSub Whitelabel: 🖼️ 📏 ✅ MATCH! Payment Servers detected - Using LARGE icon size: ' . $icon_size);
+            }
+            // Use !important to override any theme CSS
+            $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: ' . $icon_size . ' !important; max-height: ' . $icon_size . ' !important; width: ' . $icon_size . ' !important; height: auto !important; vertical-align: middle !important; margin-left: 8px !important;" />';
+        } else {
+            if (is_checkout()) {
+                error_log('CoinSub Whitelabel: 🖼️ ❌ NO MATCH - Using standard icon size: ' . $icon_size);
+            }
+            $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: ' . $icon_size . '; max-height: ' . $icon_size . '; height: auto; vertical-align: middle; margin-left: 8px;" />';
+        }
+        
         return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
     }
     

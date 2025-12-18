@@ -57,13 +57,32 @@ class CoinSub_Whitelabel_Branding {
      */
     public function get_branding($force_refresh = false) {
         // CRITICAL FIX: Check if credentials exist before using stored branding
-        // If no credentials, don't use stored branding (it might be from a different merchant)
+        // PRIORITY 1: Check for payment provider name (works without credentials)
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
+        
+        // If payment provider name is set, construct branding from it (no database or API needed!)
+        if (!empty($payment_provider_name)) {
+            error_log('CoinSub Whitelabel: 🏢 Payment Provider Name in settings: "' . $payment_provider_name . '" - constructing branding');
+            $company_slug = $this->get_company_slug($payment_provider_name);
+            
+            $branding_data = array(
+                'company' => $payment_provider_name,
+                'company_slug' => $company_slug,
+                'logo' => array(),
+                'favicon' => '',
+            );
+            
+            error_log('CoinSub Whitelabel: ✅ Branding constructed from payment provider name');
+            return $branding_data;
+        }
+        
+        // PRIORITY 2: Check credentials for API/database branding
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
         if (empty($merchant_id) || empty($api_key)) {
-            error_log('CoinSub Whitelabel: ⚠️ No credentials in settings - not using stored branding (might be from different merchant)');
+            error_log('CoinSub Whitelabel: ⚠️ No credentials AND no payment provider name - returning empty');
             return array(); // Return empty array, no default
         }
         
