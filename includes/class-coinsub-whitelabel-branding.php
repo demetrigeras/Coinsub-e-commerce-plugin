@@ -37,12 +37,10 @@ class CoinSub_Whitelabel_Branding {
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
+        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
         
-        // API URL is centralized - ALL merchants use the same API endpoint
-        // The API determines the merchant based on Merchant ID, not domain
-        $api_base_url = 'https://api.coinsub.io/v1'; // Production
-        // $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
-        error_log('CoinSub API: Using centralized API URL: ' . $api_base_url);
+        // Construct API URL (whitelabeled if provider name is set, otherwise centralized)
+        $api_base_url = $this->get_api_url_from_provider($payment_provider_name);
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -157,10 +155,13 @@ class CoinSub_Whitelabel_Branding {
         }
         
         // Ensure API client has the latest base URL (merchant ID is passed directly to the method)
-        // API URL is centralized - ALL merchants use the same API endpoint
-        $api_base_url = 'https://api.coinsub.io/v1'; // Production
-        // $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
-        error_log('CoinSub API: Using centralized API URL: ' . $api_base_url);
+        // Get payment provider name to determine API URL
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
+        
+        // Construct API URL (whitelabeled if provider name is set, otherwise centralized)
+        $api_base_url = $this->get_api_url_from_provider($payment_provider_name);
+        
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
         error_log('CoinSub Whitelabel: Updated API client - Merchant ID: ' . $merchant_id . ' (no API key needed for merchant-info endpoint)');
@@ -661,6 +662,35 @@ class CoinSub_Whitelabel_Branding {
     public function get_powered_by_text() {
         $branding = $this->get_branding();
         return $branding['powered_by'];
+    }
+    
+    /**
+     * Get API URL from payment provider name
+     * Constructs whitelabeled API URL if provider name is set, otherwise returns centralized URL
+     * 
+     * @param string $payment_provider_name Payment provider name from settings
+     * @return string API base URL
+     */
+    private function get_api_url_from_provider($payment_provider_name) {
+        if (!empty($payment_provider_name)) {
+            // Construct whitelabeled API URL from provider name
+            // E.g., "Payment Servers" -> "paymentservers" -> "api.paymentservers.com/v1"
+            $normalized = strtolower(trim($payment_provider_name));
+            $normalized = str_replace(' ', '', $normalized);
+            $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
+            
+            // Construct domain
+            $domain = $normalized . '.com';
+            $api_url = 'https://api.' . $domain . '/v1';
+            
+            error_log('CoinSub API: Using WHITELABEL API URL: ' . $api_url . ' (from provider: "' . $payment_provider_name . '")');
+            return $api_url;
+        }
+        
+        // Default: Centralized CoinSub API
+        error_log('CoinSub API: Using CENTRALIZED API URL: https://api.coinsub.io/v1');
+        return 'https://api.coinsub.io/v1'; // Production
+        // return 'https://test-api.coinsub.io/v1'; // Test environment
     }
 }
 

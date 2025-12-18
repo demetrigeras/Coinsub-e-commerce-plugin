@@ -381,11 +381,29 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     /**
      * Get API base URL - whitelabel aware
      * Default: api.coinsub.io/v1
-     * Whitelabel: api.{{domain}}/v1 (e.g., api.vantack.com/v1)
+     * Whitelabel: api.{{domain}}/v1 (e.g., api.vantack.com/v1, api.paymentservers.com/v1)
      */
     public function get_api_base_url() {
-        // API URL is centralized - ALL merchants use the same API endpoint
-        // The API determines the merchant based on Merchant ID, not domain
+        // Check if payment provider name is set (indicates whitelabel)
+        $payment_provider_name = $this->get_option('payment_provider_name', '');
+        
+        if (!empty($payment_provider_name)) {
+            // Construct whitelabeled API URL from provider name
+            // E.g., "Payment Servers" -> "paymentservers" -> "api.paymentservers.com/v1"
+            $normalized = strtolower(trim($payment_provider_name));
+            $normalized = str_replace(' ', '', $normalized);
+            $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
+            
+            // Construct domain
+            $domain = $normalized . '.com';
+            $api_url = 'https://api.' . $domain . '/v1';
+            
+            error_log('CoinSub API: Using WHITELABEL API URL: ' . $api_url . ' (from provider: "' . $payment_provider_name . '")');
+            return $api_url;
+        }
+        
+        // Default: Centralized CoinSub API
+        error_log('CoinSub API: Using CENTRALIZED API URL: https://api.coinsub.io/v1');
         return 'https://api.coinsub.io/v1'; // Production
         // return 'https://test-api.coinsub.io/v1'; // Test environment
     }

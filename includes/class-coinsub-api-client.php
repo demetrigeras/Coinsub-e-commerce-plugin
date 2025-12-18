@@ -63,10 +63,16 @@ class CoinSub_API_Client {
      * Create a purchase session
      */
     public function create_purchase_session($order_data) {
+        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+        error_log('XXX CREATE PURCHASE SESSION CALLED XXX');
+        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+        
         // Purchase session uses base v1 URL
         $endpoint = rtrim($this->api_base_url, '/') . '/purchase/session/start';
-        error_log('🌐 CoinSub API - Calling: ' . $endpoint);
-        error_log('🌐 CoinSub API - Amount: ' . $order_data['amount']);
+        
+        error_log('API Base URL: ' . $this->api_base_url);
+        error_log('Full Endpoint: ' . $endpoint);
+        error_log('Order Amount: ' . $order_data['amount'] . ' ' . $order_data['currency']);
         
         $payload = array(
             'name' => $order_data['name'],
@@ -95,9 +101,7 @@ class CoinSub_API_Client {
         
         error_log('🌐 CoinSub API - Full Payload: ' . json_encode($payload));
         error_log('🌐 CoinSub API - Success URL being sent: ' . ($payload['success_url'] ?? 'NOT SET'));
-        error_log('🌐 CoinSub API - Cancel URL being sent: ' . ($payload['cancel_url'] ?? 'NOT SET'));
-        error_log('🌐 CoinSub API - Failure URL being sent: ' . ($payload['failure_url'] ?? 'NOT SET'));
-        
+      
         $headers = array(
             'Content-Type' => 'application/json',
             'Merchant-ID' => $this->merchant_id,
@@ -129,11 +133,46 @@ class CoinSub_API_Client {
         $purchase_session_id = $data['data']['purchase_session_id'] ?? null;
         $checkout_url = $data['data']['url'] ?? null;
         
-        error_log('🌐 CoinSub API - Purchase session response data: ' . json_encode($data));
-        error_log('🌐 CoinSub API - Extracted session ID: ' . $purchase_session_id);
-        error_log('🌐 CoinSub API - Extracted checkout URL: ' . $checkout_url);
-        error_log('🌐 CoinSub API - Full response body: ' . $body);
+        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+        error_log('XXX API RESPONSE RECEIVED XXX');
+        error_log('Session ID: ' . $purchase_session_id);
+        error_log('CHECKOUT URL FROM API: ' . $checkout_url);
         
+        // WHITELABEL BUY URL: Reconstruct the buy URL if payment provider is set
+        // This ensures we use the correct whitelabeled buy domain even if API returns default
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
+        
+        if (!empty($payment_provider_name) && !empty($checkout_url)) {
+            // Extract session ID from URL (last segment after /checkout/)
+            // E.g., https://buy.coinsub.io/checkout/abc123 → abc123
+            $url_parts = parse_url($checkout_url);
+            $path_segments = explode('/', trim($url_parts['path'], '/'));
+            $session_id_from_url = end($path_segments);
+            
+            // Normalize provider name to domain
+            $normalized = strtolower($payment_provider_name);
+            $normalized = str_replace(' ', '', $normalized);
+            $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
+            $domain = $normalized . '.com';
+            
+            // Reconstruct whitelabeled buy URL
+            // Production: buy.{domain}/checkout/{session}
+            $whitelabel_checkout_url = 'https://buy.' . $domain . '/checkout/' . $session_id_from_url;
+            
+            error_log('🔄 RECONSTRUCTING BUY URL:');
+            error_log('   Provider: ' . $payment_provider_name);
+            error_log('   Domain: ' . $domain);
+            error_log('   Session from URL: ' . $session_id_from_url);
+            error_log('   NEW CHECKOUT URL: ' . $whitelabel_checkout_url);
+            
+            // Use the reconstructed URL
+            $checkout_url = $whitelabel_checkout_url;
+        }
+        
+        error_log('FINAL CHECKOUT URL: ' . $checkout_url);
+        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+     
         // Remove 'sess_' prefix if present (CoinSub returns sess_UUID but checkout needs just UUID)
         if ($purchase_session_id && strpos($purchase_session_id, 'sess_') === 0) {
             $purchase_session_id = substr($purchase_session_id, 5); // Remove 'sess_' prefix
