@@ -1572,27 +1572,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: ⚠️ Empty icon URL detected, using default');
         }
         
-        // Special sizing for Payment Servers (their favicon needs to be larger)
-        // Other whitelabels use standard size
-        $icon_size = '30px'; // Default size for all whitelabels and CoinSub
+        // Standard size for all payment methods (30px)
+        $icon_size = '30px';
         
         if (is_checkout()) {
-            error_log('CoinSub Whitelabel: 🖼️ DEBUG - brand_company: "' . $this->brand_company . '" | normalized: "' . $normalized_company . '"');
+            error_log('CoinSub Whitelabel: 🖼️ Icon size: ' . $icon_size . ' for company: "' . $this->brand_company . '"');
         }
         
-        if ($normalized_company === 'paymentservers') {
-            $icon_size = '70px'; // Enhanced size for Payment Servers only
-            if (is_checkout()) {
-                error_log('CoinSub Whitelabel: 🖼️ 📏 ✅ MATCH! Payment Servers detected - Using LARGE icon size: ' . $icon_size);
-            }
-            // Use !important to override any theme CSS
-            $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: ' . $icon_size . ' !important; max-height: ' . $icon_size . ' !important; width: ' . $icon_size . ' !important; height: auto !important; vertical-align: middle !important; margin-left: 8px !important;" />';
-        } else {
-            if (is_checkout()) {
-                error_log('CoinSub Whitelabel: 🖼️ ❌ NO MATCH - Using standard icon size: ' . $icon_size);
-            }
-            $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: ' . $icon_size . '; max-height: ' . $icon_size . '; height: auto; vertical-align: middle; margin-left: 8px;" />';
-        }
+        $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: ' . $icon_size . '; max-height: ' . $icon_size . '; height: auto; vertical-align: middle; margin-left: 8px;" />';
         
         return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
     }
