@@ -136,41 +136,7 @@ class CoinSub_API_Client {
         error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
         error_log('XXX API RESPONSE RECEIVED XXX');
         error_log('Session ID: ' . $purchase_session_id);
-        error_log('CHECKOUT URL FROM API: ' . $checkout_url);
-        
-        // WHITELABEL BUY URL: Reconstruct the buy URL if payment provider is set
-        // This ensures we use the correct whitelabeled buy domain even if API returns default
-        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
-        
-        if (!empty($payment_provider_name) && !empty($checkout_url)) {
-            // Extract session ID from URL (last segment after /checkout/)
-            // E.g., https://buy.coinsub.io/checkout/abc123 → abc123
-            $url_parts = parse_url($checkout_url);
-            $path_segments = explode('/', trim($url_parts['path'], '/'));
-            $session_id_from_url = end($path_segments);
-            
-            // Normalize provider name to domain
-            $normalized = strtolower($payment_provider_name);
-            $normalized = str_replace(' ', '', $normalized);
-            $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
-            $domain = $normalized . '.com';
-            
-            // Reconstruct whitelabeled buy URL
-            // Production: buy.{domain}/checkout/{session}
-            $whitelabel_checkout_url = 'https://buy.' . $domain . '/checkout/' . $session_id_from_url;
-            
-            error_log('🔄 RECONSTRUCTING BUY URL:');
-            error_log('   Provider: ' . $payment_provider_name);
-            error_log('   Domain: ' . $domain);
-            error_log('   Session from URL: ' . $session_id_from_url);
-            error_log('   NEW CHECKOUT URL: ' . $whitelabel_checkout_url);
-            
-            // Use the reconstructed URL
-            $checkout_url = $whitelabel_checkout_url;
-        }
-        
-        error_log('FINAL CHECKOUT URL: ' . $checkout_url);
+        error_log('CHECKOUT URL: ' . $checkout_url);
         error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
      
         // Remove 'sess_' prefix if present (CoinSub returns sess_UUID but checkout needs just UUID)

@@ -355,13 +355,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'description' => __('Get this from your merchant dashboard', 'coinsub'),
                 'default' => '',
             ),
-            'payment_provider_name' => array(
-                'title' => __('Payment Provider Name (Optional)', 'coinsub'),
-                'type' => 'text',
-                'description' => __('Enter your payment provider company name (e.g., "Company Name"). This is case-insensitive and will be validated.', 'coinsub'),
-                'default' => '',
-                'placeholder' => 'e.g., Company Name',
-            ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
@@ -379,31 +372,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get API base URL - whitelabel aware
+     * Get API base URL - centralized for all merchants
      * Default: api.coinsub.io/v1
-     * Whitelabel: api.{{domain}}/v1 (e.g., api.vantack.com/v1, api.paymentservers.com/v1)
      */
     public function get_api_base_url() {
-        // Check if payment provider name is set (indicates whitelabel)
-        $payment_provider_name = $this->get_option('payment_provider_name', '');
-        
-        if (!empty($payment_provider_name)) {
-            // Construct whitelabeled API URL from provider name
-            // E.g., "Payment Servers" -> "paymentservers" -> "api.paymentservers.com/v1"
-            $normalized = strtolower(trim($payment_provider_name));
-            $normalized = str_replace(' ', '', $normalized);
-            $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
-            
-            // Construct domain
-            $domain = $normalized . '.com';
-            $api_url = 'https://api.' . $domain . '/v1';
-            
-            error_log('CoinSub API: Using WHITELABEL API URL: ' . $api_url . ' (from provider: "' . $payment_provider_name . '")');
-            return $api_url;
-        }
-        
-        // Default: Centralized CoinSub API
-        error_log('CoinSub API: Using CENTRALIZED API URL: https://api.coinsub.io/v1');
+        // Centralized CoinSub API - ALL merchants use this endpoint
+        // The API determines whitelabel branding based on Merchant ID
         return 'https://api.coinsub.io/v1'; // Production
         // return 'https://test-api.coinsub.io/v1'; // Test environment
     }
@@ -442,15 +416,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         error_log('CoinSub Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
         
-        // CRITICAL FIX: Check if credentials OR payment provider name exist before loading branding
-        // If no credentials AND no payment provider name, clear any old branding and use defaults
+        // CRITICAL FIX: Check if credentials exist before loading branding
+        // If no credentials, clear any old branding and use defaults
         // This prevents old branding (e.g., "Vantack") from showing when credentials are removed
         $merchant_id = $this->get_option('merchant_id');
         $api_key = $this->get_option('api_key');
-        $payment_provider_name = $this->get_option('payment_provider_name');
         
-        if (empty($merchant_id) && empty($api_key) && empty($payment_provider_name)) {
-            error_log('CoinSub Whitelabel: ⚠️ No credentials AND no payment provider name - clearing old branding and using defaults');
+        if (empty($merchant_id) && empty($api_key)) {
+            error_log('CoinSub Whitelabel: ⚠️ No credentials - clearing old branding and using defaults');
         $branding = new CoinSub_Whitelabel_Branding();
             $branding->clear_cache(); // Clear any old branding from previous merchant
             $this->brand_company = 'Coinsub';
@@ -593,25 +566,20 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
-        $payment_provider_name = $this->get_option('payment_provider_name', '');
-        // Use whitelabel-aware API URL
+        // Use centralized API URL
         $api_base_url = $this->get_api_base_url();
         
         error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
-        error_log('CoinSub Whitelabel: 📝 Settings - Payment Provider Name: ' . (empty($payment_provider_name) ? 'EMPTY' : $payment_provider_name));
         error_log('CoinSub Whitelabel: 📝 Settings - API Base URL: ' . $api_base_url);
         
         // Update API client if we have credentials
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
             error_log('CoinSub Whitelabel: ✅ API client updated with credentials');
-        } else if (!empty($payment_provider_name)) {
-            // If only payment provider name is set (no credentials), we still need to refresh branding
-            error_log('CoinSub Whitelabel: 🏢 Payment provider name set without credentials - will refresh branding from provider name');
         } else {
-            // No credentials and no payment provider name - skip everything
-            error_log('CoinSub Whitelabel: ⚠️ Skipping - no credentials AND no payment provider name');
+            // No credentials - skip everything
+            error_log('CoinSub Whitelabel: ⚠️ Skipping - no credentials');
             return;
         }
         
@@ -682,26 +650,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: 🔒 Preserving existing API key (password field unchanged)');
         }
         
-        // Validate payment_provider_name if provided
-        if (isset($_POST['woocommerce_coinsub_payment_provider_name']) && !empty($_POST['woocommerce_coinsub_payment_provider_name'])) {
-            $provider_name = trim($_POST['woocommerce_coinsub_payment_provider_name']);
-            error_log('CoinSub Whitelabel: 🏢 Payment Provider Name entered: "' . $provider_name . '"');
-            
-            // Normalize the provider name (lowercase, remove spaces)
-            $normalized_name = $this->normalize_provider_name($provider_name);
-            error_log('CoinSub Whitelabel: 🔧 Normalized to: "' . $normalized_name . '"');
-            
-            // Validate against known providers
-            if (!$this->validate_provider_name($normalized_name)) {
-                error_log('CoinSub Whitelabel: ❌ Invalid/misspelled payment provider name: "' . $provider_name . '"');
-                WC_Admin_Settings::add_error(__('Invalid payment provider name. Please check spelling or leave blank for CoinSub.', 'coinsub'));
-                // Clear the invalid value
-                $_POST['woocommerce_coinsub_payment_provider_name'] = '';
-            } else {
-                error_log('CoinSub Whitelabel: ✅ Valid payment provider: "' . $provider_name . '"');
-            }
-        }
-        
         // Call parent to save settings first
         $result = parent::process_admin_options();
         
@@ -710,14 +658,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Verify settings were saved
         $saved_merchant_id = $this->get_option('merchant_id', '');
         $saved_api_key = $this->get_option('api_key', '');
-        $saved_payment_provider = $this->get_option('payment_provider_name', '');
         error_log('CoinSub Whitelabel: ✅ Saved merchant_id: ' . (empty($saved_merchant_id) ? 'EMPTY' : substr($saved_merchant_id, 0, 20) . '... (length: ' . strlen($saved_merchant_id) . ')'));
         error_log('CoinSub Whitelabel: ✅ Saved api_key: ' . (empty($saved_api_key) ? 'EMPTY' : substr($saved_api_key, 0, 10) . '... (length: ' . strlen($saved_api_key) . ')'));
-        error_log('CoinSub Whitelabel: ✅ Saved payment_provider_name: ' . (empty($saved_payment_provider) ? 'EMPTY' : $saved_payment_provider));
         
-        // Now fetch branding (if we have credentials OR payment provider name)
+        // Now fetch branding (if we have credentials)
         // Wrap in try-catch to prevent fatal errors from breaking the save process
-        if ((!empty($saved_merchant_id) && !empty($saved_api_key)) || !empty($saved_payment_provider)) {
+        if (!empty($saved_merchant_id) && !empty($saved_api_key)) {
             try {
                 error_log('CoinSub Whitelabel: 🔔 Calling update_api_client_settings() to fetch branding...');
                 $this->update_api_client_settings();
@@ -737,42 +683,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('═══════════════════════════════════════════════════════════');
         
         return $result;
-    }
-    
-    /**
-     * Normalize payment provider name (lowercase, no spaces)
-     * Example: "Payment Servers" -> "paymentservers"
-     */
-    private function normalize_provider_name($name) {
-        $normalized = strtolower(trim($name));
-        $normalized = str_replace(' ', '', $normalized);
-        $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
-        return $normalized;
-    }
-    
-    /**
-     * Validate payment provider name against known whitelabels
-     * Returns true if valid, false if not found/misspelled
-     */
-    private function validate_provider_name($normalized_name) {
-        // Skip validation for empty or "coinsub"
-        if (empty($normalized_name) || $normalized_name === 'coinsub') {
-            return true;
-        }
-        
-        // TODO: Call API to get list of valid provider names
-        // For now, validate against common known providers
-        $known_providers = array(
-            'coinsub',
-            'paymentservers',
-            'vantack',
-            // More will be added dynamically from API in the future
-        );
-        
-        $is_valid = in_array($normalized_name, $known_providers);
-        error_log('CoinSub Whitelabel: 🔍 Validating "' . $normalized_name . '" against known providers: ' . ($is_valid ? 'FOUND ✅' : 'NOT FOUND ❌'));
-        
-        return $is_valid;
     }
     
     /**

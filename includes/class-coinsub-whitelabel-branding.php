@@ -37,10 +37,9 @@ class CoinSub_Whitelabel_Branding {
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
-        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
         
-        // Construct API URL (whitelabeled if provider name is set, otherwise centralized)
-        $api_base_url = $this->get_api_url_from_provider($payment_provider_name);
+        // Use centralized API URL for all merchants
+        $api_base_url = 'https://api.coinsub.io/v1';
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -55,32 +54,12 @@ class CoinSub_Whitelabel_Branding {
      */
     public function get_branding($force_refresh = false) {
         // CRITICAL FIX: Check if credentials exist before using stored branding
-        // PRIORITY 1: Check for payment provider name (works without credentials)
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
-        
-        // If payment provider name is set, construct branding from it (no database or API needed!)
-        if (!empty($payment_provider_name)) {
-            error_log('CoinSub Whitelabel: 🏢 Payment Provider Name in settings: "' . $payment_provider_name . '" - constructing branding');
-            $company_slug = $this->get_company_slug($payment_provider_name);
-            
-            $branding_data = array(
-                'company' => $payment_provider_name,
-                'company_slug' => $company_slug,
-                'logo' => array(),
-                'favicon' => '',
-            );
-            
-            error_log('CoinSub Whitelabel: ✅ Branding constructed from payment provider name');
-            return $branding_data;
-        }
-        
-        // PRIORITY 2: Check credentials for API/database branding
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
         if (empty($merchant_id) || empty($api_key)) {
-            error_log('CoinSub Whitelabel: ⚠️ No credentials AND no payment provider name - returning empty');
+            error_log('CoinSub Whitelabel: ⚠️ No credentials - returning empty');
             return array(); // Return empty array, no default
         }
         
@@ -124,43 +103,15 @@ class CoinSub_Whitelabel_Branding {
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
-        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
         
-        // If payment provider name is provided, use it for branding (credentials not required!)
-        if (!empty($payment_provider_name)) {
-            error_log('CoinSub Whitelabel: 🏢 Payment Provider Name found in settings: "' . $payment_provider_name . '"');
-            $company_slug = $this->get_company_slug($payment_provider_name);
-            error_log('CoinSub Whitelabel: 🔧 Using company slug: "' . $company_slug . '" for branding');
-            
-            // Construct basic branding from the provider name
-            $branding_data = array(
-                'company' => $payment_provider_name, // Use the original casing from settings
-                'company_slug' => $company_slug,
-                'logo' => array(), // Will be auto-constructed by get_logo_url()
-                'favicon' => '', // Will be auto-constructed by get_favicon_url()
-            );
-            
-            // Store in database
-            update_option(self::BRANDING_OPTION_KEY, $branding_data, false);
-            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
-            error_log('CoinSub Whitelabel: ✅ Branding created from payment provider name and stored');
-            return $branding_data;
-        }
-        
-        // No payment provider name provided - check if we have credentials for API fetch
+        // Check if we have credentials for API fetch
         if (empty($merchant_id) || empty($api_key)) {
-            // No credentials and no payment provider name, return empty
-            error_log('CoinSub Whitelabel: ❌ No merchant ID or API key in settings AND no payment provider name - cannot fetch branding');
+            error_log('CoinSub Whitelabel: ❌ No merchant ID or API key in settings - cannot fetch branding');
             return array(); // Return empty array, no default
         }
         
-        // Ensure API client has the latest base URL (merchant ID is passed directly to the method)
-        // Get payment provider name to determine API URL
-        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-        $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
-        
-        // Construct API URL (whitelabeled if provider name is set, otherwise centralized)
-        $api_base_url = $this->get_api_url_from_provider($payment_provider_name);
+        // Ensure API client has the latest settings with centralized API URL
+        $api_base_url = 'https://api.coinsub.io/v1';
         
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
@@ -662,35 +613,6 @@ class CoinSub_Whitelabel_Branding {
     public function get_powered_by_text() {
         $branding = $this->get_branding();
         return $branding['powered_by'];
-    }
-    
-    /**
-     * Get API URL from payment provider name
-     * Constructs whitelabeled API URL if provider name is set, otherwise returns centralized URL
-     * 
-     * @param string $payment_provider_name Payment provider name from settings
-     * @return string API base URL
-     */
-    private function get_api_url_from_provider($payment_provider_name) {
-        if (!empty($payment_provider_name)) {
-            // Construct whitelabeled API URL from provider name
-            // E.g., "Payment Servers" -> "paymentservers" -> "api.paymentservers.com/v1"
-            $normalized = strtolower(trim($payment_provider_name));
-            $normalized = str_replace(' ', '', $normalized);
-            $normalized = preg_replace('/[^a-z0-9]/', '', $normalized);
-            
-            // Construct domain
-            $domain = $normalized . '.com';
-            $api_url = 'https://api.' . $domain . '/v1';
-            
-            error_log('CoinSub API: Using WHITELABEL API URL: ' . $api_url . ' (from provider: "' . $payment_provider_name . '")');
-            return $api_url;
-        }
-        
-        // Default: Centralized CoinSub API
-        error_log('CoinSub API: Using CENTRALIZED API URL: https://api.coinsub.io/v1');
-        return 'https://api.coinsub.io/v1'; // Production
-        // return 'https://test-api.coinsub.io/v1'; // Test environment
     }
 }
 
