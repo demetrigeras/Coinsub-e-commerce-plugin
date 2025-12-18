@@ -109,13 +109,7 @@ class CoinSub_Whitelabel_Branding {
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         $payment_provider_name = isset($gateway_settings['payment_provider_name']) ? trim($gateway_settings['payment_provider_name']) : '';
         
-        if (empty($merchant_id) || empty($api_key)) {
-            // No credentials, return empty
-            error_log('CoinSub Whitelabel: ❌ No merchant ID or API key in settings - cannot fetch branding');
-            return array(); // Return empty array, no default
-        }
-        
-        // If payment provider name is provided, use it for branding
+        // If payment provider name is provided, use it for branding (credentials not required!)
         if (!empty($payment_provider_name)) {
             error_log('CoinSub Whitelabel: 🏢 Payment Provider Name found in settings: "' . $payment_provider_name . '"');
             $company_slug = $this->get_company_slug($payment_provider_name);
@@ -134,6 +128,13 @@ class CoinSub_Whitelabel_Branding {
             delete_transient(self::BRANDING_FETCH_LOCK_KEY);
             error_log('CoinSub Whitelabel: ✅ Branding created from payment provider name and stored');
             return $branding_data;
+        }
+        
+        // No payment provider name provided - check if we have credentials for API fetch
+        if (empty($merchant_id) || empty($api_key)) {
+            // No credentials and no payment provider name, return empty
+            error_log('CoinSub Whitelabel: ❌ No merchant ID or API key in settings AND no payment provider name - cannot fetch branding');
+            return array(); // Return empty array, no default
         }
         
         // Ensure API client has the latest base URL (merchant ID is passed directly to the method)
@@ -430,8 +431,8 @@ class CoinSub_Whitelabel_Branding {
      */
     private function normalize_logo_urls($logo) {
         // Asset base for static files (logos, favicons, etc.) - NOT the API endpoint
-        $asset_base = 'https://coinsub.io/'; // Production
-        // $asset_base = 'https://test.coinsub.io/'; // Test environment
+        $asset_base = 'https://app.coinsub.io/'; // Production (app subdomain serves assets)
+        // $asset_base = 'https://test-app.coinsub.io/'; // Test environment
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $asset_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
@@ -508,14 +509,23 @@ class CoinSub_Whitelabel_Branding {
         }
         
         // FALLBACK: Auto-construct logo URL from company name
+        // Pattern: https://app.{domain}/img/domain/{slug}/{slug}.{type}.{theme}.svg
         if (!empty($branding) && isset($branding['company']) && !empty($branding['company'])) {
             $company_slug = $this->get_company_slug($branding['company']);
-            $asset_base = 'https://coinsub.io'; // Production
-            // $asset_base = 'https://test.coinsub.io'; // Test environment
+            
+            // Construct domain from company slug
+            if ($company_slug === 'coinsub') {
+                $asset_base = 'https://app.coinsub.io';
+            } else {
+                // Whitelabel domain: app.{slug}.com
+                $whitelabel_domain = $company_slug . '.com';
+                $asset_base = 'https://app.' . $whitelabel_domain;
+            }
+            
             // Construct URL pattern: /img/domain/{slug}/{slug}.{type}.{theme}.svg
             $filename = $company_slug . '.' . $type . '.' . $theme . '.svg';
             $constructed_url = $asset_base . '/img/domain/' . $company_slug . '/' . $filename;
-            error_log('CoinSub Whitelabel: 🖼️ 🔧 Auto-constructed logo URL: ' . $constructed_url);
+            error_log('CoinSub Whitelabel: 🖼️ 🔧 Auto-constructed logo URL: ' . $constructed_url . ' (domain: ' . $asset_base . ')');
             return $constructed_url;
         }
         
@@ -540,16 +550,26 @@ class CoinSub_Whitelabel_Branding {
             $favicon_url = $branding['favicon'];
             
             // If URL doesn't start with http, it's relative - make it absolute
+            // Need to determine which domain to use based on branding
             if (strpos($favicon_url, 'http') !== 0) {
-                $asset_base = 'https://coinsub.io'; // Production
-                // $asset_base = 'https://test.coinsub.io'; // Test environment
+                // Get company slug to determine domain
+                $company = isset($branding['company']) ? $branding['company'] : '';
+                $company_slug = $this->get_company_slug($company);
+                
+                if ($company_slug === 'coinsub' || empty($company_slug)) {
+                    $asset_base = 'https://app.coinsub.io';
+                } else {
+                    // Whitelabel domain
+                    $whitelabel_domain = $company_slug . '.com';
+                    $asset_base = 'https://app.' . $whitelabel_domain;
+                }
                 
                 if (strpos($favicon_url, '/') === 0) {
                     $favicon_url = $asset_base . $favicon_url;
                 } else {
                     $favicon_url = $asset_base . '/' . $favicon_url;
                 }
-                error_log('CoinSub Whitelabel: 🖼️ Converted relative favicon URL to: ' . $favicon_url);
+                error_log('CoinSub Whitelabel: 🖼️ Converted relative favicon URL to: ' . $favicon_url . ' (domain: ' . $asset_base . ')');
             }
             
             error_log('CoinSub Whitelabel: 🖼️ ✅ Found favicon URL: ' . $favicon_url);
@@ -557,13 +577,39 @@ class CoinSub_Whitelabel_Branding {
         }
         
         // FALLBACK: Auto-construct favicon URL from company name
+        // Pattern: https://app.{domain}/img/domain/{slug}/favicon.{ext}
+        // Try multiple extensions (jpg, png, svg, ico)
         if (!empty($branding) && isset($branding['company']) && !empty($branding['company'])) {
             $company_slug = $this->get_company_slug($branding['company']);
-            $asset_base = 'https://coinsub.io'; // Production
-            // $asset_base = 'https://test.coinsub.io'; // Test environment
-            $constructed_url = $asset_base . '/img/domain/' . $company_slug . '/favicon.png';
-            error_log('CoinSub Whitelabel: 🖼️ 🔧 Auto-constructed favicon URL: ' . $constructed_url);
-            return $constructed_url;
+            
+            // Construct domain from company slug
+            // E.g., "Payment Servers" -> "paymentservers" -> "paymentservers.com"
+            if ($company_slug === 'coinsub') {
+                // CoinSub default favicon
+                $favicon_url = 'https://app.coinsub.io/img/favicon.ico';
+                error_log('CoinSub Whitelabel: 🖼️ ✅ Using CoinSub default favicon: ' . $favicon_url);
+                return $favicon_url;
+            } else {
+                // Whitelabel domain: app.{slug}.com
+                $whitelabel_domain = $company_slug . '.com';
+                $base_url = 'https://app.' . $whitelabel_domain . '/img/domain/' . $company_slug . '/favicon';
+                
+                // Company-specific favicon extensions (add more as discovered)
+                $extension_map = array(
+                    'vantack' => 'jpg',          // Vantack uses .jpg
+                    'paymentservers' => 'png',   // Payment Servers uses .png
+                    'bxnk' => 'png',             // BXNK/Zyrister uses .png       // BXNK/Zyrister alternate name
+                    'subscrypt' => 'png',        // Subscrypt uses .png
+                    // Add more whitelabels here as needed
+                );
+                
+                // Use mapped extension or default to png
+                $extension = isset($extension_map[$company_slug]) ? $extension_map[$company_slug] : 'png';
+                $favicon_url = $base_url . '.' . $extension;
+                
+                error_log('CoinSub Whitelabel: 🖼️ ✅ Auto-constructed whitelabel favicon: ' . $favicon_url . ' (extension: .' . $extension . ')');
+                return $favicon_url;
+            }
         }
         
         // No favicon found - return default CoinSub logo

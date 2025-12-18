@@ -358,7 +358,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'payment_provider_name' => array(
                 'title' => __('Payment Provider Name (Optional)', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Enter your payment provider company name (e.g., "Company Name"). Leave blank if you signed up directly with CoinSub. This is case-insensitive and will be validated.', 'coinsub'),
+                'description' => __('Enter your payment provider company name (e.g., "Company Name"). This is case-insensitive and will be validated.', 'coinsub'),
                 'default' => '',
                 'placeholder' => 'e.g., Company Name',
             ),
@@ -404,14 +404,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     private function load_whitelabel_branding($force_refresh = false) {
         error_log('CoinSub Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
         
-        // CRITICAL FIX: Check if credentials exist before loading branding
-        // If no credentials, clear any old branding and use defaults
+        // CRITICAL FIX: Check if credentials OR payment provider name exist before loading branding
+        // If no credentials AND no payment provider name, clear any old branding and use defaults
         // This prevents old branding (e.g., "Vantack") from showing when credentials are removed
         $merchant_id = $this->get_option('merchant_id');
         $api_key = $this->get_option('api_key');
+        $payment_provider_name = $this->get_option('payment_provider_name');
         
-        if (empty($merchant_id) || empty($api_key)) {
-            error_log('CoinSub Whitelabel: ⚠️ No credentials found - clearing old branding and using defaults');
+        if (empty($merchant_id) && empty($api_key) && empty($payment_provider_name)) {
+            error_log('CoinSub Whitelabel: ⚠️ No credentials AND no payment provider name - clearing old branding and using defaults');
         $branding = new CoinSub_Whitelabel_Branding();
             $branding->clear_cache(); // Clear any old branding from previous merchant
             $this->brand_company = 'Coinsub';
@@ -420,7 +421,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_company_name = 'Coinsub';
-            error_log('CoinSub Whitelabel: ✅ Using default branding (no credentials) - Checkout Title: "Pay with Coinsub"');
+            error_log('CoinSub Whitelabel: ✅ Using default branding (no credentials, no payment provider) - Checkout Title: "Pay with Coinsub"');
             return;
         }
         
@@ -531,20 +532,27 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
+        $payment_provider_name = $this->get_option('payment_provider_name', '');
         // Use whitelabel-aware API URL
         $api_base_url = $this->get_api_base_url();
         
         error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
+        error_log('CoinSub Whitelabel: 📝 Settings - Payment Provider Name: ' . (empty($payment_provider_name) ? 'EMPTY' : $payment_provider_name));
         error_log('CoinSub Whitelabel: 📝 Settings - API Base URL: ' . $api_base_url);
         
-        // Only update if we have credentials
-        if (empty($merchant_id) || empty($api_key)) {
-            error_log('CoinSub Whitelabel: ⚠️ Skipping API client update - merchant_id or api_key is empty');
+        // Update API client if we have credentials
+        if (!empty($merchant_id) && !empty($api_key)) {
+            $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
+            error_log('CoinSub Whitelabel: ✅ API client updated with credentials');
+        } else if (!empty($payment_provider_name)) {
+            // If only payment provider name is set (no credentials), we still need to refresh branding
+            error_log('CoinSub Whitelabel: 🏢 Payment provider name set without credentials - will refresh branding from provider name');
+        } else {
+            // No credentials and no payment provider name - skip everything
+            error_log('CoinSub Whitelabel: ⚠️ Skipping - no credentials AND no payment provider name');
             return;
         }
-        
-        $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
         
         // CRITICAL FIX: Defer branding fetch to prevent timeout/crash during save
         // Branding fetch involves multiple API calls that can take several seconds
@@ -641,12 +649,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Verify settings were saved
         $saved_merchant_id = $this->get_option('merchant_id', '');
         $saved_api_key = $this->get_option('api_key', '');
+        $saved_payment_provider = $this->get_option('payment_provider_name', '');
         error_log('CoinSub Whitelabel: ✅ Saved merchant_id: ' . (empty($saved_merchant_id) ? 'EMPTY' : substr($saved_merchant_id, 0, 20) . '... (length: ' . strlen($saved_merchant_id) . ')'));
         error_log('CoinSub Whitelabel: ✅ Saved api_key: ' . (empty($saved_api_key) ? 'EMPTY' : substr($saved_api_key, 0, 10) . '... (length: ' . strlen($saved_api_key) . ')'));
+        error_log('CoinSub Whitelabel: ✅ Saved payment_provider_name: ' . (empty($saved_payment_provider) ? 'EMPTY' : $saved_payment_provider));
         
-        // Now fetch branding (only if we have credentials)
+        // Now fetch branding (if we have credentials OR payment provider name)
         // Wrap in try-catch to prevent fatal errors from breaking the save process
-        if (!empty($saved_merchant_id) && !empty($saved_api_key)) {
+        if ((!empty($saved_merchant_id) && !empty($saved_api_key)) || !empty($saved_payment_provider)) {
             try {
                 error_log('CoinSub Whitelabel: 🔔 Calling update_api_client_settings() to fetch branding...');
                 $this->update_api_client_settings();
@@ -660,7 +670,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 // Don't break the save process - settings were saved successfully
             }
         } else {
-            error_log('CoinSub Whitelabel: ⚠️ Skipping branding fetch - merchant_id or api_key is empty');
+            error_log('CoinSub Whitelabel: ⚠️ Skipping branding fetch - no credentials AND no payment provider name');
         }
         
         error_log('═══════════════════════════════════════════════════════════');
@@ -1508,7 +1518,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: ⚠️ Empty icon URL detected, using default');
         }
         
-        $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 30px; max-height: 30px; height: auto; vertical-align: middle; margin-left: 8px;" />';
+        $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: 50px; max-height: 50px; height: auto; vertical-align: middle; margin-left: 8px;" />';
         return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
     }
     
