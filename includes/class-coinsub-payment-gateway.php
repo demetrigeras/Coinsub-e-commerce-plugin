@@ -1407,7 +1407,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             '10' => 'Optimism',
             '420' => 'Optimism Sepolia',
             '8453' => 'Base',
-            '84532' => 'Base Sepolia'
+            '84532' => 'Base Sepolia',
+            '295' => 'Hedera Mainnet',
+            '296' => 'Hedera Testnet'
         );
         
         return isset($networks[$chain_id]) ? $networks[$chain_id] : 'Chain ID ' . $chain_id;

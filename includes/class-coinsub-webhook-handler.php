@@ -876,8 +876,9 @@ class CoinSub_Webhook_Handler {
             '420' => 'Optimism Sepolia',
             '8453' => 'Base',
             '84532' => 'Base Sepolia',
-            '421613' => 'Arbitrum Nova'
-            
+            '421613' => 'Arbitrum Nova',
+            '295' => 'Hedera Mainnet',
+            '296' => 'Hedera Testnet'
         );
         
         return isset($networks[$chain_id]) ? $networks[$chain_id] : 'Chain ID ' . $chain_id;

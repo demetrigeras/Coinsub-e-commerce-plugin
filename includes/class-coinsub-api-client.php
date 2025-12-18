@@ -136,7 +136,54 @@ class CoinSub_API_Client {
         error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
         error_log('XXX API RESPONSE RECEIVED XXX');
         error_log('Session ID: ' . $purchase_session_id);
-        error_log('CHECKOUT URL: ' . $checkout_url);
+        error_log('CHECKOUT URL FROM API: ' . $checkout_url);
+        
+        // WHITELABEL BUY URL: Reconstruct the buy URL using branding data if available
+        // This ensures we use the correct whitelabeled buy domain even if API returns default
+        $stored_branding = get_option('coinsub_whitelabel_branding', false);
+        
+        if ($stored_branding !== false && is_array($stored_branding) && isset($stored_branding['company_slug']) && !empty($checkout_url)) {
+            $company_slug = $stored_branding['company_slug'];
+            
+            // Only reconstruct if NOT CoinSub (CoinSub uses default buy.coinsub.io)
+            if ($company_slug !== 'coinsub') {
+                // Extract session ID from URL (last segment after /checkout/)
+                // E.g., https://buy.coinsub.io/checkout/abc123 → abc123
+                $url_parts = parse_url($checkout_url);
+                $path_segments = explode('/', trim($url_parts['path'], '/'));
+                $session_id_from_url = end($path_segments);
+                
+                // Get domain from company slug
+                $domain_map = array(
+                    'paymentservers' => 'paymentservers.com',
+                    'vantack' => 'vantack.com',
+                    'bxnk' => 'bxnk.com',
+                    'zyrister' => 'bxnk.com',
+                    'subscrypt' => 'subscrypt.com',
+                );
+                
+                $domain = isset($domain_map[$company_slug]) ? $domain_map[$company_slug] : $company_slug . '.com';
+                
+                // Reconstruct whitelabeled buy URL
+                // Production: buy.{domain}/checkout/{session}
+                $whitelabel_checkout_url = 'https://buy.' . $domain . '/checkout/' . $session_id_from_url;
+                
+                error_log('🔄 RECONSTRUCTING BUY URL FROM BRANDING:');
+                error_log('   Company Slug: ' . $company_slug);
+                error_log('   Domain: ' . $domain);
+                error_log('   Session from URL: ' . $session_id_from_url);
+                error_log('   NEW CHECKOUT URL: ' . $whitelabel_checkout_url);
+                
+                // Use the reconstructed URL
+                $checkout_url = $whitelabel_checkout_url;
+            } else {
+                error_log('✅ CoinSub merchant - using default buy.coinsub.io URL');
+            }
+        } else {
+            error_log('⚠️ No branding data found or not whitelabel - using API URL as-is');
+        }
+        
+        error_log('FINAL CHECKOUT URL: ' . $checkout_url);
         error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
      
         // Remove 'sess_' prefix if present (CoinSub returns sess_UUID but checkout needs just UUID)

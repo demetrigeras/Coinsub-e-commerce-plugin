@@ -998,6 +998,8 @@ class CoinSub_Order_Manager {
             43114 => 'avalanche', // Avalanche C-Chain
             80002 => 'amoy',      // Polygon Amoy (testnet)
             11155111 => 'sepolia', // Ethereum Sepolia
+            295 => 'hedera',      // Hedera Mainnet
+            296 => 'hedera-testnet', // Hedera Testnet
         );
         return isset($map[$id]) ? $map[$id] : '';
     }
