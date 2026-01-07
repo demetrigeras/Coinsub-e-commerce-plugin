@@ -11,7 +11,7 @@ mkdir -p "$PACKAGE_DIR"
 
 # Copy main plugin file
 echo "📦 Copying main plugin file..."
-cp coinsub-commerce.php "$PACKAGE_DIR/"
+cp stablecoin-pay.php "$PACKAGE_DIR/"
 
 # Copy includes directory
 echo "📦 Copying includes directory..."

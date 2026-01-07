@@ -50,17 +50,17 @@ function coinsub_commerce_init() {
     }
     
     // Include required files
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-api-client.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-whitelabel-branding.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-payment-gateway.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-webhook-handler.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-order-manager.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-logs.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-cart-sync.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-subscriptions.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-subscriptions.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-admin-payments.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-coinsub-review-page.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-api-client.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-whitelabel-branding.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-payment-gateway.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-webhook-handler.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-order-manager.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-logs.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-cart-sync.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-subscriptions.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-subscriptions.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-payments.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-review-page.php';
     
     // Register custom order status
     

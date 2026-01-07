@@ -48,7 +48,7 @@ class CoinSub_Review_Page {
         $is_review_page = get_query_var(self::QUERY_VAR);
 
         if (!empty($is_review_page)) {
-            return COINSUB_PLUGIN_DIR . 'includes/templates/coinsub-review-page.php';
+            return COINSUB_PLUGIN_DIR . 'includes/templates/sp-review-page.php';
         }
 
         return $template;

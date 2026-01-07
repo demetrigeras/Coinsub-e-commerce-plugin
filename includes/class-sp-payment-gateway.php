@@ -1092,7 +1092,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $coinsub_button_text = $this->get_order_button_text();
         
         // Include the modal template
-        include plugin_dir_path(__FILE__) . 'coinsub-checkout-modal.php';
+        include plugin_dir_path(__FILE__) . 'sp-checkout-modal.php';
     }
     
     /**

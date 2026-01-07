@@ -30,7 +30,7 @@ class CoinSub_Admin_Subscriptions {
     private function get_api_client() {
         if ($this->api_client === null) {
             if (!class_exists('CoinSub_API_Client')) {
-                require_once plugin_dir_path(__FILE__) . 'class-coinsub-api-client.php';
+                require_once plugin_dir_path(__FILE__) . 'class-sp-api-client.php';
             }
             $this->api_client = new CoinSub_API_Client();
         }
@@ -42,7 +42,7 @@ class CoinSub_Admin_Subscriptions {
      */
     private function get_branding() {
         if (!class_exists('CoinSub_Whitelabel_Branding')) {
-            require_once plugin_dir_path(__FILE__) . 'class-coinsub-whitelabel-branding.php';
+            require_once plugin_dir_path(__FILE__) . 'class-sp-whitelabel-branding.php';
         }
         return new CoinSub_Whitelabel_Branding();
     }
