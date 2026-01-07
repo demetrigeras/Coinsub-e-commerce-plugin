@@ -1222,7 +1222,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $insufficient_funds_note .= '4. Complete the onramp process<br>';
                 $insufficient_funds_note .= '5. Retry the refund once funds are available<br><br>';
                 
-                $insufficient_funds_note .= '<a href="' . esc_url($coinsub_settings_url) . '" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">Go to CoinSub Settings</a>';
+                $insufficient_funds_note .= '<a href="' . esc_url($coinsub_settings_url) . '" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">Go to Payment ProviderSettings</a>';
                 
                 $order->add_order_note($insufficient_funds_note);
                 $order->update_status('refund-pending', __('Refund pending - insufficient funds. Please add USDC to Polygon wallet.', 'coinsub'));
@@ -1673,7 +1673,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 
                 // Inject notice if not present
                 if ($section.find('.coinsub-manual-refund-disabled').length === 0) {
-                    $section.find('.refund-actions').prepend('<div class="notice notice-warning coinsub-manual-refund-disabled" style="margin-bottom:8px;">⚠️ Manual refund is disabled for CoinSub payments. Use the API refund button.</div>');
+                    $section.find('.refund-actions').prepend('<div class="notice notice-warning coinsub-manual-refund-disabled" style="margin-bottom:8px;">⚠️ Manual refund is disabled for Stablecoin Pay payments. Use the API refund button.</div>');
                 }
             }
             

@@ -21,8 +21,8 @@ class CoinSub_Admin_Logs {
     public function add_admin_menu() {
         add_submenu_page(
             'woocommerce',
-            'CoinSub Logs',
-            'CoinSub Logs',
+            'Stablecoin Pay Logs',
+            'Stablecoin Pay Logs',
             'manage_woocommerce',
             'coinsub-logs',
             array($this, 'display_logs_page')
@@ -41,7 +41,7 @@ class CoinSub_Admin_Logs {
         
         ?>
         <div class="wrap">
-            <h1>🔍 CoinSub Debug Logs</h1>
+            <h1>🔍 Stablecoin Pay Debug Logs</h1>
             
             <div style="background: #fff; padding: 20px; border: 1px solid #ccc; margin: 20px 0;">
                 <div style="margin: 20px 0;">
@@ -89,7 +89,7 @@ define(\'WP_DEBUG_DISPLAY\', false);</pre>';
                 <h3>🎯 How to Use This:</h3>
                 <ol>
                     <li>Make sure debug logging is enabled (see above)</li>
-                    <li>Go to your store and try to checkout with CoinSub</li>
+                    <li>Go to your store and try to checkout with Stablecoin Pay</li>
                     <li>Come back here and click "🔄 Refresh"</li>
                     <li>You'll see exactly what happened!</li>
                 </ol>
