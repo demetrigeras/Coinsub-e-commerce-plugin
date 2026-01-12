@@ -26,6 +26,12 @@ else
     mkdir -p "$PACKAGE_DIR/images"
 fi
 
+# Copy bundled plugins (required dependencies)
+if [ -d "bundled-plugins" ]; then
+    echo "📦 Copying bundled required plugins..."
+    cp -r bundled-plugins "$PACKAGE_DIR/"
+fi
+
 # Copy README
 echo "📦 Copying documentation..."
 cp README.md "$PACKAGE_DIR/"

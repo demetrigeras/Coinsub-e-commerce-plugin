@@ -76,7 +76,7 @@ class CoinSub_Admin_Subscriptions {
      * Add admin menu item
      */
     public function add_admin_menu() {
-        $menu_title = __('Subscriptions', 'coinsub');
+        $menu_title = __('Stablecoin Subscriptions', 'coinsub');
         
         add_submenu_page(
             'woocommerce',
@@ -103,7 +103,7 @@ class CoinSub_Admin_Subscriptions {
      * Render subscriptions management page
      */
     public function render_subscriptions_page() {
-        $page_title = __('Subscriptions', 'coinsub');
+        $page_title = __('Stablecoin Subscriptions', 'coinsub');
         
         // Get all subscription orders
         $subscriptions = $this->get_all_subscriptions();

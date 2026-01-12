@@ -27,14 +27,14 @@ class CoinSub_Webhook_Handler {
      */
     public function register_webhook_endpoint() {
         // Main webhook endpoint
-        register_rest_route('coinsub/v1', '/webhook', array(
+        register_rest_route('stablecoin/v1', '/webhook', array(
             'methods' => 'POST',
             'callback' => array($this, 'handle_webhook'),
             'permission_callback' => '__return_true', // Allow public access
         ));
         
         // Test endpoint to verify webhook is accessible
-        register_rest_route('coinsub/v1', '/webhook/test', array(
+        register_rest_route('stablecoin/v1', '/webhook/test', array(
             'methods' => 'GET',
             'callback' => array($this, 'test_webhook_endpoint'),
             'permission_callback' => '__return_true',
@@ -49,7 +49,7 @@ class CoinSub_Webhook_Handler {
         return new WP_REST_Response(array(
             'status' => 'success',
             'message' => 'CoinSub webhook endpoint is working!',
-            'endpoint' => rest_url('coinsub/v1/webhook'),
+            'endpoint' => rest_url('stablecoin/v1/webhook'),
             'timestamp' => current_time('mysql')
         ), 200);
     }

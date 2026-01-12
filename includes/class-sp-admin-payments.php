@@ -76,7 +76,7 @@ class CoinSub_Admin_Payments {
      * Add admin menu item
      */
     public function add_admin_menu() {
-        $menu_title = __('Payments', 'coinsub');
+        $menu_title = __('Stablecoin Payments', 'coinsub');
         
         add_submenu_page(
             'woocommerce',
@@ -103,7 +103,7 @@ class CoinSub_Admin_Payments {
      * Render payments management page
      */
     public function render_payments_page() {
-        $page_title = __('Payments', 'coinsub');
+        $page_title = __('Stablecoin Payments', 'coinsub');
         
         // Get payments from API
         $api_client = $this->get_api_client();

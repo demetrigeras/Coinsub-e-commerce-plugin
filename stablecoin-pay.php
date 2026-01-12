@@ -163,7 +163,7 @@ function coinsub_register_review_rewrite_rule() {
 function coinsub_commerce_activate() {
     // Add rewrite rules for webhook endpoint
     add_rewrite_rule(
-        '^wp-json/coinsub/v1/webhook/?$',
+        '^wp-json/stablecoin/v1/webhook/?$',
         'index.php?coinsub_webhook=1',
         'top'
     );
