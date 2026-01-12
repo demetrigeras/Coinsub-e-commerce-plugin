@@ -135,9 +135,7 @@ class CoinSub_Admin_Payments {
         ?>
         <div class="wrap">
             <h1 class="wp-heading-inline">
-                <img src="<?php echo esc_url(COINSUB_PLUGIN_URL . 'images/coinsub.svg'); ?>" 
-                     style="height: 30px; vertical-align: middle; margin-right: 10px;" 
-                     alt="Stablecoin Pay" />
+                <?php /* CoinSub logo removed for whitelabel - only used in checkout as default fallback */ ?>
                 <?php echo esc_html($page_title); ?>
             </h1>
             

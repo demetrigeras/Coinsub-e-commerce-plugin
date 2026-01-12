@@ -28,7 +28,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         
         $this->id = 'coinsub';
-        $this->icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        // Icon set dynamically in get_icon() - no default icon for whitelabel compatibility (CoinSub logo only in checkout as fallback)
+        $this->icon = '';
         $this->has_fields = true; // Enable custom payment box
         $this->method_title = __('Stablecoin Pay', 'coinsub');
         $this->method_description = __('Accept Crypto payments with Stablecoin Pay', 'coinsub');
@@ -1475,9 +1476,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Normalize company name once for all checks
         $normalized_company = !empty($this->brand_company) ? strtolower(str_replace(' ', '', $this->brand_company)) : '';
         
-        // In admin, always use default CoinSub logo (no whitelabel)
+        // In admin, don't show CoinSub logo (whitelabel compatibility - logo only in checkout as default fallback)
         if (is_admin()) {
-            $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $icon_url = ''; // No icon in admin
         } else {
             // SPECIAL CASE: Payment Servers - use local high-res PNG (300x300)
             if ($normalized_company === 'paymentservers') {
@@ -1496,10 +1497,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
         }
         
-        // Ensure we have a valid URL before creating HTML
-        if (empty($icon_url)) {
+        // Ensure we have a valid URL before creating HTML (only in checkout - admin should not show CoinSub logo)
+        if (empty($icon_url) && !is_admin()) {
+            // Fallback to CoinSub logo in checkout only (for non-whitelabel merchants)
             $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             error_log('CoinSub Whitelabel: ⚠️ Empty icon URL detected, using default');
+        }
+        
+        // In admin, return empty if no icon (don't show CoinSub logo in admin)
+        if (is_admin() && empty($icon_url)) {
+            return '';
         }
         
         // Standard size for all payment methods (30px)
