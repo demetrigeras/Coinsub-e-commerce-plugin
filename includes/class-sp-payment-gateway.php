@@ -765,7 +765,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('🔗 CoinSub - Checkout URL stored: ' . $purchase_session['checkout_url']);
             
             // Update order status - awaiting payment confirmation
-            $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Coinsub checkout.', 'coinsub'));
+            $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Stablecoin Pay checkout.', 'coinsub'));
             
             // Empty cart and clear CoinSub order from session
             WC()->cart->empty_cart();
@@ -1066,7 +1066,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 var coinsubWindow = window.open('<?php echo esc_js($checkout_url); ?>', '_blank');
                 
                 // Show notice to user
-                $('body').prepend('<div id="coinsub-checkout-notice" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">🚀 Complete Your Payment</strong><br><br>A new tab has opened with your CoinSub checkout.<br><br><small>Your order will be confirmed once payment is received.</small><br><br><button onclick="window.open(\'<?php echo esc_js($checkout_url); ?>\', \'_blank\')" style="background: white; color: #1e3a8a; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold;">Reopen Payment Page</button></div>');
+                $('body').prepend('<div id="coinsub-checkout-notice" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">🚀 Complete Your Payment</strong><br><br>A new tab has opened with your Stablecoin Pay checkout.<br><br><small>Your order will be confirmed once payment is received.</small><br><br><button onclick="window.open(\'<?php echo esc_js($checkout_url); ?>\', \'_blank\')" style="background: white; color: #1e3a8a; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold;">Reopen Payment Page</button></div>');
                 
                 // Remove notice after 30 seconds
                 setTimeout(function() {
@@ -1217,7 +1217,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $insufficient_funds_note .= 'You need ' . $amount . ' USDC on Polygon to process this refund.<br><br>';
                 
                 $insufficient_funds_note .= '<strong>To add funds:</strong><br>';
-                $insufficient_funds_note .= '1. Go to <strong>WooCommerce → Settings → Payments → CoinSub</strong><br>';
+                $insufficient_funds_note .= '1. Go to <strong>WooCommerce → Settings → Payments → Stablecoin Pay</strong><br>';
                 $insufficient_funds_note .= '2. Click <strong>"Manage"</strong> or scroll down<br>';
                 $insufficient_funds_note .= '3. Click the <strong>"Onramp USDC Polygon via Meld"</strong> button<br>';
                 $insufficient_funds_note .= '4. Complete the onramp process<br>';
@@ -1265,7 +1265,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Note: All refunds are processed as USDC on Polygon regardless of original payment method
         $refund_note = sprintf(
-            __('REFUND INITIATED: %s. Reason: %s. Customer wallet: %s. Refund ID: %s. Refund will be sent as USDC on Polygon (widely accepted). Refund initiated via CoinSub API. Waiting for transfer confirmation...', 'coinsub'),
+            __('REFUND INITIATED: %s. Reason: %s. Customer wallet: %s. Refund ID: %s. Refund will be sent as USDC on Polygon (widely accepted). Refund initiated via Stablecoin Pay API. Waiting for transfer confirmation...', 'coinsub'),
             wc_price($amount),
             $reason,
             $customer_wallet ?: $to_address,

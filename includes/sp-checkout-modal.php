@@ -405,9 +405,6 @@ jQuery(document).ready(function($) {
         setupIframeRedirectDetection();
     }
     
-    // Check for checkout URL on page load
-    checkForCoinSubCheckout();
-    
     // Ensure button visibility after a short delay (only if CoinSub is selected)
     setTimeout(function() {
         var paymentMethod = $('input[name="payment_method"]:checked').val();

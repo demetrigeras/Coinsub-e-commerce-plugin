@@ -144,7 +144,7 @@ class CoinSub_Admin_Payments {
             <?php if (is_wp_error($payments_response)): ?>
                 <div class="notice notice-error" style="margin: 20px 0;">
                     <p><strong><?php _e('Error loading payments:', 'coinsub'); ?></strong> <?php echo esc_html($payments_response->get_error_message()); ?></p>
-                    <p><?php _e('Please check your API credentials in WooCommerce > Settings > Payments > CoinSub', 'coinsub'); ?></p>
+                    <p><?php _e('Please check your API credentials in WooCommerce > Settings > Payments > Stablecoin Pay', 'coinsub'); ?></p>
                 </div>
             <?php elseif (empty($payments_with_orders)): ?>
                 <div class="notice notice-info" style="margin: 20px 0;">
