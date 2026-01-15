@@ -177,8 +177,83 @@ function coinsub_commerce_activate() {
     // Create dedicated checkout page
     coinsub_create_checkout_page();
     
+    // Automatically ensure WooCommerce checkout page has shortcode
+    coinsub_ensure_checkout_shortcode();
+    
     // Flush rewrite rules
     flush_rewrite_rules();
+}
+
+/**
+ * Automatically ensure WooCommerce checkout page has [woocommerce_checkout] shortcode
+ * This eliminates the need for manual Step 3 in setup instructions
+ * Safe: Only adds if missing, preserves existing content
+ */
+function coinsub_ensure_checkout_shortcode() {
+    // Get WooCommerce checkout page ID
+    $checkout_page_id = wc_get_page_id('checkout');
+    
+    if (!$checkout_page_id || $checkout_page_id === 0) {
+        error_log('⚠️ Stablecoin Pay: WooCommerce checkout page not found - skipping shortcode check');
+        return false;
+    }
+    
+    // Get the page
+    $checkout_page = get_post($checkout_page_id);
+    
+    if (!$checkout_page) {
+        error_log('⚠️ Stablecoin Pay: Could not retrieve checkout page');
+        return false;
+    }
+    
+    // Check if page content already has the shortcode or checkout functionality
+    $page_content = $checkout_page->post_content;
+    
+    // Check for various formats that indicate checkout is working:
+    // 1. [woocommerce_checkout] shortcode
+    // 2. WooCommerce checkout block (Gutenberg)
+    // 3. Any WooCommerce checkout-related content
+    $has_checkout = (
+        strpos($page_content, '[woocommerce_checkout]') !== false ||
+        strpos($page_content, '<!-- wp:woocommerce/checkout') !== false ||
+        strpos($page_content, 'wp-block-woocommerce-checkout') !== false ||
+        strpos($page_content, 'woocommerce-checkout') !== false
+    );
+    
+    if ($has_checkout) {
+        error_log('✅ Stablecoin Pay: Checkout page already has checkout shortcode/block - no changes needed');
+        return true;
+    }
+    
+    // Page doesn't have checkout functionality - add shortcode safely
+    // If page is empty or only has whitespace, replace with shortcode
+    // Otherwise, prepend shortcode (so it appears first)
+    $trimmed_content = trim($page_content);
+    
+    if (empty($trimmed_content)) {
+        // Empty page - just add shortcode
+        $new_content = '[woocommerce_checkout]';
+        error_log('🔄 Stablecoin Pay: Checkout page is empty - adding [woocommerce_checkout] shortcode');
+    } else {
+        // Has content - prepend shortcode (checkout should come first)
+        $new_content = '[woocommerce_checkout]' . "\n\n" . $page_content;
+        error_log('🔄 Stablecoin Pay: Checkout page has content - prepending [woocommerce_checkout] shortcode');
+    }
+    
+    // Update the page
+    $updated = wp_update_post(array(
+        'ID' => $checkout_page_id,
+        'post_content' => $new_content
+    ));
+    
+    if ($updated && !is_wp_error($updated)) {
+        error_log('✅ Stablecoin Pay: Successfully updated checkout page with [woocommerce_checkout] shortcode');
+        return true;
+    } else {
+        $error_msg = is_wp_error($updated) ? $updated->get_error_message() : 'Unknown error';
+        error_log('❌ Stablecoin Pay: Failed to update checkout page - ' . $error_msg);
+        return false;
+    }
 }
 
 /**
@@ -263,14 +338,27 @@ function coinsub_checkout_page_shortcode($atts) {
     $branding_data = $branding->get_branding(false);
     $company_name = !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
     
-    // Output full-page iframe
+    // Output full-page iframe with back button
     ob_start();
     ?>
     <div id="stablecoin-pay-checkout-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; background: #fff;">
+        <!-- Back button in top left corner -->
+        <a href="<?php echo esc_url(wc_get_checkout_url()); ?>" 
+           id="stablecoin-pay-back-button" 
+           style="position: absolute; top: 20px; left: 20px; z-index: 10000; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: rgba(255, 255, 255, 0.95); border-radius: 50%; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); text-decoration: none; transition: all 0.2s ease; cursor: pointer;"
+           onmouseover="this.style.background='rgba(255, 255, 255, 1)'; this.style.transform='scale(1.05)';"
+           onmouseout="this.style.background='rgba(255, 255, 255, 0.95)'; this.style.transform='scale(1)';"
+           title="Back to Checkout">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: #333;">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </a>
+        
+        <!-- Iframe with top padding to avoid covering back button -->
         <iframe 
             id="stablecoin-pay-checkout-iframe" 
             src="<?php echo esc_url($checkout_url); ?>" 
-            style="width: 100%; height: 100%; border: none;"
+            style="width: 100%; height: 100%; border: none; padding-top: 0;"
             allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"
             title="Complete Your Payment - <?php echo esc_attr($company_name); ?>"
         ></iframe>
