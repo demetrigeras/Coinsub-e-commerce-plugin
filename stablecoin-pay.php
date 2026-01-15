@@ -349,8 +349,8 @@ function coinsub_checkout_page_shortcode($atts) {
            onmouseover="this.style.background='rgba(255, 255, 255, 1)'; this.style.transform='scale(1.05)';"
            onmouseout="this.style.background='rgba(255, 255, 255, 0.95)'; this.style.transform='scale(1)';"
            title="Back to Checkout">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: #333;">
-                <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: #000;">
+                <path d="M15 18L9 12L15 6" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </a>
         
@@ -368,6 +368,23 @@ function coinsub_checkout_page_shortcode($atts) {
     jQuery(document).ready(function($) {
         // Hide WordPress admin bar if visible
         $('#wpadminbar').hide();
+        
+        // Handle back button click - check order status before going back
+        $('#stablecoin-pay-back-button').on('click', function(e) {
+            e.preventDefault();
+            
+            // Get order ID from session if available
+            var orderId = null;
+            
+            // Try to get order ID from URL or session
+            var urlParams = new URLSearchParams(window.location.search);
+            var checkoutUrl = urlParams.get('checkout_url');
+            
+            // Extract order ID from checkout URL if possible, or check session
+            // For now, just go back - we'll restore cart on checkout page if needed
+            console.log('🔄 Going back to checkout - order status will be checked on checkout page');
+            window.location.href = '<?php echo esc_url(wc_get_checkout_url()); ?>';
+        });
         
         // Listen for postMessage events from iframe
         window.addEventListener('message', function(event) {

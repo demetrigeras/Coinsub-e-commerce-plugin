@@ -106,6 +106,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
         add_action('wp_head', array($this, 'add_payment_button_styles'));
+        
+        // Check and restore cart if user returns with pending order
+        add_action('woocommerce_checkout_init', array($this, 'maybe_restore_cart_from_pending_order'), 5);
         // Removed woocommerce_order_button_text filter - using default "Place order" for all payment methods
         
         // Customize refund UI for CoinSub orders (hide manual refund, only show CoinSub API refund)
@@ -153,7 +156,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
             var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! The checkout page will be automatically configured and customers will see the payment option!</ol><p style="margin-top:15px;padding:10px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50;font-size:13px"><strong>✅ Automatic Setup:</strong> The plugin automatically configures your checkout page when enabled. No manual page editing required!</p><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! The checkout page will be automatically configured and customers will see the payment option!</ol><p style="margin-top:15px;padding:10px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50;font-size:13px"><strong>✅ Automatic Setup:</strong> The plugin automatically configures your checkout page when enabled. No manual page editing required!</p><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds are processed as USDC on the Polygon network.</strong><li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
@@ -770,9 +773,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Update order status - awaiting payment confirmation
             $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Stablecoin Pay checkout.', 'coinsub'));
             
-            // Empty cart and clear CoinSub order from session
+            // Store order ID in session BEFORE clearing cart (so we can restore if user goes back)
+            WC()->session->set('coinsub_pending_order_id', $order->get_id());
+            
+            // Empty cart (will be restored if user goes back and order is still pending)
             WC()->cart->empty_cart();
-            WC()->session->set('coinsub_order_id', null);  // Clear for next order
             
             $checkout_url = $purchase_session['checkout_url'];
             error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
@@ -2494,6 +2499,62 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             if (function_exists('coinsub_ensure_checkout_shortcode')) {
                 coinsub_ensure_checkout_shortcode();
             }
+        }
+    }
+    
+    /**
+     * Restore cart from pending order if user returns to checkout
+     * Only restores if order hasn't been processed (still pending/on-hold)
+     */
+    public function maybe_restore_cart_from_pending_order() {
+        // Check if there's a pending order in session
+        $pending_order_id = WC()->session->get('coinsub_pending_order_id');
+        
+        if (!$pending_order_id) {
+            return; // No pending order
+        }
+        
+        // Get the order
+        $order = wc_get_order($pending_order_id);
+        
+        if (!$order) {
+            // Order doesn't exist, clear session
+            WC()->session->set('coinsub_pending_order_id', null);
+            return;
+        }
+        
+        // Check order status - only restore if still pending/on-hold
+        $order_status = $order->get_status();
+        $pending_statuses = array('pending', 'on-hold', 'failed', 'cancelled');
+        
+        if (!in_array($order_status, $pending_statuses)) {
+            // Order has been processed (paid/completed), clear session and don't restore cart
+            error_log('🔄 CoinSub: Order #' . $pending_order_id . ' has been processed (' . $order_status . ') - not restoring cart');
+            WC()->session->set('coinsub_pending_order_id', null);
+            return;
+        }
+        
+        // Order is still pending - restore cart from order
+        if (WC()->cart->is_empty()) {
+            error_log('🔄 CoinSub: Restoring cart from pending order #' . $pending_order_id);
+            
+            // Get cart items from order
+            foreach ($order->get_items() as $item_id => $item) {
+                $product_id = $item->get_product_id();
+                $variation_id = $item->get_variation_id();
+                $quantity = $item->get_quantity();
+                
+                if ($variation_id) {
+                    WC()->cart->add_to_cart($product_id, $quantity, $variation_id);
+                } else {
+                    WC()->cart->add_to_cart($product_id, $quantity);
+                }
+            }
+            
+            // Recalculate totals
+            WC()->cart->calculate_totals();
+            
+            error_log('✅ CoinSub: Cart restored from pending order #' . $pending_order_id);
         }
     }
 }

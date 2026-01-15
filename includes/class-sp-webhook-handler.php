@@ -525,6 +525,7 @@ class CoinSub_Webhook_Handler {
         if (function_exists('WC') && WC()->session) {
             WC()->session->set('coinsub_order_id', null);
             WC()->session->set('coinsub_purchase_session_id', null);
+            WC()->session->set('coinsub_pending_order_id', null); // Clear pending order ID since payment is complete
         }
         error_log('✅ CoinSub Webhook - Cleared cart/session if available after successful payment');
         
