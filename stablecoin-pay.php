@@ -83,6 +83,9 @@ function coinsub_commerce_init() {
     // Initialize review/brand explainer page
     new CoinSub_Review_Page();
     
+    // Register checkout page shortcode
+    add_shortcode('stablecoin_pay_checkout', 'coinsub_checkout_page_shortcode');
+    
     // Force traditional checkout template (not block-based)
     add_action('template_redirect', 'coinsub_force_traditional_checkout');
 }
@@ -171,16 +174,161 @@ function coinsub_commerce_activate() {
     // Add rewrite for the review/branding explainer page
     coinsub_register_review_rewrite_rule();
     
+    // Create dedicated checkout page
+    coinsub_create_checkout_page();
+    
     // Flush rewrite rules
     flush_rewrite_rules();
+}
+
+/**
+ * Create dedicated checkout page for Stablecoin Pay
+ * This page will display the payment iframe full-page
+ */
+function coinsub_create_checkout_page() {
+    // Check if page already exists
+    $page_slug = 'stablecoin-pay-checkout';
+    $existing_page = get_page_by_path($page_slug);
+    
+    if ($existing_page) {
+        // Page exists, make sure it's published
+        if ($existing_page->post_status !== 'publish') {
+            wp_update_post(array(
+                'ID' => $existing_page->ID,
+                'post_status' => 'publish'
+            ));
+        }
+        update_option('coinsub_checkout_page_id', $existing_page->ID);
+        return $existing_page->ID;
+    }
+    
+    // Create the page
+    $page_data = array(
+        'post_title'    => 'Complete Your Payment',
+        'post_name'     => $page_slug,
+        'post_content'  => '[stablecoin_pay_checkout]',
+        'post_status'   => 'publish',
+        'post_type'     => 'page',
+        'post_author'   => 1,
+        'comment_status' => 'closed',
+        'ping_status'    => 'closed'
+    );
+    
+    $page_id = wp_insert_post($page_data);
+    
+    if ($page_id && !is_wp_error($page_id)) {
+        // Store page ID in options for easy reference
+        update_option('coinsub_checkout_page_id', $page_id);
+        error_log('✅ Stablecoin Pay: Created dedicated checkout page (ID: ' . $page_id . ')');
+        return $page_id;
+    }
+    
+    return false;
 }
 
 /**
  * Plugin deactivation
  */
 function coinsub_commerce_deactivate() {
+    // Optionally delete checkout page on deactivation
+    // Uncomment if you want to clean up on deactivation
+    // $page_id = get_option('coinsub_checkout_page_id');
+    // if ($page_id) {
+    //     wp_delete_post($page_id, true);
+    //     delete_option('coinsub_checkout_page_id');
+    // }
+    
     // Flush rewrite rules
     flush_rewrite_rules();
+}
+
+/**
+ * Shortcode handler for checkout page
+ * Displays the payment iframe full-page
+ */
+function coinsub_checkout_page_shortcode($atts) {
+    // Get checkout URL from query parameter
+    $checkout_url = isset($_GET['checkout_url']) ? esc_url_raw(urldecode($_GET['checkout_url'])) : '';
+    
+    if (empty($checkout_url)) {
+        return '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 50px auto;">
+            <h2 style="margin-bottom: 20px;">Payment Checkout</h2>
+            <p style="margin-bottom: 30px;">No checkout URL provided. Please return to the checkout page and try again.</p>
+            <a href="' . esc_url(wc_get_checkout_url()) . '" class="button" style="padding: 12px 24px; text-decoration: none; display: inline-block;">Return to Checkout</a>
+        </div>';
+    }
+    
+    // Get whitelabel branding for page title
+    $branding = new CoinSub_Whitelabel_Branding();
+    $branding_data = $branding->get_branding(false);
+    $company_name = !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
+    
+    // Output full-page iframe
+    ob_start();
+    ?>
+    <div id="stablecoin-pay-checkout-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; background: #fff;">
+        <iframe 
+            id="stablecoin-pay-checkout-iframe" 
+            src="<?php echo esc_url($checkout_url); ?>" 
+            style="width: 100%; height: 100%; border: none;"
+            allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"
+            title="Complete Your Payment - <?php echo esc_attr($company_name); ?>"
+        ></iframe>
+    </div>
+    
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        // Hide WordPress admin bar if visible
+        $('#wpadminbar').hide();
+        
+        // Listen for postMessage events from iframe
+        window.addEventListener('message', function(event) {
+            // Check if this is a redirect message
+            if (event.data && typeof event.data === 'object') {
+                if (event.data.type === 'redirect' && event.data.url) {
+                    console.log('🔄 Redirecting to:', event.data.url);
+                    window.location.href = event.data.url;
+                    return;
+                }
+            }
+            
+            // Check for order-received URL in message
+            if (event.data && typeof event.data === 'string' && event.data.includes('order-received')) {
+                console.log('🔄 Found order-received URL:', event.data);
+                window.location.href = event.data;
+                return;
+            }
+        });
+        
+        // Check iframe URL periodically for redirects
+        var checkInterval = setInterval(function() {
+            try {
+                var iframe = document.getElementById('stablecoin-pay-checkout-iframe');
+                if (iframe && iframe.contentWindow) {
+                    var iframeUrl = iframe.contentWindow.location.href;
+                    
+                    // Check if iframe has redirected to order-received page
+                    if (iframeUrl.includes('order-received')) {
+                        console.log('🔄 Iframe redirected to order-received, redirecting parent');
+                        clearInterval(checkInterval);
+                        window.location.href = iframeUrl;
+                        return;
+                    }
+                }
+            } catch(e) {
+                // Cross-origin restrictions - this is expected
+                // The iframe may have redirected to a different domain
+            }
+        }, 1000);
+        
+        // Stop checking after 5 minutes
+        setTimeout(function() {
+            clearInterval(checkInterval);
+        }, 300000);
+    });
+    </script>
+    <?php
+    return ob_get_clean();
 }
 
 // Hook into WordPress
