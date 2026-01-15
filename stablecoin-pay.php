@@ -643,13 +643,31 @@ function coinsub_ajax_process_payment() {
             if ($pm === 'coinsub' && in_array($status, array('pending','on-hold'))) {
                 $existing_checkout = $existing_order->get_meta('_coinsub_checkout_url');
                 if ($existing_checkout) {
-                    error_log('CoinSub AJAX: Reusing existing order checkout URL: ' . $existing_checkout);
-                    wp_send_json_success(array(
-                        'result' => 'success',
-                        'redirect' => $existing_checkout,
-                        'order_id' => $existing_order_id,
-                        'reused' => true
-                    ));
+                    error_log('CoinSub AJAX: Reusing existing order checkout URL, wrapping in dedicated checkout page');
+                    
+                    // Get dedicated checkout page URL and wrap the checkout URL
+                    $checkout_page_id = get_option('coinsub_checkout_page_id');
+                    if ($checkout_page_id) {
+                        $checkout_page_url = get_permalink($checkout_page_id);
+                        $redirect_url = add_query_arg('checkout_url', urlencode($existing_checkout), $checkout_page_url);
+                        error_log('🎯 CoinSub AJAX: Redirecting to dedicated checkout page: ' . $redirect_url);
+                        wp_send_json_success(array(
+                            'result' => 'success',
+                            'redirect' => $redirect_url,
+                            'coinsub_checkout_url' => $existing_checkout,
+                            'order_id' => $existing_order_id,
+                            'reused' => true
+                        ));
+                    } else {
+                        // Fallback: redirect directly
+                        error_log('⚠️ CoinSub AJAX: Checkout page not found, redirecting directly');
+                        wp_send_json_success(array(
+                            'result' => 'success',
+                            'redirect' => $existing_checkout,
+                            'order_id' => $existing_order_id,
+                            'reused' => true
+                        ));
+                    }
                 }
             }
         }
@@ -674,7 +692,18 @@ function coinsub_ajax_process_payment() {
             $url = $o->get_meta('_coinsub_checkout_url');
             if ($url) {
                 WC()->session->set('coinsub_order_id', $o->get_id());
-                wp_send_json_success(array('result' => 'success', 'redirect' => $url, 'order_id' => $o->get_id(), 'reused' => true));
+                
+                // Wrap checkout URL in dedicated checkout page
+                $checkout_page_id = get_option('coinsub_checkout_page_id');
+                if ($checkout_page_id) {
+                    $checkout_page_url = get_permalink($checkout_page_id);
+                    $redirect_url = add_query_arg('checkout_url', urlencode($url), $checkout_page_url);
+                    error_log('🎯 CoinSub AJAX: Reusing order, redirecting to dedicated checkout page: ' . $redirect_url);
+                    wp_send_json_success(array('result' => 'success', 'redirect' => $redirect_url, 'coinsub_checkout_url' => $url, 'order_id' => $o->get_id(), 'reused' => true));
+                } else {
+                    // Fallback: redirect directly
+                    wp_send_json_success(array('result' => 'success', 'redirect' => $url, 'order_id' => $o->get_id(), 'reused' => true));
+                }
             }
         } elseif (in_array($o->get_status(), array('processing','completed'))) {
             // If the most recent order is already paid, send user to order received page
@@ -757,8 +786,20 @@ function coinsub_ajax_process_payment() {
     // If this order already has a checkout URL (rare race), reuse it
     $existing_checkout = $order->get_meta('_coinsub_checkout_url');
     if (!empty($existing_checkout)) {
-        error_log('CoinSub AJAX: Order already has checkout URL, skipping process_payment');
-        $result = array('result' => 'success', 'redirect' => $existing_checkout);
+        error_log('CoinSub AJAX: Order already has checkout URL, wrapping in dedicated checkout page');
+        
+        // Get dedicated checkout page URL and wrap the checkout URL
+        $checkout_page_id = get_option('coinsub_checkout_page_id');
+        if ($checkout_page_id) {
+            $checkout_page_url = get_permalink($checkout_page_id);
+            $redirect_url = add_query_arg('checkout_url', urlencode($existing_checkout), $checkout_page_url);
+            error_log('🎯 CoinSub AJAX: Redirecting to dedicated checkout page: ' . $redirect_url);
+            $result = array('result' => 'success', 'redirect' => $redirect_url, 'coinsub_checkout_url' => $existing_checkout);
+        } else {
+            // Fallback: redirect directly to checkout URL
+            error_log('⚠️ CoinSub AJAX: Checkout page not found, redirecting directly to checkout URL');
+            $result = array('result' => 'success', 'redirect' => $existing_checkout);
+        }
     } else {
         // Process payment - this will create the purchase session
         $result = $gateway->process_payment($order->get_id());
