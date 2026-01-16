@@ -766,12 +766,57 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             
             error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
             
+            // Get checkout URL from purchase session
+            $checkout_url = isset($purchase_session['checkout_url']) ? $purchase_session['checkout_url'] : '';
+            
+            if (empty($checkout_url)) {
+                error_log('❌ CoinSub - CRITICAL: Checkout URL is empty in purchase session response!');
+                error_log('📦 Purchase session data: ' . json_encode($purchase_session));
+                throw new Exception('Checkout URL not received from API');
+            }
+            
+            error_log('🔗 CoinSub - Checkout URL from API (original): ' . $checkout_url);
+            
+            // Replace checkout URL domain with whitelabel buyurl if available
+            $branding_data = get_option('coinsub_whitelabel_branding', array());
+            if (!empty($branding_data['buyurl'])) {
+                $buyurl = $branding_data['buyurl'];
+                error_log('🎨 CoinSub - Whitelabel buyurl found: ' . $buyurl);
+                
+                // Extract domain from buyurl (e.g., https://buy.paymentservers.com)
+                $buyurl_parts = parse_url($buyurl);
+                if ($buyurl_parts && isset($buyurl_parts['scheme']) && isset($buyurl_parts['host'])) {
+                    $whitelabel_domain = $buyurl_parts['scheme'] . '://' . $buyurl_parts['host'];
+                    error_log('🎨 CoinSub - Whitelabel domain: ' . $whitelabel_domain);
+                    
+                    // Extract domain from original checkout URL
+                    $checkout_url_parts = parse_url($checkout_url);
+                    if ($checkout_url_parts && isset($checkout_url_parts['scheme']) && isset($checkout_url_parts['host'])) {
+                        $original_domain = $checkout_url_parts['scheme'] . '://' . $checkout_url_parts['host'];
+                        error_log('🔗 CoinSub - Original checkout domain: ' . $original_domain);
+                        
+                        // Replace the domain in checkout URL
+                        $checkout_url = str_replace($original_domain, $whitelabel_domain, $checkout_url);
+                        error_log('✅ CoinSub - Checkout URL replaced with whitelabel domain: ' . $checkout_url);
+                    } else {
+                        error_log('⚠️ CoinSub - Could not parse original checkout URL, using as-is');
+                    }
+                } else {
+                    error_log('⚠️ CoinSub - Could not parse buyurl, using original checkout URL');
+                }
+            } else {
+                error_log('ℹ️ CoinSub - No whitelabel buyurl found, using original checkout URL from API');
+            }
+            
+            error_log('🔗 CoinSub - Final checkout URL (after whitelabel replacement): ' . $checkout_url);
+            
             // Store CoinSub data in order meta
             $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session['purchase_session_id']);
-            $order->update_meta_data('_coinsub_checkout_url', $purchase_session['checkout_url']);
+            $order->update_meta_data('_coinsub_checkout_url', $checkout_url);
             $order->update_meta_data('_coinsub_merchant_id', $this->get_option('merchant_id'));
             
             error_log('✅ CoinSub - Stored purchase session ID: ' . $purchase_session['purchase_session_id']);
+            error_log('✅ CoinSub - Stored checkout URL in order meta: ' . $checkout_url);
             
             // Store subscription data if applicable
             if ($cart_data['has_subscription']) {
@@ -785,27 +830,46 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $order->update_meta_data('_coinsub_cart_items', $cart_data['items']);
             $order->save();
             
-            error_log('🔗 CoinSub - Checkout URL stored: ' . $purchase_session['checkout_url']);
+            // Verify it was stored
+            $stored_url = $order->get_meta('_coinsub_checkout_url');
+            if ($stored_url !== $checkout_url) {
+                error_log('⚠️ CoinSub - WARNING: Checkout URL mismatch! Stored: ' . $stored_url . ' vs Expected: ' . $checkout_url);
+            } else {
+                error_log('✅ CoinSub - Verified checkout URL stored correctly in order meta');
+            }
             
             // Update order status - awaiting payment confirmation
             $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Stablecoin Pay checkout.', 'coinsub'));
             
-            // Store order ID in session BEFORE clearing cart (so we can restore if user goes back)
+            // Store order ID in session (used for tracking, not cart restoration)
+            // Note: We intentionally DON'T restore cart on return - fresh checkout each time
             WC()->session->set('coinsub_pending_order_id', $order->get_id());
             
-            // Empty cart (will be restored if user goes back and order is still pending)
+            // Store checkout URL in session to avoid long URLs (use order ID as key)
+            WC()->session->set('coinsub_checkout_url_' . $order->get_id(), $checkout_url);
+            error_log('✅ CoinSub - Stored checkout URL in session with key: coinsub_checkout_url_' . $order->get_id());
+            
+            // Verify session storage
+            $session_url = WC()->session->get('coinsub_checkout_url_' . $order->get_id());
+            if ($session_url !== $checkout_url) {
+                error_log('⚠️ CoinSub - WARNING: Checkout URL mismatch in session! Stored: ' . $session_url . ' vs Expected: ' . $checkout_url);
+            } else {
+                error_log('✅ CoinSub - Verified checkout URL stored correctly in session');
+            }
+            
+            // Empty cart (cart will NOT be restored on return - fresh checkout required)
+            // This ensures new purchase session is created if user adds items and returns
             WC()->cart->empty_cart();
             
-            $checkout_url = $purchase_session['checkout_url'];
             error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
             
             // Get dedicated checkout page URL
             $checkout_page_id = get_option('coinsub_checkout_page_id');
             if ($checkout_page_id) {
                 $checkout_page_url = get_permalink($checkout_page_id);
-                // Add checkout URL as parameter
-                $redirect_url = add_query_arg('checkout_url', urlencode($checkout_url), $checkout_page_url);
-                error_log('🎯 CoinSub - Redirecting to dedicated checkout page: ' . $redirect_url);
+                // Use order ID instead of full URL to keep URL short
+                $redirect_url = add_query_arg('order_id', $order->get_id(), $checkout_page_url);
+                error_log('🎯 CoinSub - Redirecting to dedicated checkout page (short URL): ' . $redirect_url);
                 
                 return array(
                     'result' => 'success',
@@ -1057,17 +1121,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         
         return $session_data;
-    }
-    
-    /**
-     * Store checkout URL for automatic opening
-     */
-    private function store_checkout_url($checkout_url) {
-        // Use WordPress transient instead of PHP session (more reliable)
-        $user_id = get_current_user_id();
-        $session_id = $user_id ? $user_id : session_id();
-        
-        set_transient('coinsub_checkout_url_' . $session_id, $checkout_url, 300); // 5 minutes
     }
     
     /**
@@ -2520,58 +2573,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Restore cart from pending order if user returns to checkout
-     * Only restores if order hasn't been processed (still pending/on-hold)
+     * Cart restoration DISABLED
+     * 
+     * Previously attempted to restore cart from pending order when user returns to checkout.
+     * DISABLED because:
+     * 1. Checkout URLs are one-time use only
+     * 2. We clear session when user leaves checkout page
+     * 3. User should get fresh order and purchase session on return
+     * 4. Prevents reuse of expired purchase sessions
+     * 
+     * If cart restoration is needed in future, it would require:
+     * - NOT clearing coinsub_pending_order_id when user leaves checkout page
+     * - Keeping checkout URL valid for reuse (which defeats one-time use requirement)
      */
     public function maybe_restore_cart_from_pending_order() {
-        // Check if there's a pending order in session
-        $pending_order_id = WC()->session->get('coinsub_pending_order_id');
-        
-        if (!$pending_order_id) {
-            return; // No pending order
-        }
-        
-        // Get the order
-        $order = wc_get_order($pending_order_id);
-        
-        if (!$order) {
-            // Order doesn't exist, clear session
-            WC()->session->set('coinsub_pending_order_id', null);
-            return;
-        }
-        
-        // Check order status - only restore if still pending/on-hold
-        $order_status = $order->get_status();
-        $pending_statuses = array('pending', 'on-hold', 'failed', 'cancelled');
-        
-        if (!in_array($order_status, $pending_statuses)) {
-            // Order has been processed (paid/completed), clear session and don't restore cart
-            error_log('🔄 CoinSub: Order #' . $pending_order_id . ' has been processed (' . $order_status . ') - not restoring cart');
-            WC()->session->set('coinsub_pending_order_id', null);
-            return;
-        }
-        
-        // Order is still pending - restore cart from order
-        if (WC()->cart->is_empty()) {
-            error_log('🔄 CoinSub: Restoring cart from pending order #' . $pending_order_id);
-            
-            // Get cart items from order
-            foreach ($order->get_items() as $item_id => $item) {
-                $product_id = $item->get_product_id();
-                $variation_id = $item->get_variation_id();
-                $quantity = $item->get_quantity();
-                
-                if ($variation_id) {
-                    WC()->cart->add_to_cart($product_id, $quantity, $variation_id);
-                } else {
-                    WC()->cart->add_to_cart($product_id, $quantity);
-                }
-            }
-            
-            // Recalculate totals
-            WC()->cart->calculate_totals();
-            
-            error_log('✅ CoinSub: Cart restored from pending order #' . $pending_order_id);
-        }
+        // Cart restoration disabled - user gets fresh checkout each time
+        // This prevents reuse of one-time purchase session URLs
+        return;
     }
 }

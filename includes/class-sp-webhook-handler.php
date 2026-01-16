@@ -523,9 +523,15 @@ class CoinSub_Webhook_Handler {
             WC()->cart->empty_cart();
         }
         if (function_exists('WC') && WC()->session) {
+            // Clear all CoinSub session variables after successful payment
             WC()->session->set('coinsub_order_id', null);
             WC()->session->set('coinsub_purchase_session_id', null);
-            WC()->session->set('coinsub_pending_order_id', null); // Clear pending order ID since payment is complete
+            WC()->session->set('coinsub_pending_order_id', null);
+            
+            // Also clear checkout URL from session (if order ID is known)
+            if ($order && method_exists($order, 'get_id')) {
+                WC()->session->set('coinsub_checkout_url_' . $order->get_id(), null);
+            }
         }
         error_log('✅ CoinSub Webhook - Cleared cart/session if available after successful payment');
         

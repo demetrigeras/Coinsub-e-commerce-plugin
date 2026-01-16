@@ -142,70 +142,10 @@ class CoinSub_API_Client {
         $purchase_session_id = $data['data']['purchase_session_id'] ?? null;
         $checkout_url = $data['data']['url'] ?? null;
         
-        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-        error_log('XXX API RESPONSE RECEIVED XXX');
-        error_log('Session ID: ' . $purchase_session_id);
-        error_log('CHECKOUT URL FROM API: ' . $checkout_url);
-        
-        // WHITELABEL BUY URL: Reconstruct the buy URL using branding data if available
-        // This ensures we use the correct whitelabeled buy domain even if API returns default
-        error_log('🔍 CHECKING FOR BRANDING DATA TO RECONSTRUCT BUY URL...');
-        $stored_branding = get_option('coinsub_whitelabel_branding', false);
-        
-        error_log('📦 Stored branding data: ' . json_encode($stored_branding));
-        error_log('📦 Branding is array? ' . (is_array($stored_branding) ? 'YES' : 'NO'));
-        error_log('📦 Has company_slug? ' . (isset($stored_branding['company_slug']) ? 'YES - ' . $stored_branding['company_slug'] : 'NO'));
-        
-        if ($stored_branding !== false && is_array($stored_branding) && isset($stored_branding['company_slug']) && !empty($checkout_url)) {
-            $company_slug = $stored_branding['company_slug'];
-            error_log('✅ BRANDING FOUND - Company Slug: ' . $company_slug);
-            
-            // Only reconstruct if NOT CoinSub (CoinSub uses default buy.coinsub.io)
-            if ($company_slug !== 'coinsub') {
-                // Extract session ID from URL (last segment after /checkout/)
-                // E.g., https://buy.coinsub.io/checkout/abc123 → abc123
-                $url_parts = parse_url($checkout_url);
-                $path_segments = explode('/', trim($url_parts['path'], '/'));
-                $session_id_from_url = end($path_segments);
-                
-                // Get domain from company slug
-                $domain_map = array(
-                    'paymentservers' => 'paymentservers.com',
-                    'vantack' => 'vantack.com',
-                    'bxnk' => 'bxnk.com',
-                    'zyrister' => 'bxnk.com',
-                    'subscrypt' => 'subscrypt.com',
-                );
-                
-                $domain = isset($domain_map[$company_slug]) ? $domain_map[$company_slug] : $company_slug . '.com';
-                
-                // Reconstruct whitelabeled buy URL
-                // Production: buy.{domain}/checkout/{session}
-                $whitelabel_checkout_url = 'https://buy.' . $domain . '/checkout/' . $session_id_from_url;
-                
-                error_log('🔄 RECONSTRUCTING BUY URL FROM BRANDING:');
-                error_log('   Company Slug: ' . $company_slug);
-                error_log('   Domain: ' . $domain);
-                error_log('   Session from URL: ' . $session_id_from_url);
-                error_log('   NEW CHECKOUT URL: ' . $whitelabel_checkout_url);
-                
-                // Use the reconstructed URL
-                $checkout_url = $whitelabel_checkout_url;
-            } else {
-                error_log('✅ CoinSub merchant - using default buy.coinsub.io URL');
-            }
-        } else {
-            error_log('❌ BRANDING DATA NOT FOUND OR INCOMPLETE!');
-            error_log('   - Branding exists: ' . ($stored_branding !== false ? 'YES' : 'NO'));
-            error_log('   - Is array: ' . (is_array($stored_branding) ? 'YES' : 'NO'));
-            error_log('   - Has company_slug: ' . (isset($stored_branding['company_slug']) ? 'YES' : 'NO'));
-            error_log('   - Checkout URL not empty: ' . (!empty($checkout_url) ? 'YES' : 'NO'));
-            error_log('⚠️ USING API URL AS-IS (will show CoinSub buy app)');
-            error_log('💡 FIX: Go to WooCommerce → Settings → Payments → CoinSub and click "Save changes" to fetch branding');
-        }
-        
-        error_log('FINAL CHECKOUT URL: ' . $checkout_url);
-        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+        error_log('✅ API RESPONSE RECEIVED');
+        error_log('   Session ID: ' . $purchase_session_id);
+        error_log('   Checkout URL from API: ' . $checkout_url);
+        error_log('   Using API checkout URL directly (no reconstruction)');
      
         // Remove 'sess_' prefix if present (CoinSub returns sess_UUID but checkout needs just UUID)
         if ($purchase_session_id && strpos($purchase_session_id, 'sess_') === 0) {

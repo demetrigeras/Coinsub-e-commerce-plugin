@@ -431,8 +431,8 @@ class CoinSub_Whitelabel_Branding {
      */
     private function normalize_logo_urls($logo) {
         // Asset base for static files (logos, favicons, etc.) - NOT the API endpoint
-        $asset_base = 'https://app.coinsub.io/'; // Production (app subdomain serves assets)
-        // $asset_base = 'https://test-app.coinsub.io/'; // Test environment
+        $asset_base = 'https://app.coinsub.io'; // Production (app subdomain serves assets) - NO trailing slash
+        // $asset_base = 'https://test-app.coinsub.io'; // Test environment
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $asset_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
@@ -447,13 +447,15 @@ class CoinSub_Whitelabel_Branding {
                     // If URL doesn't start with http, it's relative - make it absolute
                     if (strpos($url, 'http') !== 0) {
                         // Relative URL, make it absolute
-                        if (strpos($url, '/') === 0) {
-                            $url = $asset_base . $url;
-                        } else {
-                            $url = $asset_base . '/' . $url;
-                        }
+                        // Remove leading slash from relative URL to avoid double slash
+                        $url = ltrim($url, '/');
+                        $url = $asset_base . '/' . $url;
+                        // Normalize any double slashes in the path (but preserve http:// or https://)
+                        $url = preg_replace('#([^:])//+#', '$1/', $url);
                         error_log('CoinSub Whitelabel: 🖼️ Converted relative logo URL to: ' . $url);
                     } else {
+                        // Normalize any double slashes in absolute URLs (but preserve http:// or https://)
+                        $url = preg_replace('#([^:])//+#', '$1/', $url);
                         error_log('CoinSub Whitelabel: 🖼️ Logo URL already absolute: ' . $url);
                     }
                 }
@@ -525,6 +527,8 @@ class CoinSub_Whitelabel_Branding {
             // Construct URL pattern: /img/domain/{slug}/{slug}.{type}.{theme}.svg
             $filename = $company_slug . '.' . $type . '.' . $theme . '.svg';
             $constructed_url = $asset_base . '/img/domain/' . $company_slug . '/' . $filename;
+            // Normalize any double slashes in the path (but preserve http:// or https://)
+            $constructed_url = preg_replace('#([^:])//+#', '$1/', $constructed_url);
             error_log('CoinSub Whitelabel: 🖼️ 🔧 Auto-constructed logo URL: ' . $constructed_url . ' (domain: ' . $asset_base . ')');
             return $constructed_url;
         }
@@ -569,6 +573,8 @@ class CoinSub_Whitelabel_Branding {
                 } else {
                     $favicon_url = $asset_base . '/' . $favicon_url;
                 }
+                // Normalize any double slashes in the path (but preserve http:// or https://)
+                $favicon_url = preg_replace('#([^:])//+#', '$1/', $favicon_url);
                 error_log('CoinSub Whitelabel: 🖼️ Converted relative favicon URL to: ' . $favicon_url . ' (domain: ' . $asset_base . ')');
             }
             
@@ -606,6 +612,8 @@ class CoinSub_Whitelabel_Branding {
                 // Use mapped extension or default to png
                 $extension = isset($extension_map[$company_slug]) ? $extension_map[$company_slug] : 'png';
                 $favicon_url = $base_url . '.' . $extension;
+                // Normalize any double slashes in the path (but preserve http:// or https://)
+                $favicon_url = preg_replace('#([^:])//+#', '$1/', $favicon_url);
                 
                 error_log('CoinSub Whitelabel: 🖼️ ✅ Auto-constructed whitelabel favicon: ' . $favicon_url . ' (extension: .' . $extension . ')');
                 return $favicon_url;
