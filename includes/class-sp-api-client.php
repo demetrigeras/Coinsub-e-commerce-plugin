@@ -42,8 +42,8 @@ class CoinSub_API_Client {
 
         // API URL is centralized - ALL merchants use the same API endpoint
         // The API determines the merchant based on Merchant ID, not domain
-        // $this->api_base_url = 'https://api.coinsub.io/v1'; // Production
-        $this->api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
+        $this->api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // $this->api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
