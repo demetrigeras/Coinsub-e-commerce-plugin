@@ -86,8 +86,11 @@ function coinsub_commerce_init() {
     // Register checkout page shortcode
     add_shortcode('stablecoin_pay_checkout', 'coinsub_checkout_page_shortcode');
     
-    // Add preconnect/prefetch to head for faster iframe loading
+    // Add preconnect/prefetch to head for faster iframe loading (priority 1 = very early)
     add_action('wp_head', 'coinsub_checkout_page_preconnect', 1);
+    
+    // Disable unnecessary WordPress/WooCommerce assets on checkout iframe page for faster loading
+    add_action('wp_enqueue_scripts', 'coinsub_disable_unnecessary_assets_on_checkout_page', 999);
     
     // Force traditional checkout template (not block-based)
     add_action('template_redirect', 'coinsub_force_traditional_checkout');
@@ -321,6 +324,42 @@ function coinsub_commerce_deactivate() {
 }
 
 /**
+ * Disable unnecessary WordPress/WooCommerce assets on checkout iframe page
+ * This speeds up page load so iframe can start loading faster
+ */
+function coinsub_disable_unnecessary_assets_on_checkout_page() {
+    $page_slug = 'stablecoin-pay-checkout';
+    $checkout_page = get_page_by_path($page_slug);
+    
+    if (!$checkout_page || !is_page($checkout_page->ID)) {
+        return;
+    }
+    
+    // Defer non-critical scripts - let them load after iframe starts
+    add_filter('script_loader_tag', function($tag, $handle) {
+        // Don't defer jQuery, WooCommerce, or our own scripts
+        $critical_scripts = array('jquery', 'jquery-core', 'jquery-migrate', 'wc-checkout', 'stablecoin-pay');
+        
+        // Defer all other scripts
+        if (!in_array($handle, $critical_scripts) && strpos($tag, 'src=') !== false) {
+            // Skip if already has defer or async
+            if (strpos($tag, 'defer') === false && strpos($tag, 'async') === false) {
+                $tag = str_replace(' src=', ' defer src=', $tag);
+            }
+        }
+        
+        return $tag;
+    }, 10, 2);
+    
+    // Remove WooCommerce scripts we don't need on this page
+    wp_dequeue_style('woocommerce-general');
+    wp_dequeue_style('woocommerce-layout');
+    wp_dequeue_style('woocommerce-smallscreen');
+    
+    // Keep only essential scripts
+}
+
+/**
  * Add preconnect/prefetch to head for checkout page (loads early in <head>)
  * This significantly speeds up iframe loading by starting DNS resolution early
  */
@@ -359,13 +398,21 @@ function coinsub_checkout_page_preconnect() {
         $checkout_url = esc_url_raw(urldecode($_GET['checkout_url']));
     }
     
-    // If we have a checkout URL, add preconnect early in head
+    // If we have a checkout URL, add aggressive resource hints early in head
     if (!empty($checkout_url)) {
         $parsed_url = parse_url($checkout_url);
         if (isset($parsed_url['scheme']) && isset($parsed_url['host'])) {
             $checkout_domain = $parsed_url['scheme'] . '://' . $parsed_url['host'];
-            echo '<link rel="preconnect" href="' . esc_url($checkout_domain) . '" crossorigin>' . "\n";
+            
+            // DNS prefetch (starts DNS lookup immediately - fastest hint)
             echo '<link rel="dns-prefetch" href="' . esc_url($checkout_domain) . '">' . "\n";
+            
+            // Preconnect (DNS + TCP + TLS handshake - most aggressive resource hint)
+            // This establishes connection before iframe src is even parsed
+            echo '<link rel="preconnect" href="' . esc_url($checkout_domain) . '" crossorigin>' . "\n";
+            
+            // Note: Can't prefetch cross-origin documents (CORS restriction)
+            // But preconnect should help significantly with DNS/TCP/TLS
         }
     }
     
@@ -378,6 +425,8 @@ function coinsub_checkout_page_preconnect() {
  * Displays the payment iframe full-page
  */
 function coinsub_checkout_page_shortcode($atts) {
+    error_log('🎬 CoinSub Checkout Page: Shortcode called');
+    
     // Get checkout URL from query parameter OR from session using order_id
     $checkout_url = '';
     
@@ -431,20 +480,71 @@ function coinsub_checkout_page_shortcode($atts) {
     
     error_log('🎯 CoinSub Checkout Page: Final checkout URL to load: ' . $checkout_url);
     
+    // Check if checkout URL domain is known to block iframes
+    $checkout_url_parts = parse_url($checkout_url);
+    $checkout_domain = isset($checkout_url_parts['host']) ? $checkout_url_parts['host'] : '';
+    $domains_that_block_iframes = array('paymentservers.com', 'buy.paymentservers.com');
+    $domain_blocks_iframe = false;
+    
+    foreach ($domains_that_block_iframes as $blocked_domain) {
+        if (strpos($checkout_domain, $blocked_domain) !== false) {
+            $domain_blocks_iframe = true;
+            error_log('⚠️ CoinSub Checkout Page: Domain ' . $checkout_domain . ' is known to block iframe embedding - will redirect directly');
+            break;
+        }
+    }
+    
+    // If domain blocks iframes, redirect directly instead of using iframe
+    if ($domain_blocks_iframe) {
+        error_log('🔄 CoinSub Checkout Page: Redirecting directly to checkout URL (bypassing iframe)');
+        return '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 50px auto;">
+            <h2 style="margin-bottom: 20px;">Opening Payment Checkout</h2>
+            <p style="margin-bottom: 30px;">Redirecting to secure payment page...</p>
+            <div style="width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+            <script>
+                setTimeout(function() {
+                    window.location.href = "' . esc_js($checkout_url) . '";
+                }, 500);
+            </script>
+            <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            </style>
+        </div>';
+    }
+    
     // Get whitelabel branding for page title (use cached data only, no API calls)
     $branding_data = get_option('coinsub_whitelabel_branding', array());
     $company_name = !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
+    
+    error_log('📝 CoinSub Checkout Page: Starting output buffer, company: ' . $company_name);
     
     // Output full-page iframe with back button and loading indicator
     ob_start();
     ?>
     <!-- Preconnect already added to <head> for faster loading -->
     
-    <div id="stablecoin-pay-checkout-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; background: #fff;">
-        <!-- Back button in top left corner -->
+    <!-- CRITICAL PERFORMANCE: Output iframe FIRST in body to start loading ASAP -->
+    <!-- Browser starts loading iframe as soon as it encounters <iframe src> -->
+    <iframe 
+        id="stablecoin-pay-checkout-iframe" 
+        src="<?php echo esc_url($checkout_url); ?>" 
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; opacity: 0; transition: opacity 0.3s ease; z-index: 9998;"
+        allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *; clipboard-write *"
+        title="Complete Your Payment - <?php echo esc_attr($company_name); ?>"
+        loading="eager"
+        referrerpolicy="no-referrer-when-downgrade"
+        importance="high"
+        allowfullscreen
+    ></iframe>
+    
+    <div id="stablecoin-pay-checkout-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; background: transparent; pointer-events: none;">
+        <!-- Back button in top left corner (pointer-events: auto to allow clicking) -->
         <a href="<?php echo esc_url(wc_get_checkout_url()); ?>" 
            id="stablecoin-pay-back-button" 
-           style="position: absolute; top: 20px; left: 20px; z-index: 10000; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: rgba(255, 255, 255, 0.95); border-radius: 50%; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); text-decoration: none; transition: all 0.2s ease; cursor: pointer;"
+           style="position: absolute; top: 20px; left: 20px; z-index: 10000; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: rgba(255, 255, 255, 0.95); border-radius: 50%; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); text-decoration: none; transition: all 0.2s ease; cursor: pointer; pointer-events: auto;"
            onmouseover="this.style.background='rgba(255, 255, 255, 1)'; this.style.transform='scale(1.05)';"
            onmouseout="this.style.background='rgba(255, 255, 255, 0.95)'; this.style.transform='scale(1)';"
            title="Back to Checkout">
@@ -453,24 +553,12 @@ function coinsub_checkout_page_shortcode($atts) {
             </svg>
         </a>
         
-        <!-- Loading indicator (shown while iframe loads) -->
-        <div id="stablecoin-pay-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10001; text-align: center; color: #666;">
+        <!-- Loading indicator (shown while iframe loads) - pointer-events: auto to be visible -->
+        <div id="stablecoin-pay-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10001; text-align: center; color: #666; pointer-events: auto;">
             <div style="width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
             <p style="margin: 0; font-size: 16px;">Loading payment checkout...</p>
             <p style="margin: 10px 0 0; font-size: 12px; color: #999;">This may take a few moments</p>
         </div>
-        
-        <!-- Iframe with top padding to avoid covering back button -->
-        <!-- IMPORTANT: Iframe loads immediately, no waiting for jQuery/DOM ready -->
-        <iframe 
-            id="stablecoin-pay-checkout-iframe" 
-            src="<?php echo esc_url($checkout_url); ?>" 
-            style="width: 100%; height: 100%; border: none; padding-top: 0; opacity: 0; transition: opacity 0.3s ease;"
-            allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *; clipboard-write *"
-            title="Complete Your Payment - <?php echo esc_attr($company_name); ?>"
-            loading="eager"
-            referrerpolicy="no-referrer-when-downgrade"
-        ></iframe>
     </div>
     
     <style>
@@ -483,20 +571,88 @@ function coinsub_checkout_page_shortcode($atts) {
     </style>
     
     <!-- Inline script to start iframe loading immediately (before jQuery/DOM ready) -->
+    <!-- CRITICAL: This script runs IMMEDIATELY, before WordPress/WooCommerce scripts load -->
     <script>
     (function() {
+        // Get iframe element immediately - it should already be in DOM
         var iframe = document.getElementById('stablecoin-pay-checkout-iframe');
         var loadingDiv = document.getElementById('stablecoin-pay-loading');
         
-        if (!iframe) return;
+        if (!iframe) {
+            // If iframe not found, retry after a micro-delay (DOM might still be parsing)
+            setTimeout(function() {
+                iframe = document.getElementById('stablecoin-pay-checkout-iframe');
+                if (iframe) {
+                    console.log('🔗 Iframe found on retry, URL:', iframe.src);
+                }
+            }, 10);
+            return;
+        }
         
         // Log iframe URL for debugging
         console.log('🔗 Loading checkout iframe:', iframe.src);
         console.log('⏱️ Iframe load started at:', new Date().toISOString());
+        console.log('🌐 Page ready state:', document.readyState);
+        
+        // Check if iframe is potentially blocked by X-Frame-Options or CSP
+        var checkoutDomain = new URL(iframe.src).host;
+        console.log('🌐 Checkout domain:', checkoutDomain);
+        
+        // Check for known domains that might block iframes
+        var domainsThatBlockIframes = ['paymentservers.com', 'buy.paymentservers.com'];
+        var domainBlocksIframe = domainsThatBlockIframes.some(function(blockedDomain) {
+            return checkoutDomain.includes(blockedDomain);
+        });
+        
+        if (domainBlocksIframe) {
+            console.warn('⚠️ Domain ' + checkoutDomain + ' is known to potentially block iframe embedding');
+            console.warn('⚠️ Will check iframe accessibility and redirect if blocked');
+        }
+        
+        // Detect if iframe is blocked (check after a short delay)
+        var iframeBlockCheckTimeout = setTimeout(function() {
+            try {
+                // Try to access iframe content - if blocked, this will throw
+                var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                console.log('✅ Iframe is accessible (not blocked by X-Frame-Options)');
+            } catch(e) {
+                console.error('❌ IFRAME BLOCKED: Domain ' + checkoutDomain + ' is blocking iframe embedding');
+                console.error('❌ Error:', e.message);
+                console.error('🔄 Redirecting to checkout URL directly (bypassing iframe)');
+                
+                // Redirect directly to checkout URL if iframe is blocked
+                if (loadingDiv) {
+                    loadingDiv.innerHTML = '<div style="color: #2271b1;"><p style="margin: 0 0 10px; font-size: 16px;">Opening payment checkout...</p><p style="margin: 0; font-size: 14px;">The payment provider requires a direct redirect.</p></div>';
+                }
+                
+                // Redirect after a brief delay
+                setTimeout(function() {
+                    window.location.href = iframe.src;
+                }, 1000);
+            }
+        }, 2000); // Check after 2 seconds
+        
+        // Note: Browser should start loading iframe src automatically when HTML is parsed
+        // Preconnect in <head> should have already established connection
         
         var loadStartTime = Date.now();
         var loadTimeout = null;
         var TIMEOUT_DURATION = 300000; // 5 minutes timeout
+        var fallbackShown = false;
+        
+        // FALLBACK: Show iframe after 3 seconds even if onload hasn't fired
+        // This prevents blank screen if onload event fails or is delayed
+        var fallbackTimeout = setTimeout(function() {
+            if (!fallbackShown && iframe.style.opacity === '0') {
+                console.warn('⚠️ Fallback: Showing iframe after 3 seconds (onload may not have fired)');
+                iframe.style.opacity = '1';
+                iframe.style.zIndex = '9999';
+                if (loadingDiv) {
+                    loadingDiv.style.display = 'none';
+                }
+                fallbackShown = true;
+            }
+        }, 3000);
         
         // Set timeout to detect if iframe takes too long to load
         loadTimeout = setTimeout(function() {
@@ -512,16 +668,32 @@ function coinsub_checkout_page_shortcode($atts) {
             if (loadTimeout) {
                 clearTimeout(loadTimeout);
             }
+            if (fallbackTimeout) {
+                clearTimeout(fallbackTimeout);
+            }
+            
             var loadTime = ((Date.now() - loadStartTime) / 1000).toFixed(2);
             console.log('✅ Iframe loaded successfully in ' + loadTime + ' seconds');
+            
+            // Make iframe visible and bring to front
             iframe.style.opacity = '1';
+            iframe.style.zIndex = '9999'; // Bring iframe to front once loaded
             if (loadingDiv) {
                 loadingDiv.style.display = 'none';
             }
             
+            // Hide container overlay once iframe is loaded (allows iframe interaction)
+            var container = document.getElementById('stablecoin-pay-checkout-container');
+            if (container) {
+                container.style.pointerEvents = 'none';
+                // Don't hide completely - keep back button accessible via z-index
+            }
+            
+            fallbackShown = true;
+            
             // Log warning if load time is excessive
             if (loadTime > 60) {
-                console.warn('⚠️ Iframe took ' + loadTime + ' seconds to load - this is unusually slow and may indicate backend issues');
+                console.warn('⚠️ Iframe took ' + loadTime + ' seconds to load - this is unusually slow and indicates backend/server performance issues at: ' + new URL(iframe.src).host);
             }
         };
         
@@ -530,8 +702,33 @@ function coinsub_checkout_page_shortcode($atts) {
             if (loadTimeout) {
                 clearTimeout(loadTimeout);
             }
+            if (fallbackTimeout) {
+                clearTimeout(fallbackTimeout);
+            }
+            
             var loadTime = ((Date.now() - loadStartTime) / 1000).toFixed(2);
+            var checkoutDomain = new URL(iframe.src).host;
             console.error('❌ Iframe failed to load after ' + loadTime + ' seconds');
+            console.error('❌ Iframe src:', iframe.src);
+            console.error('❌ Domain:', checkoutDomain);
+            
+            // Check if iframe is blocked by X-Frame-Options
+            try {
+                var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            } catch(e) {
+                console.error('❌ IFRAME BLOCKED: Domain ' + checkoutDomain + ' is blocking iframe embedding (X-Frame-Options or CSP)');
+                console.error('❌ Error:', e.message);
+                
+                if (loadingDiv) {
+                    loadingDiv.innerHTML = '<div style="color: #d32f2f;"><p style="margin: 0 0 10px; font-size: 16px;">⚠️ Payment checkout cannot be loaded in iframe</p><p style="margin: 0; font-size: 14px;">The payment provider (' + checkoutDomain + ') is blocking iframe embedding. Redirecting to payment page...</p><a href="' + iframe.src + '" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Open Payment Page</a><script>setTimeout(function(){ window.location.href = "' + iframe.src + '"; }, 2000);</script></div>';
+                }
+                return;
+            }
+            
+            // Still try to show the iframe in case it partially loaded
+            iframe.style.opacity = '1';
+            iframe.style.zIndex = '9999';
+            
             if (loadingDiv) {
                 loadingDiv.innerHTML = '<div style="color: #d32f2f;"><p style="margin: 0 0 10px; font-size: 16px;">⚠️ Failed to load payment checkout</p><p style="margin: 0; font-size: 14px;">Please try again or contact support</p><a href="<?php echo esc_js(wc_get_checkout_url()); ?>" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Return to Checkout</a></div>';
             }
@@ -698,7 +895,9 @@ function coinsub_checkout_page_shortcode($atts) {
     });
     </script>
     <?php
-    return ob_get_clean();
+    $output = ob_get_clean();
+    error_log('✅ CoinSub Checkout Page: Output buffer closed, length: ' . strlen($output) . ' bytes');
+    return $output;
 }
 
 // Hook into WordPress
