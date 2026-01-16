@@ -91,12 +91,21 @@ class CoinSub_Whitelabel_Branding {
         // Force refresh - fetch fresh data from API and store in database
         error_log('CoinSub Whitelabel: 🔄🔄🔄 FORCE REFRESH - Fetching branding from API and storing in database 🔄🔄🔄');
         
+        // Check for stuck lock (older than 30 seconds) and clear it
+        $lock_time = get_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+        if ($lock_time && (time() - $lock_time) > 30) {
+            error_log('CoinSub Whitelabel: 🔓 Clearing stuck fetch lock (older than 30 seconds)');
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+        }
+        
         // Acquire a lock to prevent multiple simultaneous fetches
         if (get_transient(self::BRANDING_FETCH_LOCK_KEY)) {
             error_log('CoinSub Whitelabel: 🔒 Fetch lock active. Another process is already fetching branding. Returning empty.');
             return array(); // Return empty array, no default
         }
         set_transient(self::BRANDING_FETCH_LOCK_KEY, true, 30); // Lock for 30 seconds
+        set_transient(self::BRANDING_FETCH_LOCK_KEY . '_time', time(), 30); // Track when lock was set
         error_log('CoinSub Whitelabel: 🔒 Acquired fetch lock for 30 seconds');
         
         // Get merchant ID and payment provider name from settings
@@ -129,6 +138,10 @@ class CoinSub_Whitelabel_Branding {
             $error_message = $merchant_info->get_error_message();
             error_log('CoinSub Whitelabel: ❌ Failed to get merchant info: ' . $error_message);
             
+            // Clear fetch lock on error
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+            
             // Handle rate limit errors - use stored branding if available
             if (strpos($error_message, 'Rate limit') !== false || strpos($error_message, 'rate limit') !== false) {
                 error_log('CoinSub Whitelabel: Rate limit exceeded. Checking database for stored branding...');
@@ -160,6 +173,9 @@ class CoinSub_Whitelabel_Branding {
         } else {
             error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant OR parent_merchant_id is missing');
             error_log('CoinSub Whitelabel: Response structure: ' . print_r($merchant_info, true));
+            // Clear fetch lock
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
             // If not a submerchant, we can't get branding - return empty
             return array(); // Return empty array, no default
         }
@@ -167,6 +183,9 @@ class CoinSub_Whitelabel_Branding {
         if (empty($parent_merchant_id)) {
             // No parent merchant ID found, return empty
             error_log('CoinSub Whitelabel: ❌ No parent merchant ID found - returning empty (no default)');
+            // Clear fetch lock
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
             return array(); // Return empty array, no default
         }
         
@@ -178,6 +197,9 @@ class CoinSub_Whitelabel_Branding {
         
         if (is_wp_error($env_configs)) {
             error_log('CoinSub Whitelabel: ❌ Failed to get environment configs: ' . $env_configs->get_error_message());
+            // Clear fetch lock on error
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
             return array(); // Return empty array, no default
         }
         
@@ -193,8 +215,10 @@ class CoinSub_Whitelabel_Branding {
         error_log('CoinSub Whitelabel: 📦 Branding data being stored: ' . json_encode($branding));
         error_log('CoinSub Whitelabel: ✅✅✅ BRANDING STORED IN DATABASE - Company Name: "' . $branding['company'] . '" | Title will be: "Pay with ' . $branding['company'] . '"');
         
-        // Clear fetch lock
+        // Clear fetch lock (always clear, even if there was an error)
         delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+        delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+        error_log('CoinSub Whitelabel: 🔓 Cleared fetch lock');
         
         // Verify it was stored correctly
         $verify = get_option(self::BRANDING_OPTION_KEY, false);

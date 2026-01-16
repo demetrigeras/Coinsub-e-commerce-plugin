@@ -590,28 +590,38 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             return;
         }
         
-        // CRITICAL FIX: Defer branding fetch to prevent timeout/crash during save
-        // Branding fetch involves multiple API calls that can take several seconds
-        // Instead of doing it synchronously (which causes timeouts), we'll:
-        // 1. Clear the cache immediately
-        // 2. Set a flag to fetch branding on next page load (fast save, slow fetch later)
-        error_log('CoinSub Whitelabel: ⚙️ Settings saved - Deferring branding fetch to prevent timeout');
+        // Clear any stuck fetch locks from previous attempts
+        delete_transient('coinsub_whitelabel_fetching');
+        delete_transient('coinsub_whitelabel_fetching_time');
+        error_log('CoinSub Whitelabel: 🔓 Cleared any existing fetch locks');
+        
+        // CRITICAL FIX: Try to fetch branding immediately, but don't block if it fails
+        // If immediate fetch fails, it will be retried on next page load
+        error_log('CoinSub Whitelabel: 🔄 Attempting immediate branding fetch...');
         
         try {
-        $branding = new CoinSub_Whitelabel_Branding();
-        $branding->clear_cache();
-        
-            // Set a flag to trigger branding fetch on next page load
-            // This prevents the save from timing out due to slow API calls
-            set_transient('coinsub_refresh_branding_on_load', true, 60); // Flag expires in 60 seconds
-            error_log('CoinSub Whitelabel: ✅ Settings saved successfully! Branding will be fetched on next page load.');
+            $branding = new CoinSub_Whitelabel_Branding();
+            $branding->clear_cache();
+            
+            // Try immediate fetch with force_refresh=true
+            $branding_data = $branding->get_branding(true);
+            
+            if (!empty($branding_data) && isset($branding_data['company'])) {
+                error_log('CoinSub Whitelabel: ✅✅✅ Branding fetched immediately - Company: "' . $branding_data['company'] . '"');
+            } else {
+                error_log('CoinSub Whitelabel: ⚠️ Immediate fetch returned empty - will retry on next page load');
+                // Set flag to retry on next page load as fallback
+                set_transient('coinsub_refresh_branding_on_load', true, 60);
+            }
             
         } catch (Exception $e) {
-            error_log('CoinSub Whitelabel: ❌ ERROR clearing cache: ' . $e->getMessage());
-            // Continue - don't break the save process
+            error_log('CoinSub Whitelabel: ❌ ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
+            // Set flag to retry on next page load as fallback
+            set_transient('coinsub_refresh_branding_on_load', true, 60);
         } catch (Error $e) {
-            error_log('CoinSub Whitelabel: ❌ FATAL ERROR clearing cache: ' . $e->getMessage());
-            // Continue - don't break the save process
+            error_log('CoinSub Whitelabel: ❌ FATAL ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
+            // Set flag to retry on next page load as fallback
+            set_transient('coinsub_refresh_branding_on_load', true, 60);
         }
     }
     
