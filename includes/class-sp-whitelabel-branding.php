@@ -114,17 +114,17 @@ class CoinSub_Whitelabel_Branding {
         
         // Ensure API client has the latest settings with centralized API URL
         $api_base_url = 'https://api.coinsub.io/v1'; // Production
-        // Note: merchant_info endpoint is headerless - doesn't need API key
+        // Note: /config endpoint is headerless - doesn't need API key, only Merchant-ID header
         $this->api_client->update_settings($api_base_url, $submerchant_id, '');
-        error_log('CoinSub Whitelabel: Updated API client - Submerchant ID: ' . $submerchant_id . ' (no API key needed for merchant-info endpoint)');
+        error_log('CoinSub Whitelabel: Updated API client - Submerchant ID: ' . $submerchant_id . ' (no API key needed for /config endpoint)');
         
-        // Step 1: Fetch merchant_info to discover if submerchant has a parent_merchant_id
-        error_log('CoinSub Whitelabel: Step 1 - Fetching merchant_info to discover parent_merchant_id...');
-        $merchant_info = $this->api_client->get_merchant_info($submerchant_id);
+        // Use new /config endpoint - gets merchant info + environment configs in one call
+        error_log('CoinSub Whitelabel: Fetching merchant config (merchant info + environment configs) from /config endpoint...');
+        $merchant_config = $this->api_client->get_merchant_config($submerchant_id);
         
-        if (is_wp_error($merchant_info)) {
-            $error_message = $merchant_info->get_error_message();
-            error_log('CoinSub Whitelabel: ❌ Failed to get merchant info: ' . $error_message);
+        if (is_wp_error($merchant_config)) {
+            $error_message = $merchant_config->get_error_message();
+            error_log('CoinSub Whitelabel: ❌ Failed to get merchant config: ' . $error_message);
             
             // Handle rate limit errors - use stored branding if available
             if (strpos($error_message, 'Rate limit') !== false || strpos($error_message, 'rate limit') !== false) {
@@ -138,27 +138,27 @@ class CoinSub_Whitelabel_Branding {
                 return array(); // Return empty array, no default
             }
             
-            error_log('CoinSub Whitelabel: ❌ Merchant info API error - returning empty (no default)');
+            error_log('CoinSub Whitelabel: ❌ Merchant config API error - returning empty (no default)');
             return array(); // Return empty array, no default
         }
         
-        // Extract parent merchant ID from merchant info response
-        // Response structure: { "submerchant_id": "...", "is_submerchant": true/false, "parent_merchant_id": "..." }
-        error_log('CoinSub Whitelabel: 📦📦📦 MERCHANT INFO RESPONSE 📦📦📦');
-        error_log('CoinSub Whitelabel: Merchant info response (pretty): ' . json_encode($merchant_info, JSON_PRETTY_PRINT));
+        // Extract data from merchant config response
+        // Response structure: { "merchant_id": "...", "is_submerchant": true/false, "parent_merchant_id": "...", "environment_configs": [...], "merchant_domains": [...] }
+        error_log('CoinSub Whitelabel: 📦📦📦 MERCHANT CONFIG RESPONSE 📦📦📦');
+        error_log('CoinSub Whitelabel: Merchant config response (pretty): ' . json_encode($merchant_config, JSON_PRETTY_PRINT));
         
         // Check if merchant is a submerchant
-        $is_submerchant = isset($merchant_info['is_submerchant']) ? $merchant_info['is_submerchant'] : false;
+        $is_submerchant = isset($merchant_config['is_submerchant']) ? $merchant_config['is_submerchant'] : false;
         error_log('CoinSub Whitelabel: Is Submerchant: ' . ($is_submerchant ? 'YES' : 'NO'));
         
         $parent_merchant_id = null;
         
-        if ($is_submerchant && isset($merchant_info['parent_merchant_id']) && !empty($merchant_info['parent_merchant_id'])) {
-            $parent_merchant_id = $merchant_info['parent_merchant_id'];
+        if ($is_submerchant && isset($merchant_config['parent_merchant_id']) && !empty($merchant_config['parent_merchant_id'])) {
+            $parent_merchant_id = $merchant_config['parent_merchant_id'];
             error_log('CoinSub Whitelabel: ✅ Found parent merchant ID: ' . $parent_merchant_id);
         } else {
             error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant OR parent_merchant_id is missing');
-            error_log('CoinSub Whitelabel: Response structure: ' . print_r($merchant_info, true));
+            error_log('CoinSub Whitelabel: Response structure: ' . print_r($merchant_config, true));
             // If not a submerchant, we can't get branding - return empty
             return array(); // Return empty array, no default
         }
@@ -171,16 +171,15 @@ class CoinSub_Whitelabel_Branding {
         
         error_log('CoinSub Whitelabel: ✅✅✅ Parent merchant ID extracted: ' . $parent_merchant_id);
         
-        // Fetch environment configs
-        error_log('CoinSub Whitelabel: Fetching environment configs from API...');
-        $env_configs = $this->api_client->get_environment_configs();
-        
-        if (is_wp_error($env_configs)) {
-            error_log('CoinSub Whitelabel: ❌ Failed to get environment configs: ' . $env_configs->get_error_message());
+        // Get environment configs from the response (already included in merchant_config)
+        if (!isset($merchant_config['environment_configs']) || !is_array($merchant_config['environment_configs'])) {
+            error_log('CoinSub Whitelabel: ❌ No environment_configs in merchant config response');
             return array(); // Return empty array, no default
         }
         
-        error_log('CoinSub Whitelabel: ✅ Got environment configs. Structure: ' . json_encode(array_keys($env_configs)));
+        // Wrap environment_configs in the expected format for match_merchant_to_branding
+        $env_configs = array('environment_configs' => $merchant_config['environment_configs']);
+        error_log('CoinSub Whitelabel: ✅ Got environment configs from merchant config. Count: ' . count($env_configs['environment_configs']));
         
         // Match parent merchant ID to config_data
         $branding = $this->match_merchant_to_branding($parent_merchant_id, $env_configs);

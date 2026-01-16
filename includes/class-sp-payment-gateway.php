@@ -744,6 +744,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             );
         }
         
+        // Clear any old pending order from previous checkout attempt
+        // This ensures we start fresh with the new order
+        $old_pending_order_id = WC()->session->get('coinsub_pending_order_id');
+        if ($old_pending_order_id && $old_pending_order_id != $order_id) {
+            error_log('🔄 CoinSub: Clearing old pending order #' . $old_pending_order_id . ' - starting fresh with order #' . $order_id);
+            WC()->session->set('coinsub_pending_order_id', null);
+        }
+        
         error_log('✅ CoinSub - Order found. Starting payment process...');
         
         try {
@@ -798,10 +806,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Update order status - awaiting payment confirmation
             $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Stablecoin Pay checkout.', 'coinsub'));
             
-            // Store order ID in session BEFORE clearing cart (so we can restore if user goes back)
+            // Store order ID in session (for tracking purposes only - standard gateway behavior)
+            // Note: We don't restore cart if user abandons payment (matches Stripe/PayPal behavior)
             WC()->session->set('coinsub_pending_order_id', $order->get_id());
             
-            // Empty cart (will be restored if user goes back and order is still pending)
+            // Empty cart (standard WooCommerce behavior - matches Stripe/PayPal)
+            // If user abandons payment, they need to start fresh (no cart restoration)
             WC()->cart->empty_cart();
             
             $checkout_url = $purchase_session['checkout_url'];
@@ -2528,8 +2538,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Restore cart from pending order if user returns to checkout
-     * Only restores if order hasn't been processed (still pending/on-hold)
+     * Clean up pending order session (standard gateway behavior - no cart restoration)
+     * Matches Stripe/PayPal behavior: if user abandons payment, they start fresh
      */
     public function maybe_restore_cart_from_pending_order() {
         // Check if there's a pending order in session
@@ -2539,47 +2549,37 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             return; // No pending order
         }
         
-        // Get the order
+        // Get the order to check its status
         $order = wc_get_order($pending_order_id);
         
         if (!$order) {
             // Order doesn't exist, clear session
+            error_log('🔄 CoinSub: Pending order #' . $pending_order_id . ' no longer exists - clearing session');
             WC()->session->set('coinsub_pending_order_id', null);
             return;
         }
         
-        // Check order status - only restore if still pending/on-hold
+        // Check order status
         $order_status = $order->get_status();
-        $pending_statuses = array('pending', 'on-hold', 'failed', 'cancelled');
+        $processed_statuses = array('processing', 'completed', 'refunded', 'cancelled');
         
-        if (!in_array($order_status, $pending_statuses)) {
-            // Order has been processed (paid/completed), clear session and don't restore cart
-            error_log('🔄 CoinSub: Order #' . $pending_order_id . ' has been processed (' . $order_status . ') - not restoring cart');
+        if (in_array($order_status, $processed_statuses)) {
+            // Order has been processed (paid/completed/cancelled), clear session
+            error_log('🔄 CoinSub: Order #' . $pending_order_id . ' has been processed (' . $order_status . ') - clearing session');
             WC()->session->set('coinsub_pending_order_id', null);
             return;
         }
         
-        // Order is still pending - restore cart from order
-        if (WC()->cart->is_empty()) {
-            error_log('🔄 CoinSub: Restoring cart from pending order #' . $pending_order_id);
-            
-            // Get cart items from order
-            foreach ($order->get_items() as $item_id => $item) {
-                $product_id = $item->get_product_id();
-                $variation_id = $item->get_variation_id();
-                $quantity = $item->get_quantity();
-                
-                if ($variation_id) {
-                    WC()->cart->add_to_cart($product_id, $quantity, $variation_id);
-                } else {
-                    WC()->cart->add_to_cart($product_id, $quantity);
-                }
-            }
-            
-            // Recalculate totals
-            WC()->cart->calculate_totals();
-            
-            error_log('✅ CoinSub: Cart restored from pending order #' . $pending_order_id);
+        // Order is still pending - but we DON'T restore cart (standard gateway behavior)
+        // If user abandoned payment and comes back, they need to start fresh
+        // This matches Stripe/PayPal behavior where cart is cleared and not restored
+        if (!WC()->cart->is_empty()) {
+            // User has started a new checkout with new items - clear old pending order
+            error_log('🔄 CoinSub: User started fresh checkout - clearing old pending order #' . $pending_order_id);
+            WC()->session->set('coinsub_pending_order_id', null);
         }
+        // If cart is empty and order is pending, we leave it as-is
+        // The pending order will remain in the database but won't interfere
+        // User can view it in their account if needed
     }
 }
