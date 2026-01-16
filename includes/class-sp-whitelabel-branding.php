@@ -154,21 +154,24 @@ class CoinSub_Whitelabel_Branding {
         $is_submerchant = isset($merchant_info['is_submerchant']) ? $merchant_info['is_submerchant'] : false;
         error_log('CoinSub Whitelabel: Is Submerchant: ' . ($is_submerchant ? 'YES' : 'NO'));
         
-        if ($is_submerchant && isset($merchant_info['parent_merchant_id']) && !empty($merchant_info['parent_merchant_id'])) {
-            $parent_merchant_id = $merchant_info['parent_merchant_id'];
-            error_log('CoinSub Whitelabel: ✅ Found parent merchant ID: ' . $parent_merchant_id);
-        } else {
-            error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant OR parent_merchant_id is missing');
-            error_log('CoinSub Whitelabel: Response structure: ' . print_r($merchant_info, true));
-            // If not a submerchant, we can't get branding - return empty
+        // CRITICAL: Both conditions must be true - merchant must be a submerchant AND have parent_merchant_id
+        // They must be aligned - can't have parent_merchant_id without is_submerchant=true
+        if (!$is_submerchant) {
+            error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant - cannot fetch whitelabel branding');
+            error_log('CoinSub Whitelabel: Response structure: ' . json_encode($merchant_info, JSON_PRETTY_PRINT));
             return array(); // Return empty array, no default
         }
         
-        if (empty($parent_merchant_id)) {
-            // No parent merchant ID found, return empty
-            error_log('CoinSub Whitelabel: ❌ No parent merchant ID found - returning empty (no default)');
+        // Merchant is a submerchant - now check for parent_merchant_id
+        if (!isset($merchant_info['parent_merchant_id']) || empty($merchant_info['parent_merchant_id'])) {
+            error_log('CoinSub Whitelabel: ⚠️ Merchant is a submerchant but parent_merchant_id is missing');
+            error_log('CoinSub Whitelabel: Response structure: ' . json_encode($merchant_info, JSON_PRETTY_PRINT));
+            error_log('CoinSub Whitelabel: Response keys: ' . implode(', ', array_keys($merchant_info)));
             return array(); // Return empty array, no default
         }
+        
+        $parent_merchant_id = $merchant_info['parent_merchant_id'];
+        error_log('CoinSub Whitelabel: ✅ Merchant is submerchant AND has parent_merchant_id: ' . $parent_merchant_id);
         
         error_log('CoinSub Whitelabel: ✅✅✅ Parent merchant ID extracted: ' . $parent_merchant_id);
         

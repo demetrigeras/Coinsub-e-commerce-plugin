@@ -584,28 +584,53 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
             error_log('CoinSub Whitelabel: ✅ API client updated with credentials');
+            
+            // CRITICAL: Fetch branding with force_refresh when settings are saved
+            error_log('CoinSub Whitelabel: 🔄 Triggering branding fetch with force_refresh=true...');
+            
+            // Set a transient to trigger branding fetch on next page load (prevents timeout during save)
+            set_transient('coinsub_refresh_branding_on_load', true, 60);
+            error_log('CoinSub Whitelabel: ✅ Set transient to fetch branding on next page load');
+            
+            // Also try to fetch immediately (but don't break if it fails)
+            try {
+                $branding = new CoinSub_Whitelabel_Branding();
+                $branding_data = $branding->get_branding(true); // force_refresh = true
+                
+                if (!empty($branding_data) && isset($branding_data['company'])) {
+                    error_log('CoinSub Whitelabel: ✅✅✅ Branding fetched immediately - Company: "' . $branding_data['company'] . '"');
+                } else {
+                    error_log('CoinSub Whitelabel: ⚠️ Branding fetch returned empty - will retry on next page load');
+                }
+            } catch (Exception $e) {
+                error_log('CoinSub Whitelabel: ⚠️ Error fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
+            }
         } else {
             // No credentials - skip everything
             error_log('CoinSub Whitelabel: ⚠️ Skipping - no credentials');
             return;
         }
         
-        // CRITICAL FIX: Defer branding fetch to prevent timeout/crash during save
-        // Branding fetch involves multiple API calls that can take several seconds
-        // Instead of doing it synchronously (which causes timeouts), we'll:
-        // 1. Clear the cache immediately
-        // 2. Set a flag to fetch branding on next page load (fast save, slow fetch later)
-        error_log('CoinSub Whitelabel: ⚙️ Settings saved - Deferring branding fetch to prevent timeout');
+        // CRITICAL: Fetch branding immediately when settings are saved
+        // This ensures whitelabel branding is updated right away
+        error_log('CoinSub Whitelabel: 🔄 Fetching branding immediately with force_refresh=true...');
         
         try {
-        $branding = new CoinSub_Whitelabel_Branding();
-        $branding->clear_cache();
-        
-            // Set a flag to trigger branding fetch on next page load
-            // This prevents the save from timing out due to slow API calls
-            set_transient('coinsub_refresh_branding_on_load', true, 60); // Flag expires in 60 seconds
-            error_log('CoinSub Whitelabel: ✅ Settings saved successfully! Branding will be fetched on next page load.');
+            $branding = new CoinSub_Whitelabel_Branding();
+            $branding->clear_cache(); // Clear old branding first
             
+            // Fetch branding with force_refresh=true
+            $branding_data = $branding->get_branding(true);
+            
+            if (!empty($branding_data) && isset($branding_data['company'])) {
+                error_log('CoinSub Whitelabel: ✅✅✅ Branding fetched successfully - Company: "' . $branding_data['company'] . '"');
+                error_log('CoinSub Whitelabel: ✅ Checkout title will be: "Pay with ' . $branding_data['company'] . '"');
+            } else {
+                error_log('CoinSub Whitelabel: ⚠️ Branding fetch returned empty - check API response and merchant info');
+                // Set flag to retry on next page load as fallback
+                set_transient('coinsub_refresh_branding_on_load', true, 60);
+                error_log('CoinSub Whitelabel: ✅ Settings saved successfully! Branding will be fetched on next page load.');
+            }
         } catch (Exception $e) {
             error_log('CoinSub Whitelabel: ❌ ERROR clearing cache: ' . $e->getMessage());
             // Continue - don't break the save process
