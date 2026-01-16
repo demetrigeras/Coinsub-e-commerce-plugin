@@ -99,31 +99,28 @@ class CoinSub_Whitelabel_Branding {
         set_transient(self::BRANDING_FETCH_LOCK_KEY, true, 30); // Lock for 30 seconds
         error_log('CoinSub Whitelabel: 🔒 Acquired fetch lock for 30 seconds');
         
-        // Get merchant ID and payment provider name from settings
+        // Get merchant ID from settings (this is the SUBMERCHANT)
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-        $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
+        $submerchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
-        // Check if we have credentials for API fetch
-        if (empty($merchant_id) || empty($api_key)) {
-            error_log('CoinSub Whitelabel: ❌ No merchant ID or API key in settings - cannot fetch branding');
+        // Check if we have merchant ID
+        if (empty($submerchant_id)) {
+            error_log('CoinSub Whitelabel: ❌ No merchant ID in settings - cannot fetch branding');
             return array(); // Return empty array, no default
         }
         
+        error_log('CoinSub Whitelabel: 📝 Submerchant ID from settings: ' . $submerchant_id);
+        
         // Ensure API client has the latest settings with centralized API URL
         $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // Note: merchant_info endpoint is headerless - doesn't need API key
+        $this->api_client->update_settings($api_base_url, $submerchant_id, '');
+        error_log('CoinSub Whitelabel: Updated API client - Submerchant ID: ' . $submerchant_id . ' (no API key needed for merchant-info endpoint)');
         
-        // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
-        $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
-        error_log('CoinSub Whitelabel: Updated API client - Merchant ID: ' . $merchant_id . ' (no API key needed for merchant-info endpoint)');
-        
-        // Fetch merchant info to check if submerchant and get parent merchant ID
-        // NEW: Use headerless endpoint that only requires Merchant-ID (no API key needed)
-        error_log('CoinSub Whitelabel: Attempting to fetch merchant info for merchant ID: ' . $merchant_id);
-        error_log('CoinSub Whitelabel: Using NEW headerless endpoint (no API key required)');
-        $merchant_info = $this->api_client->get_merchant_info($merchant_id);
-        
-        $parent_merchant_id = null;
+        // Step 1: Fetch merchant_info to discover if submerchant has a parent_merchant_id
+        error_log('CoinSub Whitelabel: Step 1 - Fetching merchant_info to discover parent_merchant_id...');
+        $merchant_info = $this->api_client->get_merchant_info($submerchant_id);
         
         if (is_wp_error($merchant_info)) {
             $error_message = $merchant_info->get_error_message();
@@ -154,24 +151,23 @@ class CoinSub_Whitelabel_Branding {
         $is_submerchant = isset($merchant_info['is_submerchant']) ? $merchant_info['is_submerchant'] : false;
         error_log('CoinSub Whitelabel: Is Submerchant: ' . ($is_submerchant ? 'YES' : 'NO'));
         
-        // CRITICAL: Both conditions must be true - merchant must be a submerchant AND have parent_merchant_id
-        // They must be aligned - can't have parent_merchant_id without is_submerchant=true
-        if (!$is_submerchant) {
-            error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant - cannot fetch whitelabel branding');
-            error_log('CoinSub Whitelabel: Response structure: ' . json_encode($merchant_info, JSON_PRETTY_PRINT));
+        $parent_merchant_id = null;
+        
+        if ($is_submerchant && isset($merchant_info['parent_merchant_id']) && !empty($merchant_info['parent_merchant_id'])) {
+            $parent_merchant_id = $merchant_info['parent_merchant_id'];
+            error_log('CoinSub Whitelabel: ✅ Found parent merchant ID: ' . $parent_merchant_id);
+        } else {
+            error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant OR parent_merchant_id is missing');
+            error_log('CoinSub Whitelabel: Response structure: ' . print_r($merchant_info, true));
+            // If not a submerchant, we can't get branding - return empty
             return array(); // Return empty array, no default
         }
         
-        // Merchant is a submerchant - now check for parent_merchant_id
-        if (!isset($merchant_info['parent_merchant_id']) || empty($merchant_info['parent_merchant_id'])) {
-            error_log('CoinSub Whitelabel: ⚠️ Merchant is a submerchant but parent_merchant_id is missing');
-            error_log('CoinSub Whitelabel: Response structure: ' . json_encode($merchant_info, JSON_PRETTY_PRINT));
-            error_log('CoinSub Whitelabel: Response keys: ' . implode(', ', array_keys($merchant_info)));
+        if (empty($parent_merchant_id)) {
+            // No parent merchant ID found, return empty
+            error_log('CoinSub Whitelabel: ❌ No parent merchant ID found - returning empty (no default)');
             return array(); // Return empty array, no default
         }
-        
-        $parent_merchant_id = $merchant_info['parent_merchant_id'];
-        error_log('CoinSub Whitelabel: ✅ Merchant is submerchant AND has parent_merchant_id: ' . $parent_merchant_id);
         
         error_log('CoinSub Whitelabel: ✅✅✅ Parent merchant ID extracted: ' . $parent_merchant_id);
         
@@ -227,9 +223,9 @@ class CoinSub_Whitelabel_Branding {
     /**
      * Match parent merchant ID to whitelabel branding config
      * 
-     * @param string $parent_merchant_id Parent merchant ID to match
+     * @param string $parent_merchant_id Parent merchant ID to match against app.merchantID in configs
      * @param array $env_configs Environment configs from API
-     * @return array Branding data
+     * @return array Branding data (empty array if no match, defaults to CoinSub)
      */
     private function match_merchant_to_branding($parent_merchant_id, $env_configs) {
         if (!isset($env_configs['environment_configs']) || !is_array($env_configs['environment_configs'])) {
@@ -290,7 +286,7 @@ class CoinSub_Whitelabel_Branding {
                 continue;
             }
             
-            // Compare merchant IDs (case-insensitive, trim whitespace)
+            // Compare parent merchant ID with config merchantID (case-insensitive, trim whitespace)
             $parent_id_normalized = strtolower(trim($parent_merchant_id));
             $config_id_normalized = strtolower(trim($config_merchant_id));
             
@@ -298,8 +294,9 @@ class CoinSub_Whitelabel_Branding {
             error_log('CoinSub Whitelabel: Config #' . $index . ' - Company: "' . (isset($app_data['company']) ? $app_data['company'] : 'N/A') . '" | merchantID: "' . $config_merchant_id . '"');
             
             if ($config_id_normalized === $parent_id_normalized) {
-                // Found match! Extract branding data from app.company and app.logo
-                error_log('CoinSub Whitelabel: ✅✅✅ MATCH FOUND! Parent ID matches config merchantID');
+                // Found match! The parent_merchant_id matches a merchantID in configs
+                // This means the submerchant belongs to this parent merchant - use their branding
+                error_log('CoinSub Whitelabel: ✅✅✅ MATCH FOUND! Parent merchant ID matches config merchantID');
                 
                 // Get company name from app.company (e.g., "Vantack")
                 $company_name = isset($app_data['company']) && !empty($app_data['company']) 
@@ -338,12 +335,18 @@ class CoinSub_Whitelabel_Branding {
             }
         }
         
-        // No match found, return empty
+        // No match found - parent_merchant_id doesn't match any merchantID in configs
+        // This means the parent merchant is not in the environment configs, so use default CoinSub branding
         error_log('CoinSub Whitelabel: ❌ No matching branding found for parent merchant ID: ' . $parent_merchant_id);
+        error_log('CoinSub Whitelabel: Parent merchant ID does not match any merchantID in environment configs');
         error_log('CoinSub Whitelabel: Available merchant IDs in configs: ' . json_encode(array_map(function($config) {
             $config_data = is_string($config['config_data']) ? json_decode($config['config_data'], true) : $config['config_data'];
-            return isset($config_data['app']['merchantID']) ? $config_data['app']['merchantID'] : 'N/A';
+            if (isset($config_data['app']['merchantID'])) {
+                return $config_data['app']['merchantID'];
+            }
+            return 'N/A';
         }, $env_configs['environment_configs'])));
+        error_log('CoinSub Whitelabel: Returning empty array - will default to "Pay with Coinsub"');
         
         return array(); // Return empty array, no default
     }
