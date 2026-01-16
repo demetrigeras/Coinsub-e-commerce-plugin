@@ -338,7 +338,7 @@ function coinsub_checkout_page_shortcode($atts) {
     $branding_data = $branding->get_branding(false);
     $company_name = !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
     
-    // Output full-page iframe with back button
+    // Output full-page iframe with back button and loading indicator
     ob_start();
     ?>
     <div id="stablecoin-pay-checkout-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; background: #fff;">
@@ -354,20 +354,66 @@ function coinsub_checkout_page_shortcode($atts) {
             </svg>
         </a>
         
+        <!-- Loading indicator (shown while iframe loads) -->
+        <div id="stablecoin-pay-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10001; text-align: center; color: #666;">
+            <div style="width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+            <p style="margin: 0; font-size: 16px;">Loading payment checkout...</p>
+            <p style="margin: 10px 0 0; font-size: 12px; color: #999;">This may take a few moments</p>
+        </div>
+        
         <!-- Iframe with top padding to avoid covering back button -->
         <iframe 
             id="stablecoin-pay-checkout-iframe" 
             src="<?php echo esc_url($checkout_url); ?>" 
-            style="width: 100%; height: 100%; border: none; padding-top: 0;"
+            style="width: 100%; height: 100%; border: none; padding-top: 0; opacity: 0; transition: opacity 0.3s ease;"
             allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"
             title="Complete Your Payment - <?php echo esc_attr($company_name); ?>"
         ></iframe>
     </div>
     
+    <style>
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    </style>
+    
     <script type="text/javascript">
     jQuery(document).ready(function($) {
         // Hide WordPress admin bar if visible
         $('#wpadminbar').hide();
+        
+        var iframe = document.getElementById('stablecoin-pay-checkout-iframe');
+        var loadingDiv = document.getElementById('stablecoin-pay-loading');
+        
+        // Show iframe when it loads, hide loading indicator
+        if (iframe) {
+            iframe.onload = function() {
+                console.log('✅ Iframe loaded successfully');
+                iframe.style.opacity = '1';
+                if (loadingDiv) {
+                    loadingDiv.style.display = 'none';
+                }
+            };
+            
+            // Handle iframe load errors
+            iframe.onerror = function() {
+                console.error('❌ Iframe failed to load');
+                if (loadingDiv) {
+                    loadingDiv.innerHTML = '<div style="color: #d32f2f;"><p style="margin: 0 0 10px; font-size: 16px;">⚠️ Failed to load payment checkout</p><p style="margin: 0; font-size: 14px;">Please try again or contact support</p><a href="<?php echo esc_url(wc_get_checkout_url()); ?>" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Return to Checkout</a></div>';
+                }
+            };
+            
+            // Timeout: If iframe doesn't load within 60 seconds, show error
+            setTimeout(function() {
+                if (iframe.style.opacity === '0' || iframe.style.opacity === '') {
+                    console.warn('⚠️ Iframe taking too long to load');
+                    if (loadingDiv) {
+                        loadingDiv.innerHTML = '<div style="color: #d32f2f;"><p style="margin: 0 0 10px; font-size: 16px;">⚠️ Payment checkout is taking longer than expected</p><p style="margin: 0; font-size: 14px;">The checkout page may be experiencing issues. Please try again.</p><a href="<?php echo esc_url(wc_get_checkout_url()); ?>" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Return to Checkout</a></div>';
+                    }
+                }
+            }, 60000); // 60 second timeout
+        }
         
         // Handle back button click - check order status before going back
         $('#stablecoin-pay-back-button').on('click', function(e) {

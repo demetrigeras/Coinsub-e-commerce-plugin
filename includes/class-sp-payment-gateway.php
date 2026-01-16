@@ -746,10 +746,17 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('  Has Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
             
             // Create purchase session directly with cart totals
+            $session_start_time = microtime(true);
             error_log('💳 CoinSub - Creating purchase session...');
+            error_log('⏱️ CoinSub - Purchase session API call started at ' . date('H:i:s'));
+            
             $purchase_session_data = $this->prepare_purchase_session_from_cart($order, $cart_data);
             
             $purchase_session = $this->api_client->create_purchase_session($purchase_session_data);
+            
+            $session_end_time = microtime(true);
+            $session_duration = round($session_end_time - $session_start_time, 2);
+            error_log('⏱️ CoinSub - Purchase session creation took ' . $session_duration . ' seconds');
             
             // Check for errors BEFORE trying to access as array
             if (is_wp_error($purchase_session)) {

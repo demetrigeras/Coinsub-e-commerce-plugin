@@ -112,13 +112,22 @@ class CoinSub_API_Client {
             $headers['Authorization'] = 'Bearer ' . $this->api_key;
         }
         
+        // Log timing for API call
+        $start_time = microtime(true);
+        error_log('⏱️ CoinSub API - Starting purchase session API call at ' . date('H:i:s'));
+        
         $response = wp_remote_post($endpoint, array(
             'headers' => $headers,
             'body' => json_encode($payload),
-            'timeout' => 30
+            'timeout' => 60 // Increased to 60 seconds for slow networks
         ));
         
+        $end_time = microtime(true);
+        $duration = round($end_time - $start_time, 2);
+        error_log('⏱️ CoinSub API - Purchase session API call completed in ' . $duration . ' seconds');
+        
         if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - Error after ' . $duration . ' seconds: ' . $response->get_error_message());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
