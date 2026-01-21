@@ -112,13 +112,22 @@ class CoinSub_API_Client {
             $headers['Authorization'] = 'Bearer ' . $this->api_key;
         }
         
+        // Log timing for API call
+        $start_time = microtime(true);
+        error_log('⏱️ CoinSub API - Starting purchase session API call at ' . date('H:i:s'));
+        
         $response = wp_remote_post($endpoint, array(
             'headers' => $headers,
             'body' => json_encode($payload),
-            'timeout' => 30
+            'timeout' => 60 // Increased to 60 seconds for slow networks
         ));
         
+        $end_time = microtime(true);
+        $duration = round($end_time - $start_time, 2);
+        error_log('⏱️ CoinSub API - Purchase session API call completed in ' . $duration . ' seconds');
+        
         if (is_wp_error($response)) {
+            error_log('❌ CoinSub API - Error after ' . $duration . ' seconds: ' . $response->get_error_message());
             return new WP_Error('api_error', $response->get_error_message());
         }
         
@@ -133,70 +142,10 @@ class CoinSub_API_Client {
         $purchase_session_id = $data['data']['purchase_session_id'] ?? null;
         $checkout_url = $data['data']['url'] ?? null;
         
-        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-        error_log('XXX API RESPONSE RECEIVED XXX');
-        error_log('Session ID: ' . $purchase_session_id);
-        error_log('CHECKOUT URL FROM API: ' . $checkout_url);
-        
-        // WHITELABEL BUY URL: Reconstruct the buy URL using branding data if available
-        // This ensures we use the correct whitelabeled buy domain even if API returns default
-        error_log('🔍 CHECKING FOR BRANDING DATA TO RECONSTRUCT BUY URL...');
-        $stored_branding = get_option('coinsub_whitelabel_branding', false);
-        
-        error_log('📦 Stored branding data: ' . json_encode($stored_branding));
-        error_log('📦 Branding is array? ' . (is_array($stored_branding) ? 'YES' : 'NO'));
-        error_log('📦 Has company_slug? ' . (isset($stored_branding['company_slug']) ? 'YES - ' . $stored_branding['company_slug'] : 'NO'));
-        
-        if ($stored_branding !== false && is_array($stored_branding) && isset($stored_branding['company_slug']) && !empty($checkout_url)) {
-            $company_slug = $stored_branding['company_slug'];
-            error_log('✅ BRANDING FOUND - Company Slug: ' . $company_slug);
-            
-            // Only reconstruct if NOT CoinSub (CoinSub uses default buy.coinsub.io)
-            if ($company_slug !== 'coinsub') {
-                // Extract session ID from URL (last segment after /checkout/)
-                // E.g., https://buy.coinsub.io/checkout/abc123 → abc123
-                $url_parts = parse_url($checkout_url);
-                $path_segments = explode('/', trim($url_parts['path'], '/'));
-                $session_id_from_url = end($path_segments);
-                
-                // Get domain from company slug
-                $domain_map = array(
-                    'paymentservers' => 'paymentservers.com',
-                    'vantack' => 'vantack.com',
-                    'bxnk' => 'bxnk.com',
-                    'zyrister' => 'bxnk.com',
-                    'subscrypt' => 'subscrypt.com',
-                );
-                
-                $domain = isset($domain_map[$company_slug]) ? $domain_map[$company_slug] : $company_slug . '.com';
-                
-                // Reconstruct whitelabeled buy URL
-                // Production: buy.{domain}/checkout/{session}
-                $whitelabel_checkout_url = 'https://buy.' . $domain . '/checkout/' . $session_id_from_url;
-                
-                error_log('🔄 RECONSTRUCTING BUY URL FROM BRANDING:');
-                error_log('   Company Slug: ' . $company_slug);
-                error_log('   Domain: ' . $domain);
-                error_log('   Session from URL: ' . $session_id_from_url);
-                error_log('   NEW CHECKOUT URL: ' . $whitelabel_checkout_url);
-                
-                // Use the reconstructed URL
-                $checkout_url = $whitelabel_checkout_url;
-            } else {
-                error_log('✅ CoinSub merchant - using default buy.coinsub.io URL');
-            }
-        } else {
-            error_log('❌ BRANDING DATA NOT FOUND OR INCOMPLETE!');
-            error_log('   - Branding exists: ' . ($stored_branding !== false ? 'YES' : 'NO'));
-            error_log('   - Is array: ' . (is_array($stored_branding) ? 'YES' : 'NO'));
-            error_log('   - Has company_slug: ' . (isset($stored_branding['company_slug']) ? 'YES' : 'NO'));
-            error_log('   - Checkout URL not empty: ' . (!empty($checkout_url) ? 'YES' : 'NO'));
-            error_log('⚠️ USING API URL AS-IS (will show CoinSub buy app)');
-            error_log('💡 FIX: Go to WooCommerce → Settings → Payments → CoinSub and click "Save changes" to fetch branding');
-        }
-        
-        error_log('FINAL CHECKOUT URL: ' . $checkout_url);
-        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+        error_log('✅ API RESPONSE RECEIVED');
+        error_log('   Session ID: ' . $purchase_session_id);
+        error_log('   Checkout URL from API: ' . $checkout_url);
+        error_log('   Using API checkout URL directly (no reconstruction)');
      
         // Remove 'sess_' prefix if present (CoinSub returns sess_UUID but checkout needs just UUID)
         if ($purchase_session_id && strpos($purchase_session_id, 'sess_') === 0) {
@@ -631,6 +580,111 @@ class CoinSub_API_Client {
     }
     
     /**
+<<<<<<< HEAD
+     * Create a webhook for the merchant
+     * 
+     * @param string $webhook_url The webhook URL to register
+     * @return array|WP_Error Webhook data or error
+     */
+    public function create_webhook($webhook_url) {
+        if (empty($this->merchant_id) || empty($this->api_key)) {
+            return new WP_Error('missing_credentials', 'Merchant ID and API key are required to create webhook');
+        }
+        
+        // Webhook endpoint: POST /v1/merchants/:merchant_id/webhooks
+        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $this->merchant_id . '/webhooks';
+        
+        error_log('🔔 CoinSub API - Creating webhook');
+        error_log('   Endpoint: ' . $endpoint);
+        error_log('   Webhook URL: ' . $webhook_url);
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $this->merchant_id,
+            'API-Key' => $this->api_key
+        );
+        
+        $payload = array(
+            'url' => $webhook_url
+        );
+        
+        $response = wp_remote_post($endpoint, array(
+            'headers' => $headers,
+            'body' => json_encode($payload),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('🔔 CoinSub API - Webhook creation failed: ' . $response->get_error_message());
+            return $response;
+=======
+     * Get merchant config (merchant info + environment configs + domains in one call)
+     * Endpoint: GET /v1/environment-variables/config
+     * No API key required - only Merchant-ID header
+     * 
+     * @param string $merchant_id Merchant ID to check
+     * @return array|WP_Error Merchant config response with is_submerchant, parent_merchant_id, environment_configs, merchant_domains
+     */
+    public function get_merchant_config($merchant_id) {
+        $endpoint = rtrim($this->api_base_url, '/') . '/environment-variables/config';
+        
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 🌐🌐🌐 MERCHANT CONFIG API CALL 🌐🌐🌐');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📍 Endpoint: ' . $endpoint);
+        error_log('CoinSub API: 📤 Request Method: GET');
+        error_log('CoinSub API: 📤 Merchant-ID Header: ' . $merchant_id);
+        error_log('CoinSub API: ℹ️  No API key required for this endpoint');
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $merchant_id
+        );
+        
+        $response = wp_remote_get($endpoint, array('headers' => $headers, 'timeout' => 30));
+        
+        if (is_wp_error($response)) {
+            error_log('CoinSub API: ❌❌❌ WP_Error getting merchant config ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $response->get_error_message());
+            error_log('CoinSub API: Error code: ' . $response->get_error_code());
+            error_log('═══════════════════════════════════════════════════════════');
+            return new WP_Error('api_error', $response->get_error_message());
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📥📥📥 MERCHANT CONFIG API RESPONSE 📥📥📥');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('CoinSub API: 📊 Response Code: ' . $response_code);
+        error_log('CoinSub API: 📦 Response Body (pretty, first 5000 chars): ' . substr(json_encode($data, JSON_PRETTY_PRINT), 0, 5000));
+        
+        if ($response_code !== 200) {
+            $error_msg = isset($data['error']) ? $data['error'] : 'API request failed';
+            error_log('CoinSub API: ❌❌❌ ERROR RESPONSE ❌❌❌');
+            error_log('CoinSub API: Error message: ' . $error_msg);
+            error_log('═══════════════════════════════════════════════════════════');
+            return new WP_Error('api_error', $error_msg);
+        }
+        
+        error_log('CoinSub API: ✅✅✅ SUCCESS - Merchant config retrieved ✅✅✅');
+        if (isset($data['is_submerchant'])) {
+            error_log('CoinSub API: 📊 Is Submerchant: ' . ($data['is_submerchant'] ? 'YES' : 'NO'));
+            if (isset($data['parent_merchant_id'])) {
+                error_log('CoinSub API: 📊 Parent Merchant ID: ' . $data['parent_merchant_id']);
+            }
+        }
+        if (isset($data['environment_configs'])) {
+            error_log('CoinSub API: 📊 Found ' . count($data['environment_configs']) . ' environment configs');
+        }
+        error_log('═══════════════════════════════════════════════════════════');
+        
+        return $data;
+    }
+    
+    /**
      * Create a webhook for the merchant
      * 
      * @param string $webhook_url The webhook URL to register
@@ -680,7 +734,7 @@ class CoinSub_API_Client {
         }
         
         error_log('🔔 CoinSub API - Webhook created successfully');
-        error_log('   Webhook ID: ' . (isset($data['data']['webhook_id']) ? $data['data']['webhook_id'] : 'N/A'));
+        error_log('   Webhook ID: ' . (isset($data['data']['webhook_id']) ? $data['data']['webhook_id'] : (isset($data['webhook_id']) ? $data['webhook_id'] : 'N/A')));
         
         return $data;
     }

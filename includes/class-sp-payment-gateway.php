@@ -100,9 +100,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // ALSO hook into admin_init to catch form submission early (backup method for debugging)
         add_action('admin_init', array($this, 'maybe_process_admin_options'), 5);
         
+        // Automatically ensure checkout page has shortcode when gateway is enabled
+        add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'ensure_checkout_shortcode_on_save'), 20);
+        
         add_action('before_woocommerce_init', array($this, 'declare_hpos_compatibility'));
         add_action('wp_footer', array($this, 'add_checkout_script'));
         add_action('wp_head', array($this, 'add_payment_button_styles'));
+        
+        // Check and restore cart if user returns with pending order
+        add_action('woocommerce_checkout_init', array($this, 'maybe_restore_cart_from_pending_order'), 5);
         // Removed woocommerce_order_button_text filter - using default "Place order" for all payment methods
         
         // Customize refund UI for CoinSub orders (hide manual refund, only show CoinSub API refund)
@@ -150,7 +156,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
             var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>💰 Refund Policy & Requirements</h3><p style="margin-bottom:10px"><strong>⚠️ Important Refund Information:</strong></p><ul style="line-height:1.6;margin-top:0;margin-bottom:15px"><li><strong>Refunds can only be processed through CoinSub wallets.</strong> Customers must have a CoinSub wallet to receive refunds.</li><li><strong>All refunds are processed as USDC on Polygon.</strong> You\'ll need USDC tokens on the Polygon network in your merchant wallet to process refunds.</li><li><strong>You may need to offramp funds</strong> (convert from fiat to crypto) to have USDC available for refunds. Keep a reserve of USDC on Polygon to cover refunds quickly.</li></ul><p style="margin-bottom:10px"><strong>To add USDC for refunds:</strong></p><p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a></p><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Maintain a small reserve of USDC on Polygon to process refunds quickly when needed.</p></div></div>');
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! The checkout page will be automatically configured and customers will see the payment option!</ol><p style="margin-top:15px;padding:10px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50;font-size:13px"><strong>✅ Automatic Setup:</strong> The plugin automatically configures your checkout page when enabled. No manual page editing required!</p><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds are processed as USDC on the Polygon network.</strong><li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
@@ -584,28 +590,38 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             return;
         }
         
-        // CRITICAL FIX: Defer branding fetch to prevent timeout/crash during save
-        // Branding fetch involves multiple API calls that can take several seconds
-        // Instead of doing it synchronously (which causes timeouts), we'll:
-        // 1. Clear the cache immediately
-        // 2. Set a flag to fetch branding on next page load (fast save, slow fetch later)
-        error_log('CoinSub Whitelabel: ⚙️ Settings saved - Deferring branding fetch to prevent timeout');
+        // Clear any stuck fetch locks from previous attempts
+        delete_transient('coinsub_whitelabel_fetching');
+        delete_transient('coinsub_whitelabel_fetching_time');
+        error_log('CoinSub Whitelabel: 🔓 Cleared any existing fetch locks');
+        
+        // CRITICAL FIX: Try to fetch branding immediately, but don't block if it fails
+        // If immediate fetch fails, it will be retried on next page load
+        error_log('CoinSub Whitelabel: 🔄 Attempting immediate branding fetch...');
         
         try {
-        $branding = new CoinSub_Whitelabel_Branding();
-        $branding->clear_cache();
-        
-            // Set a flag to trigger branding fetch on next page load
-            // This prevents the save from timing out due to slow API calls
-            set_transient('coinsub_refresh_branding_on_load', true, 60); // Flag expires in 60 seconds
-            error_log('CoinSub Whitelabel: ✅ Settings saved successfully! Branding will be fetched on next page load.');
+            $branding = new CoinSub_Whitelabel_Branding();
+            $branding->clear_cache();
+            
+            // Try immediate fetch with force_refresh=true
+            $branding_data = $branding->get_branding(true);
+            
+            if (!empty($branding_data) && isset($branding_data['company'])) {
+                error_log('CoinSub Whitelabel: ✅✅✅ Branding fetched immediately - Company: "' . $branding_data['company'] . '"');
+            } else {
+                error_log('CoinSub Whitelabel: ⚠️ Immediate fetch returned empty - will retry on next page load');
+                // Set flag to retry on next page load as fallback
+                set_transient('coinsub_refresh_branding_on_load', true, 60);
+            }
             
         } catch (Exception $e) {
-            error_log('CoinSub Whitelabel: ❌ ERROR clearing cache: ' . $e->getMessage());
-            // Continue - don't break the save process
+            error_log('CoinSub Whitelabel: ❌ ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
+            // Set flag to retry on next page load as fallback
+            set_transient('coinsub_refresh_branding_on_load', true, 60);
         } catch (Error $e) {
-            error_log('CoinSub Whitelabel: ❌ FATAL ERROR clearing cache: ' . $e->getMessage());
-            // Continue - don't break the save process
+            error_log('CoinSub Whitelabel: ❌ FATAL ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
+            // Set flag to retry on next page load as fallback
+            set_transient('coinsub_refresh_branding_on_load', true, 60);
         }
         
         // Automatically create webhook when settings are saved
@@ -804,10 +820,17 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('  Has Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
             
             // Create purchase session directly with cart totals
+            $session_start_time = microtime(true);
             error_log('💳 CoinSub - Creating purchase session...');
+            error_log('⏱️ CoinSub - Purchase session API call started at ' . date('H:i:s'));
+            
             $purchase_session_data = $this->prepare_purchase_session_from_cart($order, $cart_data);
             
             $purchase_session = $this->api_client->create_purchase_session($purchase_session_data);
+            
+            $session_end_time = microtime(true);
+            $session_duration = round($session_end_time - $session_start_time, 2);
+            error_log('⏱️ CoinSub - Purchase session creation took ' . $session_duration . ' seconds');
             
             // Check for errors BEFORE trying to access as array
             if (is_wp_error($purchase_session)) {
@@ -817,12 +840,57 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             
             error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
             
+            // Get checkout URL from purchase session
+            $checkout_url = isset($purchase_session['checkout_url']) ? $purchase_session['checkout_url'] : '';
+            
+            if (empty($checkout_url)) {
+                error_log('❌ CoinSub - CRITICAL: Checkout URL is empty in purchase session response!');
+                error_log('📦 Purchase session data: ' . json_encode($purchase_session));
+                throw new Exception('Checkout URL not received from API');
+            }
+            
+            error_log('🔗 CoinSub - Checkout URL from API (original): ' . $checkout_url);
+            
+            // Replace checkout URL domain with whitelabel buyurl if available
+            $branding_data = get_option('coinsub_whitelabel_branding', array());
+            if (!empty($branding_data['buyurl'])) {
+                $buyurl = $branding_data['buyurl'];
+                error_log('🎨 CoinSub - Whitelabel buyurl found: ' . $buyurl);
+                
+                // Extract domain from buyurl (e.g., https://buy.paymentservers.com)
+                $buyurl_parts = parse_url($buyurl);
+                if ($buyurl_parts && isset($buyurl_parts['scheme']) && isset($buyurl_parts['host'])) {
+                    $whitelabel_domain = $buyurl_parts['scheme'] . '://' . $buyurl_parts['host'];
+                    error_log('🎨 CoinSub - Whitelabel domain: ' . $whitelabel_domain);
+                    
+                    // Extract domain from original checkout URL
+                    $checkout_url_parts = parse_url($checkout_url);
+                    if ($checkout_url_parts && isset($checkout_url_parts['scheme']) && isset($checkout_url_parts['host'])) {
+                        $original_domain = $checkout_url_parts['scheme'] . '://' . $checkout_url_parts['host'];
+                        error_log('🔗 CoinSub - Original checkout domain: ' . $original_domain);
+                        
+                        // Replace the domain in checkout URL
+                        $checkout_url = str_replace($original_domain, $whitelabel_domain, $checkout_url);
+                        error_log('✅ CoinSub - Checkout URL replaced with whitelabel domain: ' . $checkout_url);
+                    } else {
+                        error_log('⚠️ CoinSub - Could not parse original checkout URL, using as-is');
+                    }
+                } else {
+                    error_log('⚠️ CoinSub - Could not parse buyurl, using original checkout URL');
+                }
+            } else {
+                error_log('ℹ️ CoinSub - No whitelabel buyurl found, using original checkout URL from API');
+            }
+            
+            error_log('🔗 CoinSub - Final checkout URL (after whitelabel replacement): ' . $checkout_url);
+            
             // Store CoinSub data in order meta
             $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session['purchase_session_id']);
-            $order->update_meta_data('_coinsub_checkout_url', $purchase_session['checkout_url']);
+            $order->update_meta_data('_coinsub_checkout_url', $checkout_url);
             $order->update_meta_data('_coinsub_merchant_id', $this->get_option('merchant_id'));
             
             error_log('✅ CoinSub - Stored purchase session ID: ' . $purchase_session['purchase_session_id']);
+            error_log('✅ CoinSub - Stored checkout URL in order meta: ' . $checkout_url);
             
             // Store subscription data if applicable
             if ($cart_data['has_subscription']) {
@@ -836,24 +904,61 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $order->update_meta_data('_coinsub_cart_items', $cart_data['items']);
             $order->save();
             
-            error_log('🔗 CoinSub - Checkout URL stored: ' . $purchase_session['checkout_url']);
+            // Verify it was stored
+            $stored_url = $order->get_meta('_coinsub_checkout_url');
+            if ($stored_url !== $checkout_url) {
+                error_log('⚠️ CoinSub - WARNING: Checkout URL mismatch! Stored: ' . $stored_url . ' vs Expected: ' . $checkout_url);
+            } else {
+                error_log('✅ CoinSub - Verified checkout URL stored correctly in order meta');
+            }
             
             // Update order status - awaiting payment confirmation
             $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Stablecoin Pay checkout.', 'coinsub'));
             
-            // Empty cart and clear CoinSub order from session
-            WC()->cart->empty_cart();
-            WC()->session->set('coinsub_order_id', null);  // Clear for next order
+            // Store order ID in session (used for tracking, not cart restoration)
+            // Note: We intentionally DON'T restore cart on return - fresh checkout each time
+            WC()->session->set('coinsub_pending_order_id', $order->get_id());
             
-            $checkout_url = $purchase_session['checkout_url'];
+            // Store checkout URL in session to avoid long URLs (use order ID as key)
+            WC()->session->set('coinsub_checkout_url_' . $order->get_id(), $checkout_url);
+            error_log('✅ CoinSub - Stored checkout URL in session with key: coinsub_checkout_url_' . $order->get_id());
+            
+            // Verify session storage
+            $session_url = WC()->session->get('coinsub_checkout_url_' . $order->get_id());
+            if ($session_url !== $checkout_url) {
+                error_log('⚠️ CoinSub - WARNING: Checkout URL mismatch in session! Stored: ' . $session_url . ' vs Expected: ' . $checkout_url);
+            } else {
+                error_log('✅ CoinSub - Verified checkout URL stored correctly in session');
+            }
+            
+            // Empty cart (cart will NOT be restored on return - fresh checkout required)
+            // This ensures new purchase session is created if user adds items and returns
+            WC()->cart->empty_cart();
+            
             error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
             
-            // Return checkout URL for iframe display
-            return array(
-                'result' => 'success',
-                'redirect' => $checkout_url,
-                'coinsub_checkout_url' => $checkout_url
-            );
+            // Get dedicated checkout page URL
+            $checkout_page_id = get_option('coinsub_checkout_page_id');
+            if ($checkout_page_id) {
+                $checkout_page_url = get_permalink($checkout_page_id);
+                // Use order ID instead of full URL to keep URL short
+                $redirect_url = add_query_arg('order_id', $order->get_id(), $checkout_page_url);
+                error_log('🎯 CoinSub - Redirecting to dedicated checkout page (short URL): ' . $redirect_url);
+                
+                return array(
+                    'result' => 'success',
+                    'redirect' => $redirect_url,
+                    'coinsub_checkout_url' => $checkout_url
+                );
+            } else {
+                // Fallback: redirect directly to checkout URL (external)
+                error_log('⚠️ CoinSub - Checkout page not found, redirecting directly to checkout URL');
+                return array(
+                    'result' => 'success',
+                    'redirect' => $checkout_url,
+                    'coinsub_checkout_url' => $checkout_url
+                );
+            }
             
         } catch (Exception $e) {
             error_log('❌ CoinSub - Payment error: ' . $e->getMessage());
@@ -1090,17 +1195,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         
         return $session_data;
-    }
-    
-    /**
-     * Store checkout URL for automatic opening
-     */
-    private function store_checkout_url($checkout_url) {
-        // Use WordPress transient instead of PHP session (more reliable)
-        $user_id = get_current_user_id();
-        $session_id = $user_id ? $user_id : session_id();
-        
-        set_transient('coinsub_checkout_url_' . $session_id, $checkout_url, 300); // 5 minutes
     }
     
     /**
@@ -2531,5 +2625,44 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         
         return implode(', ', $details);
+    }
+    
+    /**
+     * Ensure WooCommerce checkout page has [woocommerce_checkout] shortcode
+     * Called automatically when gateway settings are saved
+     * Only runs if gateway is being enabled
+     */
+    public function ensure_checkout_shortcode_on_save() {
+        // Check if gateway is being enabled (from POST or current setting)
+        $enabled = isset($_POST['woocommerce_coinsub_enabled']) 
+            ? sanitize_text_field($_POST['woocommerce_coinsub_enabled']) 
+            : $this->enabled;
+        
+        if ($enabled === 'yes') {
+            // Call the function from main plugin file
+            if (function_exists('coinsub_ensure_checkout_shortcode')) {
+                coinsub_ensure_checkout_shortcode();
+            }
+        }
+    }
+    
+    /**
+     * Cart restoration DISABLED
+     * 
+     * Previously attempted to restore cart from pending order when user returns to checkout.
+     * DISABLED because:
+     * 1. Checkout URLs are one-time use only
+     * 2. We clear session when user leaves checkout page
+     * 3. User should get fresh order and purchase session on return
+     * 4. Prevents reuse of expired purchase sessions
+     * 
+     * If cart restoration is needed in future, it would require:
+     * - NOT clearing coinsub_pending_order_id when user leaves checkout page
+     * - Keeping checkout URL valid for reuse (which defeats one-time use requirement)
+     */
+    public function maybe_restore_cart_from_pending_order() {
+        // Cart restoration disabled - user gets fresh checkout each time
+        // This prevents reuse of one-time purchase session URLs
+        return;
     }
 }

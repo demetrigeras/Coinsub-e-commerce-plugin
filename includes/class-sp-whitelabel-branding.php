@@ -39,7 +39,7 @@ class CoinSub_Whitelabel_Branding {
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
         // Use centralized API URL for all merchants
-        $api_base_url = 'https://api.coinsub.io/v1';
+        $api_base_url = 'https://api.coinsub.io/v1'; // Production
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -91,12 +91,21 @@ class CoinSub_Whitelabel_Branding {
         // Force refresh - fetch fresh data from API and store in database
         error_log('CoinSub Whitelabel: 🔄🔄🔄 FORCE REFRESH - Fetching branding from API and storing in database 🔄🔄🔄');
         
+        // Check for stuck lock (older than 30 seconds) and clear it
+        $lock_time = get_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+        if ($lock_time && (time() - $lock_time) > 30) {
+            error_log('CoinSub Whitelabel: 🔓 Clearing stuck fetch lock (older than 30 seconds)');
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+        }
+        
         // Acquire a lock to prevent multiple simultaneous fetches
         if (get_transient(self::BRANDING_FETCH_LOCK_KEY)) {
             error_log('CoinSub Whitelabel: 🔒 Fetch lock active. Another process is already fetching branding. Returning empty.');
             return array(); // Return empty array, no default
         }
         set_transient(self::BRANDING_FETCH_LOCK_KEY, true, 30); // Lock for 30 seconds
+        set_transient(self::BRANDING_FETCH_LOCK_KEY . '_time', time(), 30); // Track when lock was set
         error_log('CoinSub Whitelabel: 🔒 Acquired fetch lock for 30 seconds');
         
         // Get merchant ID and payment provider name from settings
@@ -111,7 +120,7 @@ class CoinSub_Whitelabel_Branding {
         }
         
         // Ensure API client has the latest settings with centralized API URL
-        $api_base_url = 'https://api.coinsub.io/v1';
+        $api_base_url = 'https://api.coinsub.io/v1'; // Production
         
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
@@ -128,6 +137,10 @@ class CoinSub_Whitelabel_Branding {
         if (is_wp_error($merchant_info)) {
             $error_message = $merchant_info->get_error_message();
             error_log('CoinSub Whitelabel: ❌ Failed to get merchant info: ' . $error_message);
+            
+            // Clear fetch lock on error
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
             
             // Handle rate limit errors - use stored branding if available
             if (strpos($error_message, 'Rate limit') !== false || strpos($error_message, 'rate limit') !== false) {
@@ -160,6 +173,9 @@ class CoinSub_Whitelabel_Branding {
         } else {
             error_log('CoinSub Whitelabel: ⚠️ Merchant is NOT a submerchant OR parent_merchant_id is missing');
             error_log('CoinSub Whitelabel: Response structure: ' . print_r($merchant_info, true));
+            // Clear fetch lock
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
             // If not a submerchant, we can't get branding - return empty
             return array(); // Return empty array, no default
         }
@@ -167,6 +183,9 @@ class CoinSub_Whitelabel_Branding {
         if (empty($parent_merchant_id)) {
             // No parent merchant ID found, return empty
             error_log('CoinSub Whitelabel: ❌ No parent merchant ID found - returning empty (no default)');
+            // Clear fetch lock
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
             return array(); // Return empty array, no default
         }
         
@@ -178,6 +197,9 @@ class CoinSub_Whitelabel_Branding {
         
         if (is_wp_error($env_configs)) {
             error_log('CoinSub Whitelabel: ❌ Failed to get environment configs: ' . $env_configs->get_error_message());
+            // Clear fetch lock on error
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
             return array(); // Return empty array, no default
         }
         
@@ -193,8 +215,10 @@ class CoinSub_Whitelabel_Branding {
         error_log('CoinSub Whitelabel: 📦 Branding data being stored: ' . json_encode($branding));
         error_log('CoinSub Whitelabel: ✅✅✅ BRANDING STORED IN DATABASE - Company Name: "' . $branding['company'] . '" | Title will be: "Pay with ' . $branding['company'] . '"');
         
-        // Clear fetch lock
+        // Clear fetch lock (always clear, even if there was an error)
         delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+        delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+        error_log('CoinSub Whitelabel: 🔓 Cleared fetch lock');
         
         // Verify it was stored correctly
         $verify = get_option(self::BRANDING_OPTION_KEY, false);
@@ -423,16 +447,15 @@ class CoinSub_Whitelabel_Branding {
                     // If URL doesn't start with http, it's relative - make it absolute
                     if (strpos($url, 'http') !== 0) {
                         // Relative URL, make it absolute
-                        // Ensure single slash between base and path
-                        if (strpos($url, '/') === 0) {
-                            // URL starts with /, so just concatenate (base has no trailing slash)
-                            $url = $asset_base . $url;
-                        } else {
-                            // URL doesn't start with /, add one
-                            $url = $asset_base . '/' . $url;
-                        }
+                        // Remove leading slash from relative URL to avoid double slash
+                        $url = ltrim($url, '/');
+                        $url = $asset_base . '/' . $url;
+                        // Normalize any double slashes in the path (but preserve http:// or https://)
+                        $url = preg_replace('#([^:])//+#', '$1/', $url);
                         error_log('CoinSub Whitelabel: 🖼️ Converted relative logo URL to: ' . $url);
                     } else {
+                        // Normalize any double slashes in absolute URLs (but preserve http:// or https://)
+                        $url = preg_replace('#([^:])//+#', '$1/', $url);
                         error_log('CoinSub Whitelabel: 🖼️ Logo URL already absolute: ' . $url);
                     }
                 }
@@ -504,6 +527,8 @@ class CoinSub_Whitelabel_Branding {
             // Construct URL pattern: /img/domain/{slug}/{slug}.{type}.{theme}.svg
             $filename = $company_slug . '.' . $type . '.' . $theme . '.svg';
             $constructed_url = $asset_base . '/img/domain/' . $company_slug . '/' . $filename;
+            // Normalize any double slashes in the path (but preserve http:// or https://)
+            $constructed_url = preg_replace('#([^:])//+#', '$1/', $constructed_url);
             error_log('CoinSub Whitelabel: 🖼️ 🔧 Auto-constructed logo URL: ' . $constructed_url . ' (domain: ' . $asset_base . ')');
             return $constructed_url;
         }
@@ -548,6 +573,8 @@ class CoinSub_Whitelabel_Branding {
                 } else {
                     $favicon_url = $asset_base . '/' . $favicon_url;
                 }
+                // Normalize any double slashes in the path (but preserve http:// or https://)
+                $favicon_url = preg_replace('#([^:])//+#', '$1/', $favicon_url);
                 error_log('CoinSub Whitelabel: 🖼️ Converted relative favicon URL to: ' . $favicon_url . ' (domain: ' . $asset_base . ')');
             }
             
@@ -585,6 +612,8 @@ class CoinSub_Whitelabel_Branding {
                 // Use mapped extension or default to png
                 $extension = isset($extension_map[$company_slug]) ? $extension_map[$company_slug] : 'png';
                 $favicon_url = $base_url . '.' . $extension;
+                // Normalize any double slashes in the path (but preserve http:// or https://)
+                $favicon_url = preg_replace('#([^:])//+#', '$1/', $favicon_url);
                 
                 error_log('CoinSub Whitelabel: 🖼️ ✅ Auto-constructed whitelabel favicon: ' . $favicon_url . ' (extension: .' . $extension . ')');
                 return $favicon_url;
