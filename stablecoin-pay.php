@@ -1066,52 +1066,38 @@ add_filter('heartbeat_received', 'coinsub_heartbeat_received', 10, 3);
 add_filter('heartbeat_nopriv_received', 'coinsub_heartbeat_received', 10, 3);
 
 function coinsub_ajax_process_payment() {
-    error_log('CoinSub AJAX: Payment processing started');
-    
     // Verify nonce - be more flexible with nonce verification
     $security_valid = false;
     
     // Try different nonce actions
     $nonce_actions = ['woocommerce-process_checkout', 'wc_checkout_params', 'checkout_nonce', 'coinsub_process_payment'];
     
-    error_log('CoinSub AJAX: Received nonce: ' . ($_POST['security'] ?? 'NOT PROVIDED'));
-    
     foreach ($nonce_actions as $action) {
-        error_log('CoinSub AJAX: Trying nonce action: ' . $action);
         if (wp_verify_nonce($_POST['security'], $action)) {
             $security_valid = true;
-            error_log('CoinSub AJAX: Security check passed with action: ' . $action);
             break;
         }
     }
     
     // If still not valid, allow for debugging
     if (!$security_valid) {
-        error_log('CoinSub AJAX: Security check failed for all actions. Allowing for debugging.');
         $security_valid = true;
     }
     
     // Check if cart is empty
     if (WC()->cart->is_empty()) {
-        error_log('CoinSub AJAX: Cart is empty');
         wp_send_json_error('Cart is empty');
     }
-    
-    error_log('CoinSub AJAX: Cart has ' . WC()->cart->get_cart_contents_count() . ' items');
     
     // IMPORTANT: Don't reuse orders with checkout URLs - they're one-time use only!
     // Always create a fresh order and purchase session for each checkout attempt
     // Clear any existing order from session to ensure fresh start
     $existing_order_id = WC()->session->get('coinsub_order_id');
     if ($existing_order_id) {
-        error_log('CoinSub AJAX: Found existing order in session #' . $existing_order_id . ' - clearing to prevent reuse (checkout URLs are one-time use)');
-        
         // Clear the existing order from session - user will get a fresh order
         WC()->session->set('coinsub_order_id', null);
         WC()->session->set('coinsub_checkout_url_' . $existing_order_id, null);
         WC()->session->set('coinsub_pending_order_id', null);
-        
-        error_log('✅ CoinSub AJAX: Cleared existing order from session - will create fresh order');
     }
 
     // Add a short-lived lock to prevent concurrent requests from creating duplicates
@@ -1120,8 +1106,6 @@ function coinsub_ajax_process_payment() {
     $lock_time = time();
     $existing_lock = WC()->session->get($lock_key);
     if ($existing_lock && ($lock_time - intval($existing_lock)) < 5) { // 5-second window
-        error_log('CoinSub AJAX: Duplicate click detected within 5s, checking for existing order');
-        
         // Only check if there's a paid order - don't reuse pending orders with checkout URLs (one-time use)
         $orders = wc_get_orders(array(
             'limit' => 1,
@@ -1135,7 +1119,6 @@ function coinsub_ajax_process_payment() {
             
             // Only reuse if order is already paid (processing/completed) - send to order received
             if (in_array($o->get_status(), array('processing','completed'))) {
-                error_log('CoinSub AJAX: Found paid order, redirecting to order received page');
                 wp_send_json_success(array('result' => 'success', 'redirect' => $o->get_checkout_order_received_url(), 'order_id' => $o->get_id(), 'already_paid' => true));
             }
             
@@ -1151,15 +1134,12 @@ function coinsub_ajax_process_payment() {
     // Get the payment gateway instance
     try {
         $gateway = new WC_Gateway_CoinSub();
-        error_log('CoinSub AJAX: Gateway instance created successfully');
     } catch (Exception $e) {
         error_log('CoinSub AJAX: Failed to create gateway instance: ' . $e->getMessage());
         wp_send_json_error('Failed to initialize payment gateway');
     }
     
     // Create order using WooCommerce's standard method
-    error_log('CoinSub AJAX: Creating WooCommerce order...');
-    
     // Create order using wc_create_order() which is the correct method
     $order = wc_create_order();
     
@@ -1169,7 +1149,6 @@ function coinsub_ajax_process_payment() {
     }
     
     $order_id = $order->get_id();
-    error_log('CoinSub AJAX: Order created with ID: ' . $order_id);
 
     // Store order id in session to prevent duplicates on repeated clicks
     WC()->session->set('coinsub_order_id', $order_id);
@@ -1198,29 +1177,21 @@ function coinsub_ajax_process_payment() {
     // Set customer ID if user is logged in
     if (is_user_logged_in()) {
         $order->set_customer_id(get_current_user_id());
-        error_log('CoinSub AJAX: Set customer ID to: ' . get_current_user_id());
-    } else {
-        error_log('CoinSub AJAX: User not logged in, order will be guest order');
     }
     
     // Set billing email for guest orders (needed for order association)
     $billing_email = sanitize_email($_POST['billing_email']);
     if ($billing_email) {
         $order->set_billing_email($billing_email);
-        error_log('CoinSub AJAX: Set billing email to: ' . $billing_email);
     }
     
     // Calculate totals and save
     $order->calculate_totals();
     $order->save();
     
-    error_log('CoinSub AJAX: Order created with ID: ' . $order->get_id());
-    
     // If this order already has a checkout URL (rare race), reuse it
     $existing_checkout = $order->get_meta('_coinsub_checkout_url');
     if (!empty($existing_checkout)) {
-        error_log('CoinSub AJAX: Order already has checkout URL, wrapping in dedicated checkout page');
-        
         // Store checkout URL in session to avoid long URLs
         WC()->session->set('coinsub_checkout_url_' . $order_id, $existing_checkout);
         
@@ -1229,11 +1200,9 @@ function coinsub_ajax_process_payment() {
         if ($checkout_page_id) {
             $checkout_page_url = get_permalink($checkout_page_id);
             $redirect_url = add_query_arg('order_id', $order_id, $checkout_page_url);
-            error_log('🎯 CoinSub AJAX: Redirecting to dedicated checkout page (short URL): ' . $redirect_url);
             $result = array('result' => 'success', 'redirect' => $redirect_url, 'coinsub_checkout_url' => $existing_checkout);
         } else {
             // Fallback: redirect directly to checkout URL
-            error_log('⚠️ CoinSub AJAX: Checkout page not found, redirecting directly to checkout URL');
             $result = array('result' => 'success', 'redirect' => $existing_checkout);
         }
     } else {
@@ -1241,10 +1210,7 @@ function coinsub_ajax_process_payment() {
         $result = $gateway->process_payment($order->get_id());
     }
     
-    error_log('CoinSub AJAX: Payment result: ' . json_encode($result));
-    
     if ($result['result'] === 'success') {
-        error_log('CoinSub AJAX: Payment successful, sending response');
         wp_send_json_success($result);
     } else {
         error_log('CoinSub AJAX: Payment failed: ' . ($result['messages'] ?? 'Unknown error'));

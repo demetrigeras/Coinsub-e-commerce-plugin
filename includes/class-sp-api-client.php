@@ -650,23 +650,26 @@ class CoinSub_API_Client {
      * Create a webhook for the merchant
      * 
      * @param string $webhook_url The webhook URL to register
+     * @param string $submerchant_id Optional: Submerchant ID to use in URL path (if merchant is submerchant)
+     * @param string $parent_merchant_id Optional: Parent merchant ID to use in Merchant-ID header (if merchant is submerchant)
      * @return array|WP_Error Webhook data or error
      */
-    public function create_webhook($webhook_url) {
+    public function create_webhook($webhook_url, $submerchant_id = null, $parent_merchant_id = null) {
         if (empty($this->merchant_id) || empty($this->api_key)) {
             return new WP_Error('missing_credentials', 'Merchant ID and API key are required to create webhook');
         }
         
-        // Webhook endpoint: POST /v1/merchants/:merchant_id/webhooks
-        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $this->merchant_id . '/webhooks';
+        // For submerchants: URL uses submerchant_id, header uses parent_merchant_id
+        // For regular merchants: URL and header both use merchant_id
+        $merchant_id_for_url = $submerchant_id ? $submerchant_id : $this->merchant_id;
+        $merchant_id_for_header = $parent_merchant_id ? $parent_merchant_id : $this->merchant_id;
         
-        error_log('🔔 CoinSub API - Creating webhook');
-        error_log('   Endpoint: ' . $endpoint);
-        error_log('   Webhook URL: ' . $webhook_url);
+        // Webhook endpoint: POST /v1/merchants/:merchant_id/webhooks
+        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $merchant_id_for_url . '/webhooks';
         
         $headers = array(
             'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id,
+            'Merchant-ID' => $merchant_id_for_header,
             'API-Key' => $this->api_key
         );
         
@@ -691,12 +694,9 @@ class CoinSub_API_Client {
         
         if ($response_code !== 200) {
             $error_msg = isset($data['error']) ? $data['error'] : 'Webhook creation failed';
-            error_log('🔔 CoinSub API - Webhook creation error: ' . $error_msg);
+            error_log('CoinSub API - Webhook creation error: ' . $error_msg);
             return new WP_Error('api_error', $error_msg);
         }
-        
-        error_log('🔔 CoinSub API - Webhook created successfully');
-        error_log('   Webhook ID: ' . (isset($data['data']['webhook_id']) ? $data['data']['webhook_id'] : (isset($data['webhook_id']) ? $data['webhook_id'] : 'N/A')));
         
         return $data;
     }
@@ -705,24 +705,29 @@ class CoinSub_API_Client {
      * List webhooks for the merchant
      * 
      * @param string $status Optional: 'active', 'disabled', or 'all'
+     * @param string $submerchant_id Optional: Submerchant ID to use in URL path (if merchant is submerchant)
+     * @param string $parent_merchant_id Optional: Parent merchant ID to use in Merchant-ID header (if merchant is submerchant)
      * @return array|WP_Error Webhooks list or error
      */
-    public function list_webhooks($status = 'all') {
+    public function list_webhooks($status = 'all', $submerchant_id = null, $parent_merchant_id = null) {
         if (empty($this->merchant_id) || empty($this->api_key)) {
             return new WP_Error('missing_credentials', 'Merchant ID and API key are required to list webhooks');
         }
         
+        // For submerchants: URL uses submerchant_id, header uses parent_merchant_id
+        // For regular merchants: URL and header both use merchant_id
+        $merchant_id_for_url = $submerchant_id ? $submerchant_id : $this->merchant_id;
+        $merchant_id_for_header = $parent_merchant_id ? $parent_merchant_id : $this->merchant_id;
+        
         // Webhook endpoint: GET /v1/merchants/:merchant_id/webhooks?status=active|disabled|all
-        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $this->merchant_id . '/webhooks';
+        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $merchant_id_for_url . '/webhooks';
         if ($status !== 'all') {
             $endpoint .= '?status=' . urlencode($status);
         }
         
-        error_log('🔔 CoinSub API - Listing webhooks (status: ' . $status . ')');
-        error_log('   Endpoint: ' . $endpoint);
-        
         $headers = array(
-            'Merchant-ID' => $this->merchant_id,
+            'Content-Type' => 'application/json',
+            'Merchant-ID' => $merchant_id_for_header,
             'API-Key' => $this->api_key
         );
         
@@ -742,11 +747,9 @@ class CoinSub_API_Client {
         
         if ($response_code !== 200) {
             $error_msg = isset($data['error']) ? $data['error'] : 'Failed to list webhooks';
-            error_log('🔔 CoinSub API - List webhooks error: ' . $error_msg);
+            error_log('CoinSub API - List webhooks error: ' . $error_msg);
             return new WP_Error('api_error', $error_msg);
         }
-        
-        error_log('🔔 CoinSub API - Webhooks retrieved successfully');
         
         return $data;
     }

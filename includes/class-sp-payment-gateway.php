@@ -149,14 +149,18 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         parent::admin_options();
         
         // Now inject instructions at the top using JavaScript (after form is rendered)
-        // Get Meld URL first (PHP) so we can properly escape it for JavaScript
+        // Get Meld URL and webhook URL first (PHP) so we can properly escape them for JavaScript
         $meld_url = esc_js($this->get_meld_onramp_url());
+        $secret = get_option('coinsub_webhook_secret');
+        $webhook_base = home_url('/wp-json/stablecoin/v1/webhook');
+        $webhook_url = $secret ? add_query_arg('secret', $secret, $webhook_base) : $webhook_base;
         ?>
         <script type="text/javascript">
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
             var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! The checkout page will be automatically configured and customers will see the payment option!</ol><p style="margin-top:15px;padding:10px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50;font-size:13px"><strong>✅ Automatic Setup:</strong> The plugin automatically configures your checkout page when enabled. No manual page editing required!</p><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds are processed as USDC on the Polygon network.</strong><li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
+            var webhookUrl = <?php echo json_encode($webhook_url); ?>;
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds are processed as USDC on the Polygon network.</strong><li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
@@ -641,61 +645,169 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Called when settings are saved
      */
     private function auto_create_webhook() {
-        error_log('🔔 CoinSub Webhook: Checking if webhook needs to be created...');
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('🔔 CoinSub Webhook: Starting automatic webhook creation');
+        error_log('═══════════════════════════════════════════════════════════');
+        
+        // Check credentials first
+        $merchant_id = $this->get_option('merchant_id', '');
+        $api_key = $this->get_option('api_key', '');
+        
+        error_log('🔔 CoinSub Webhook: Merchant ID: ' . (empty($merchant_id) ? '❌ EMPTY' : '✅ SET (' . substr($merchant_id, 0, 8) . '...)'));
+        error_log('🔔 CoinSub Webhook: API Key: ' . (empty($api_key) ? '❌ EMPTY' : '✅ SET'));
+        
+        if (empty($merchant_id) || empty($api_key)) {
+            error_log('🔔 CoinSub Webhook: ❌ Cannot create webhook - missing credentials');
+            error_log('═══════════════════════════════════════════════════════════');
+            return;
+        }
         
         // Build webhook URL: https://{site_url}/wp-json/stablecoin/v1/webhook
         $webhook_url = home_url('/wp-json/stablecoin/v1/webhook');
         error_log('🔔 CoinSub Webhook: Webhook URL: ' . $webhook_url);
         
-        // Check if webhook already exists
-        $existing_webhooks = $this->api_client->list_webhooks('all');
+        // Check if merchant is a submerchant - if so, we need parent merchant ID for authentication
+        // NOTE: This handles both scenarios:
+        // 1. Whitelabel submerchants (Payment Servers, Vantack, etc.) - have parent_merchant_id
+        // 2. Regular CoinSub merchants - is_submerchant = false, no parent_merchant_id needed
+        error_log('🔔 CoinSub Webhook: Checking if merchant is a submerchant...');
+        $merchant_info = $this->api_client->get_merchant_info($merchant_id);
+        $parent_merchant_id = null;
+        $is_submerchant = false;
         
-        if (!is_wp_error($existing_webhooks)) {
+        if (!is_wp_error($merchant_info)) {
+            error_log('🔔 CoinSub Webhook: Merchant info retrieved successfully');
+            error_log('   Full response: ' . json_encode($merchant_info));
+            
+            $is_submerchant = isset($merchant_info['is_submerchant']) ? $merchant_info['is_submerchant'] : false;
+            error_log('   is_submerchant: ' . ($is_submerchant ? 'YES' : 'NO'));
+            
+            if ($is_submerchant) {
+                if (isset($merchant_info['parent_merchant_id']) && !empty($merchant_info['parent_merchant_id'])) {
+                    $parent_merchant_id = $merchant_info['parent_merchant_id'];
+                    error_log('🔔 CoinSub Webhook: ✅ Merchant is a submerchant (whitelabel)');
+                    error_log('   Submerchant ID: ' . $merchant_id);
+                    error_log('   Parent Merchant ID: ' . $parent_merchant_id);
+                    error_log('   Will use parent merchant ID in header for webhook creation');
+                } else {
+                    error_log('🔔 CoinSub Webhook: ⚠️ Merchant is marked as submerchant but parent_merchant_id is missing!');
+                    error_log('   Available keys: ' . json_encode(array_keys($merchant_info)));
+                    $is_submerchant = false; // Can't proceed as submerchant without parent ID
+                }
+            } else {
+                error_log('🔔 CoinSub Webhook: ✅ Merchant is NOT a submerchant (regular CoinSub merchant)');
+                error_log('   Will use merchant ID in both URL and header (standard flow)');
+            }
+        } else {
+            error_log('🔔 CoinSub Webhook: ⚠️ Could not check merchant info: ' . $merchant_info->get_error_message());
+            error_log('   Will proceed with regular merchant flow (assume not a submerchant)');
+        }
+        
+        // Check if webhook already exists
+        error_log('🔔 CoinSub Webhook: Checking for existing webhooks...');
+        error_log('   Submerchant ID to use in URL: ' . ($is_submerchant ? $merchant_id : 'N/A (regular merchant)'));
+        error_log('   Parent Merchant ID to use in header: ' . ($is_submerchant && $parent_merchant_id ? $parent_merchant_id : 'N/A (regular merchant)'));
+        
+        // For submerchants, use parent merchant ID in header but submerchant ID in URL
+        $existing_webhooks = $this->api_client->list_webhooks('all', $is_submerchant ? $merchant_id : null, $is_submerchant && $parent_merchant_id ? $parent_merchant_id : null);
+        
+        if (is_wp_error($existing_webhooks)) {
+            error_log('🔔 CoinSub Webhook: ⚠️ Failed to list existing webhooks: ' . $existing_webhooks->get_error_message());
+            error_log('🔔 CoinSub Webhook: Will attempt to create webhook anyway...');
+        } else {
+            error_log('🔔 CoinSub Webhook: ✅ Successfully retrieved webhook list');
+            
             // Handle different response structures
             $webhooks = array();
             if (isset($existing_webhooks['data']['webhooks'])) {
                 $webhooks = $existing_webhooks['data']['webhooks'];
+                error_log('🔔 CoinSub Webhook: Found webhooks in data.webhooks structure');
             } elseif (isset($existing_webhooks['webhooks'])) {
                 $webhooks = $existing_webhooks['webhooks'];
+                error_log('🔔 CoinSub Webhook: Found webhooks in webhooks structure');
             } elseif (isset($existing_webhooks['data']) && is_array($existing_webhooks['data'])) {
                 $webhooks = $existing_webhooks['data'];
+                error_log('🔔 CoinSub Webhook: Found webhooks in data structure');
+            } else {
+                error_log('🔔 CoinSub Webhook: ⚠️ Unexpected response structure: ' . json_encode(array_keys($existing_webhooks)));
             }
             
+            error_log('🔔 CoinSub Webhook: Found ' . count($webhooks) . ' existing webhook(s)');
+            
             // Check if our webhook URL already exists
-            foreach ($webhooks as $webhook) {
+            foreach ($webhooks as $index => $webhook) {
+                $existing_url = isset($webhook['url']) ? $webhook['url'] : 'N/A';
+                error_log('🔔 CoinSub Webhook: Checking webhook #' . ($index + 1) . ': ' . $existing_url);
+                
                 if (isset($webhook['url']) && $webhook['url'] === $webhook_url) {
                     $webhook_id = isset($webhook['webhook_id']) ? $webhook['webhook_id'] : (isset($webhook['id']) ? $webhook['id'] : 'N/A');
-                    error_log('🔔 CoinSub Webhook: ✅ Webhook already exists (ID: ' . $webhook_id . ')');
+                    $webhook_status = isset($webhook['status']) ? $webhook['status'] : 'unknown';
+                    error_log('🔔 CoinSub Webhook: ✅ Webhook already exists!');
+                    error_log('   Webhook ID: ' . $webhook_id);
+                    error_log('   Status: ' . $webhook_status);
+                    error_log('   URL: ' . $webhook['url']);
+                    error_log('═══════════════════════════════════════════════════════════');
                     return; // Webhook already exists, no need to create
                 }
             }
+            
+            error_log('🔔 CoinSub Webhook: No matching webhook found - will create new one');
         }
         
         // Create the webhook
         error_log('🔔 CoinSub Webhook: Creating new webhook...');
-        $result = $this->api_client->create_webhook($webhook_url);
+        error_log('   URL: ' . $webhook_url);
+        error_log('   Submerchant ID to use in URL: ' . ($is_submerchant ? $merchant_id : 'N/A (regular merchant)'));
+        error_log('   Parent Merchant ID to use in header: ' . ($is_submerchant && $parent_merchant_id ? $parent_merchant_id : 'N/A (regular merchant)'));
+        
+        // For submerchants, use parent merchant ID in header but submerchant ID in URL
+        $result = $this->api_client->create_webhook(
+            $webhook_url, 
+            $is_submerchant ? $merchant_id : null, 
+            $is_submerchant && $parent_merchant_id ? $parent_merchant_id : null
+        );
         
         if (is_wp_error($result)) {
-            error_log('🔔 CoinSub Webhook: ❌ Failed to create webhook: ' . $result->get_error_message());
+            error_log('🔔 CoinSub Webhook: ❌ FAILED to create webhook');
+            error_log('   Error Code: ' . $result->get_error_code());
+            error_log('   Error Message: ' . $result->get_error_message());
+            error_log('═══════════════════════════════════════════════════════════');
             // Don't throw - just log the error
         } else {
+            error_log('🔔 CoinSub Webhook: ✅ API call successful');
+            error_log('   Full Response: ' . json_encode($result));
+            
             // Handle different response structures
             $webhook_id = null;
             if (isset($result['data']['webhook_id'])) {
                 $webhook_id = $result['data']['webhook_id'];
+                error_log('🔔 CoinSub Webhook: Found webhook_id in data.webhook_id');
             } elseif (isset($result['webhook_id'])) {
                 $webhook_id = $result['webhook_id'];
+                error_log('🔔 CoinSub Webhook: Found webhook_id in webhook_id');
             } elseif (isset($result['data']) && isset($result['data']['webhook_id'])) {
                 $webhook_id = $result['data']['webhook_id'];
+                error_log('🔔 CoinSub Webhook: Found webhook_id in data.data.webhook_id');
+            } else {
+                error_log('🔔 CoinSub Webhook: ⚠️ Webhook ID not found in expected locations');
+                error_log('   Response keys: ' . json_encode(array_keys($result)));
+                if (isset($result['data'])) {
+                    error_log('   Data keys: ' . json_encode(array_keys($result['data'])));
+                }
             }
             
             if ($webhook_id) {
-                error_log('🔔 CoinSub Webhook: ✅ Webhook created successfully! ID: ' . $webhook_id);
+                error_log('🔔 CoinSub Webhook: ✅✅✅ WEBHOOK CREATED SUCCESSFULLY! ✅✅✅');
+                error_log('   Webhook ID: ' . $webhook_id);
+                error_log('   Webhook URL: ' . $webhook_url);
                 // Store webhook ID in settings for reference
                 $this->update_option('webhook_id', $webhook_id);
+                error_log('   Webhook ID saved to settings');
             } else {
-                error_log('🔔 CoinSub Webhook: ⚠️ Webhook created but ID not found in response: ' . json_encode($result));
+                error_log('🔔 CoinSub Webhook: ⚠️ Webhook created but ID not found in response');
+                error_log('   Full response structure: ' . json_encode($result, JSON_PRETTY_PRINT));
             }
+            error_log('═══════════════════════════════════════════════════════════');
         }
     }
     
