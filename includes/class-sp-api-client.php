@@ -580,44 +580,6 @@ class CoinSub_API_Client {
     }
     
     /**
-<<<<<<< HEAD
-     * Create a webhook for the merchant
-     * 
-     * @param string $webhook_url The webhook URL to register
-     * @return array|WP_Error Webhook data or error
-     */
-    public function create_webhook($webhook_url) {
-        if (empty($this->merchant_id) || empty($this->api_key)) {
-            return new WP_Error('missing_credentials', 'Merchant ID and API key are required to create webhook');
-        }
-        
-        // Webhook endpoint: POST /v1/merchants/:merchant_id/webhooks
-        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $this->merchant_id . '/webhooks';
-        
-        error_log('🔔 CoinSub API - Creating webhook');
-        error_log('   Endpoint: ' . $endpoint);
-        error_log('   Webhook URL: ' . $webhook_url);
-        
-        $headers = array(
-            'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id,
-            'API-Key' => $this->api_key
-        );
-        
-        $payload = array(
-            'url' => $webhook_url
-        );
-        
-        $response = wp_remote_post($endpoint, array(
-            'headers' => $headers,
-            'body' => json_encode($payload),
-            'timeout' => 30
-        ));
-        
-        if (is_wp_error($response)) {
-            error_log('🔔 CoinSub API - Webhook creation failed: ' . $response->get_error_message());
-            return $response;
-=======
      * Get merchant config (merchant info + environment configs + domains in one call)
      * Endpoint: GET /v1/environment-variables/config
      * No API key required - only Merchant-ID header
