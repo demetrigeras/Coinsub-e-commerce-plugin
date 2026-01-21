@@ -150,7 +150,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
             var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add USDC Polygon for Refunds</h3><p><strong>All refunds are processed as USDC on Polygon.</strong><p>To process refunds, you\'ll need USDC tokens on the Polygon network in your merchant wallet.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of USDC on Polygon to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>💰 Refund Policy & Requirements</h3><p style="margin-bottom:10px"><strong>⚠️ Important Refund Information:</strong></p><ul style="line-height:1.6;margin-top:0;margin-bottom:15px"><li><strong>Refunds can only be processed through CoinSub wallets.</strong> Customers must have a CoinSub wallet to receive refunds.</li><li><strong>All refunds are processed as USDC on Polygon.</strong> You\'ll need USDC tokens on the Polygon network in your merchant wallet to process refunds.</li><li><strong>You may need to offramp funds</strong> (convert from fiat to crypto) to have USDC available for refunds. Keep a reserve of USDC on Polygon to cover refunds quickly.</li></ul><p style="margin-bottom:10px"><strong>To add USDC for refunds:</strong></p><p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Onramp USDC Polygon via Meld</a></p><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Maintain a small reserve of USDC on Polygon to process refunds quickly when needed.</p></div></div>');
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
@@ -606,6 +606,80 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         } catch (Error $e) {
             error_log('CoinSub Whitelabel: ❌ FATAL ERROR clearing cache: ' . $e->getMessage());
             // Continue - don't break the save process
+        }
+        
+        // Automatically create webhook when settings are saved
+        try {
+            $this->auto_create_webhook();
+        } catch (Exception $e) {
+            error_log('CoinSub Webhook: ❌ ERROR creating webhook: ' . $e->getMessage());
+            // Continue - don't break the save process
+        } catch (Error $e) {
+            error_log('CoinSub Webhook: ❌ FATAL ERROR creating webhook: ' . $e->getMessage());
+            // Continue - don't break the save process
+        }
+    }
+    
+    /**
+     * Automatically create webhook for the merchant
+     * Called when settings are saved
+     */
+    private function auto_create_webhook() {
+        error_log('🔔 CoinSub Webhook: Checking if webhook needs to be created...');
+        
+        // Build webhook URL: https://{site_url}/wp-json/stablecoin/v1/webhook
+        $webhook_url = home_url('/wp-json/stablecoin/v1/webhook');
+        error_log('🔔 CoinSub Webhook: Webhook URL: ' . $webhook_url);
+        
+        // Check if webhook already exists
+        $existing_webhooks = $this->api_client->list_webhooks('all');
+        
+        if (!is_wp_error($existing_webhooks)) {
+            // Handle different response structures
+            $webhooks = array();
+            if (isset($existing_webhooks['data']['webhooks'])) {
+                $webhooks = $existing_webhooks['data']['webhooks'];
+            } elseif (isset($existing_webhooks['webhooks'])) {
+                $webhooks = $existing_webhooks['webhooks'];
+            } elseif (isset($existing_webhooks['data']) && is_array($existing_webhooks['data'])) {
+                $webhooks = $existing_webhooks['data'];
+            }
+            
+            // Check if our webhook URL already exists
+            foreach ($webhooks as $webhook) {
+                if (isset($webhook['url']) && $webhook['url'] === $webhook_url) {
+                    $webhook_id = isset($webhook['webhook_id']) ? $webhook['webhook_id'] : (isset($webhook['id']) ? $webhook['id'] : 'N/A');
+                    error_log('🔔 CoinSub Webhook: ✅ Webhook already exists (ID: ' . $webhook_id . ')');
+                    return; // Webhook already exists, no need to create
+                }
+            }
+        }
+        
+        // Create the webhook
+        error_log('🔔 CoinSub Webhook: Creating new webhook...');
+        $result = $this->api_client->create_webhook($webhook_url);
+        
+        if (is_wp_error($result)) {
+            error_log('🔔 CoinSub Webhook: ❌ Failed to create webhook: ' . $result->get_error_message());
+            // Don't throw - just log the error
+        } else {
+            // Handle different response structures
+            $webhook_id = null;
+            if (isset($result['data']['webhook_id'])) {
+                $webhook_id = $result['data']['webhook_id'];
+            } elseif (isset($result['webhook_id'])) {
+                $webhook_id = $result['webhook_id'];
+            } elseif (isset($result['data']) && isset($result['data']['webhook_id'])) {
+                $webhook_id = $result['data']['webhook_id'];
+            }
+            
+            if ($webhook_id) {
+                error_log('🔔 CoinSub Webhook: ✅ Webhook created successfully! ID: ' . $webhook_id);
+                // Store webhook ID in settings for reference
+                $this->update_option('webhook_id', $webhook_id);
+            } else {
+                error_log('🔔 CoinSub Webhook: ⚠️ Webhook created but ID not found in response: ' . json_encode($result));
+            }
         }
     }
     

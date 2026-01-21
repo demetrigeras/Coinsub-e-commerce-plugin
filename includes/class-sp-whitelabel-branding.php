@@ -407,8 +407,8 @@ class CoinSub_Whitelabel_Branding {
      */
     private function normalize_logo_urls($logo) {
         // Asset base for static files (logos, favicons, etc.) - NOT the API endpoint
-        $asset_base = 'https://app.coinsub.io/'; // Production (app subdomain serves assets)
-        // $asset_base = 'https://test-app.coinsub.io/'; // Test environment
+        $asset_base = 'https://app.coinsub.io'; // Production (app subdomain serves assets) - NO trailing slash
+        // $asset_base = 'https://test-app.coinsub.io'; // Test environment
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $asset_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));
@@ -423,9 +423,12 @@ class CoinSub_Whitelabel_Branding {
                     // If URL doesn't start with http, it's relative - make it absolute
                     if (strpos($url, 'http') !== 0) {
                         // Relative URL, make it absolute
+                        // Ensure single slash between base and path
                         if (strpos($url, '/') === 0) {
+                            // URL starts with /, so just concatenate (base has no trailing slash)
                             $url = $asset_base . $url;
                         } else {
+                            // URL doesn't start with /, add one
                             $url = $asset_base . '/' . $url;
                         }
                         error_log('CoinSub Whitelabel: 🖼️ Converted relative logo URL to: ' . $url);
