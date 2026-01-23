@@ -1446,12 +1446,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             return new WP_Error('missing_customer_data', __('Customer email or wallet address not found. Manual refund required.', 'coinsub'));
         }
         
-        // ALL refunds use USDC on Polygon Amoy Testnet (chain_id 80002) for testing
-        $chain_id = '80002'; // Polygon Amoy Testnet
-        $token_symbol = 'USDC';
+        // Use the same chain and token from the original payment (stored from webhook)
+        // Fallback to USDC if token not available (keep same chain)
+        // Fallback to Polygon Mainnet with USDC if chain not available
+        $chain_id = $order->get_meta('_coinsub_chain_id');
+        $token_symbol = $order->get_meta('_coinsub_token_symbol');
         
-        error_log('🔄 CoinSub Refund - Using standardized refund: USDC on Polygon Amoy Testnet (chain_id: 80002)');
-        error_log('🔄 CoinSub Refund - Original payment may have been on different chain/token, but refund will be USDC Polygon Amoy');
+        // If chain ID is missing, fallback to Polygon Mainnet (Production)
+        if (empty($chain_id)) {
+            $chain_id = '137'; // Polygon Mainnet (Production)
+            error_log('🔄 CoinSub Refund - Chain ID not found in order, using fallback: Polygon Mainnet Production (137)');
+        }
+        
+        // If token symbol is missing, fallback to USDC (on the same chain)
+        if (empty($token_symbol)) {
+            $token_symbol = 'USDC';
+            error_log('🔄 CoinSub Refund - Token symbol not found in order, using fallback: USDC on chain_id ' . $chain_id);
+        }
+        
+        error_log('🔄 CoinSub Refund - Using refund chain/token: ' . $token_symbol . ' on chain_id ' . $chain_id);
         
         error_log('🔄 CoinSub Refund - Processing automatic refund for order #' . $order_id);
         error_log('🔄 CoinSub Refund - Amount: ' . $amount);
@@ -1543,20 +1556,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $refund_id = $refund_result['refund_id'] ?? $refund_result['transfer_id'] ?? 'N/A';
         $transaction_hash = $refund_result['transaction_hash'] ?? $refund_result['hash'] ?? 'N/A';
         
-        // Note: All refunds are processed as USDC on Polygon regardless of original payment method
+        // Get network name for display
+        $network_name = $this->get_network_name($chain_id);
+        
+        // Note: Refund uses the same chain/token as original payment (or USDC fallback)
         $refund_note = sprintf(
-            __('REFUND INITIATED: %s. Reason: %s. Customer wallet: %s. Refund ID: %s. Refund will be sent as USDC on Polygon (widely accepted). Refund initiated via Stablecoin Pay API. Waiting for transfer confirmation...', 'coinsub'),
+            __('REFUND INITIATED: %s. Reason: %s. Customer wallet: %s. Refund ID: %s. Refund will be sent as %s on %s (same as original payment). Refund initiated via Stablecoin Pay API. Waiting for transfer confirmation...', 'coinsub'),
             wc_price($amount),
             $reason,
             $customer_wallet ?: $to_address,
-            $refund_id
+            $refund_id,
+            $token_symbol,
+            $network_name
         );
         
-        // Add warning if original payment was on different chain/token
-        $original_chain_id = $order->get_meta('_coinsub_chain_id');
-        $original_token = $order->get_meta('_coinsub_token_symbol');
-        if ($original_chain_id && $original_chain_id !== '80002') {
-            $refund_note .= '<br><br><strong>ℹ️ Note:</strong> Original payment was on a different chain/token, but refund will be processed as USDC on Polygon Amoy Testnet for simplicity and wide acceptance.';
+        // Add note if using fallback
+        $stored_chain_id = $order->get_meta('_coinsub_chain_id');
+        $stored_token = $order->get_meta('_coinsub_token_symbol');
+        if (empty($stored_chain_id) || empty($stored_token)) {
+            $refund_note .= '<br><br><strong>ℹ️ Note:</strong> Original payment chain/token not found, using fallback: ' . $token_symbol . ' on ' . $network_name . '.';
         }
         
         $order->add_order_note($refund_note);
@@ -2282,7 +2300,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $order = wc_get_order($order_id);
         
         if ($order) {
-            $order->add_order_note(sprintf(__('Refund processed: Transaction hash %s', 'coinsub'), $transaction_hash));
+            $order->add_order_note(__('Refund processed', 'coinsub'));
             $order->update_meta_data('_refund_transaction_hash', $transaction_hash);
             $order->save();
         }
@@ -2299,8 +2317,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 __('2. Approve refund in WooCommerce', 'coinsub'),
                 __('3. Open your crypto wallet (MetaMask, etc.)', 'coinsub'),
                 __('4. Send crypto back to customer wallet address', 'coinsub'),
-                __('5. Add transaction hash to order notes', 'coinsub'),
-                __('6. Update order status to "Refunded"', 'coinsub'),
+                __('5. Update order status to "Refunded"', 'coinsub'),
             ),
             'note' => __('Remember: You pay gas fees for the refund transaction', 'coinsub')
         );

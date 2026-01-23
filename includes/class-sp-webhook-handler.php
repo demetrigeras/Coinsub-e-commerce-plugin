@@ -441,11 +441,27 @@ class CoinSub_Webhook_Handler {
         $transaction_id = $transaction_details['transaction_id'] ?? 'N/A';
         $transaction_hash = $transaction_details['transaction_hash'] ?? 'N/A';
         
+        // Extract user information from webhook payload
+        $user_data = $data['user'] ?? array();
+        if (!empty($user_data)) {
+            // Update order billing information from webhook user data if available
+            if (isset($user_data['first_name']) && !empty($user_data['first_name'])) {
+                $order->set_billing_first_name($user_data['first_name']);
+            }
+            if (isset($user_data['last_name']) && !empty($user_data['last_name'])) {
+                $order->set_billing_last_name($user_data['last_name']);
+            }
+            if (isset($user_data['email']) && !empty($user_data['email'])) {
+                $order->set_billing_email($user_data['email']);
+            }
+            // Store subscriber_id if available
+            if (isset($user_data['subscriber_id']) && !empty($user_data['subscriber_id'])) {
+                $order->update_meta_data('_coinsub_subscriber_id', $user_data['subscriber_id']);
+            }
+        }
+        
         $order->add_order_note(
-            sprintf(
-                __('CoinSub Payment Complete - Transaction Hash: %s', 'coinsub'),
-                $transaction_hash
-            )
+            __('CoinSub Payment Complete', 'coinsub')
         );
         
         // Store transaction details in WooCommerce
@@ -509,9 +525,23 @@ class CoinSub_Webhook_Handler {
             }
         }
         
-        // Store token symbol if available
-        if (isset($transaction_details['token_symbol'])) {
-            $order->update_meta_data('_coinsub_token_symbol', $transaction_details['token_symbol']);
+        // Store token symbol - use currency from transaction_details (currency field = token symbol)
+        // Fallback to payments API lookup if not available
+        $token_symbol = null;
+        if (isset($transaction_details['currency']) && !empty($transaction_details['currency'])) {
+            $token_symbol = $transaction_details['currency'];
+            $order->update_meta_data('_coinsub_token_symbol', $token_symbol);
+        } elseif (isset($data['currency']) && !empty($data['currency'])) {
+            $token_symbol = $data['currency'];
+            $order->update_meta_data('_coinsub_token_symbol', $token_symbol);
+        } elseif (isset($data['payment_id']) && !empty($data['payment_id'])) {
+            // Fallback: Look up payment details via API to get currency/token symbol
+            $api_client = new CoinSub_API_Client();
+            $payment_details = $api_client->get_payment_details($data['payment_id']);
+            if (!is_wp_error($payment_details) && isset($payment_details['currency'])) {
+                $token_symbol = $payment_details['currency'];
+                $order->update_meta_data('_coinsub_token_symbol', $token_symbol);
+            }
         }
         
         $order->save();
@@ -622,9 +652,8 @@ class CoinSub_Webhook_Handler {
             
             // Add order note
             $refund_note = sprintf(
-                __('✅ CoinSub Refund Completed: Transfer ID: %s, Transaction Hash: %s. Refund has been successfully sent to customer.', 'coinsub'),
-                $transfer_id ?: 'N/A',
-                $hash
+                __('✅ CoinSub Refund Completed: Transfer ID: %s. Refund has been successfully sent to customer.', 'coinsub'),
+                $transfer_id ?: 'N/A'
             );
             $order->add_order_note($refund_note);
             
