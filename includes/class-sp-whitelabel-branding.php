@@ -39,7 +39,8 @@ class CoinSub_Whitelabel_Branding {
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
         // Use centralized API URL for all merchants
-        $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -120,7 +121,8 @@ class CoinSub_Whitelabel_Branding {
         }
         
         // Ensure API client has the latest settings with centralized API URL
-        $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
         
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
@@ -431,8 +433,8 @@ class CoinSub_Whitelabel_Branding {
      */
     private function normalize_logo_urls($logo) {
         // Asset base for static files (logos, favicons, etc.) - NOT the API endpoint
-        $asset_base = 'https://app.coinsub.io'; // Production (app subdomain serves assets) - NO trailing slash
-        // $asset_base = 'https://test-app.coinsub.io'; // Test environment
+        // $asset_base = 'https://app.coinsub.io'; // Production (app subdomain serves assets) - NO trailing slash
+        $asset_base = 'https://test-app.coinsub.io'; // Test environment
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $asset_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));

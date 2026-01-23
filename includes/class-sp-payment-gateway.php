@@ -389,8 +389,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function get_api_base_url() {
         // Centralized CoinSub API - ALL merchants use this endpoint
         // The API determines whitelabel branding based on Merchant ID
-        return 'https://api.coinsub.io/v1'; // Production
-        // return 'https://test-api.coinsub.io/v1'; // Test environment
+        // return 'https://api.coinsub.io/v1'; // Production
+        return 'https://test-api.coinsub.io/v1'; // Test environment
     }
     
     /**
