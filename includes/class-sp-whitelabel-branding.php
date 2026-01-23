@@ -38,8 +38,15 @@ class CoinSub_Whitelabel_Branding {
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
-        // Use centralized API URL for all merchants
-        $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // Get environment setting (default to production)
+        $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
+        
+        // Set API URL based on environment
+        if ($environment === 'test') {
+            $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
+        } else {
+            $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        }
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -119,8 +126,15 @@ class CoinSub_Whitelabel_Branding {
             return array(); // Return empty array, no default
         }
         
-        // Ensure API client has the latest settings with centralized API URL
-        $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        // Get environment setting (default to production)
+        $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
+        
+        // Set API URL based on environment
+        if ($environment === 'test') {
+            $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
+        } else {
+            $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        }
         
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
@@ -430,9 +444,16 @@ class CoinSub_Whitelabel_Branding {
      * @return array Normalized logo data
      */
     private function normalize_logo_urls($logo) {
-        // Asset base for static files (logos, favicons, etc.) - NOT the API endpoint
-        $asset_base = 'https://app.coinsub.io'; // Production (app subdomain serves assets) - NO trailing slash
-        // $asset_base = 'https://test-app.coinsub.io'; // Test environment
+        // Get environment setting (default to production)
+        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
+        
+        // Set asset base URL based on environment
+        if ($environment === 'test') {
+            $asset_base = 'https://test-app.coinsub.io'; // Test environment
+        } else {
+            $asset_base = 'https://app.coinsub.io'; // Production (app subdomain serves assets) - NO trailing slash
+        }
         
         error_log('CoinSub Whitelabel: 🖼️ Normalizing logo URLs with base: ' . $asset_base);
         error_log('CoinSub Whitelabel: 🖼️ Logo data before normalization: ' . json_encode($logo, JSON_PRETTY_PRINT));

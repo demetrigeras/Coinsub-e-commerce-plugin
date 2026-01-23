@@ -40,10 +40,15 @@ class CoinSub_API_Client {
         // Try to get settings from payment gateway first, then fallback to global options
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
-        // API URL is centralized - ALL merchants use the same API endpoint
-        // The API determines the merchant based on Merchant ID, not domain
-        $this->api_base_url = 'https://api.coinsub.io/v1'; // Production
-        // $this->api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
+        // Get environment setting (default to production)
+        $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
+        
+        // Set API URL based on environment
+        if ($environment === 'test') {
+            $this->api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
+        } else {
+            $this->api_base_url = 'https://api.coinsub.io/v1'; // Production
+        }
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
