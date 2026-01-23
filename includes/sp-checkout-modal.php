@@ -12,9 +12,38 @@ if (!defined('ABSPATH')) {
 ?>
 
 <!-- Stablecoin Pay Checkout Styles -->
-<!-- Note: Iframe is now displayed on dedicated checkout page, not on main checkout -->
 <style>
-/* Styles removed - iframe is now on dedicated checkout page */
+#coinsub-checkout-container {
+	margin: 20px 0;
+	background: white;
+	border-radius: 16px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+	overflow: hidden;
+	display: none; /* Hidden by default */
+}
+
+#coinsub-checkout-iframe {
+	width: 100%;
+	height: 800px;
+	border: none;
+}
+
+/* Hide button when checkout iframe is visible - don't interfere with other payment methods */
+body.coinsub-iframe-visible .woocommerce-checkout .form-row.place-order,
+body.coinsub-iframe-visible .woocommerce-checkout #place_order {
+	display: none !important;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+	#coinsub-checkout-container {
+		margin: 10px 0;
+	}
+	
+	#coinsub-checkout-iframe {
+		height: 600px;
+	}
+}
 </style>
 
 <!-- Stablecoin Pay Checkout JavaScript -->
@@ -47,18 +76,58 @@ jQuery(document).ready(function($) {
         }
     }
     
-    // SIMPLIFIED: No iframe on main checkout page - we redirect to dedicated page
-    // Just handle logo removal when switching payment methods
+    // Handle CoinSub button visibility based on iframe state
+    function ensurePlaceOrderButtonVisibility() {
+        var paymentMethod = $('input[name="payment_method"]:checked').val();
+        
+        // Only handle CoinSub - completely ignore other payment methods
+        if (paymentMethod !== 'coinsub') {
+            // For non-CoinSub methods, just hide CoinSub iframe
+            $('#coinsub-checkout-container').hide();
+            $('body').removeClass('coinsub-iframe-visible');
+            removeCoinSubLogo();
+            return;
+        }
+        
+        // For CoinSub, handle button visibility based on iframe state
+        var $placeOrderRow = $('.woocommerce-checkout .form-row.place-order');
+        var $placeOrderButton = $('#place_order');
+        
+        if ($('#coinsub-checkout-container').is(':visible')) {
+            // Hide button when CoinSub iframe is visible
+            $placeOrderRow.hide();
+            $placeOrderButton.hide();
+            $('body').addClass('coinsub-iframe-visible');
+            console.log('🔒 CoinSub: Hiding Place Order button (CoinSub iframe visible)');
+        } else {
+            // Show button when CoinSub is selected but iframe not visible yet
+            $placeOrderRow.show();
+            $placeOrderButton.show();
+            $('body').removeClass('coinsub-iframe-visible');
+            console.log('✅ CoinSub: Showing Place Order button (CoinSub selected, no iframe)');
+        }
+    }
     
-    // Watch for payment method changes - just remove logo when switching away
+    // Watch for payment method changes
     $('body').on('change', 'input[name="payment_method"]', function() {
         var newMethod = $(this).val();
+        console.log('🔄 CoinSub: Payment method changed to: ' + newMethod);
         
-        // If switching away from CoinSub, remove logo
-        if (newMethod !== 'coinsub') {
+        if (newMethod === 'coinsub') {
+            ensurePlaceOrderButtonVisibility();
+        } else {
+            // For other payment methods, remove CoinSub logo and hide iframe
             removeCoinSubLogo();
+            $('#coinsub-checkout-container').hide();
+            $('body').removeClass('coinsub-iframe-visible');
+            ensurePlaceOrderButtonVisibility();
         }
     });
+    
+    // Initialize button visibility
+    setTimeout(function() {
+        ensurePlaceOrderButtonVisibility();
+    }, 100);
     
     // Override the place order button ONLY for CoinSub
     // This ensures we don't interfere with other payment gateways like Coinbase, Stripe, etc.
@@ -104,30 +173,49 @@ jQuery(document).ready(function($) {
                     shipping_country: $('select[name="shipping_country"]').val()
                 },
                 success: function(response) {
+                    console.log('✅ CoinSub AJAX Response:', response);
                     
-                    
-                    // Check for different response structures
+                    // Get the checkout URL from the response
+                    // The response should include coinsub_checkout_url (the API checkout URL)
                     var checkoutUrl = null;
                     
                     if (response.success && response.data) {
-                        // Check for redirect (payment gateway returns this)
-                        if (response.data.result === 'success' && response.data.redirect) {
-                            checkoutUrl = response.data.redirect;
-                            console.log('✅ CoinSub - Found redirect URL:', checkoutUrl);
-                        }
-                        // Check for coinsub_checkout_url (alternative format)
-                        else if (response.data.coinsub_checkout_url) {
+                        // PRIORITY: Get coinsub_checkout_url (the actual API checkout URL for iframe)
+                        if (response.data.coinsub_checkout_url) {
                             checkoutUrl = response.data.coinsub_checkout_url;
-                            console.log('✅ CoinSub - Found checkout URL:', checkoutUrl);
+                            console.log('✅ CoinSub - Found checkout URL (API) for iframe:', checkoutUrl);
+                        } else {
+                            console.error('❌ CoinSub - No coinsub_checkout_url in response!');
+                            console.error('❌ CoinSub - Response data:', response.data);
+                            console.error('❌ CoinSub - Cannot create iframe without checkout URL');
                         }
                     }
                     
-                    if (checkoutUrl || response.data.redirect) {
-                        // Redirect to dedicated checkout page
-                        // The page will display the payment iframe full-page
-                        var redirectUrl = response.data.redirect || checkoutUrl;
-                        console.log('🔄 Redirecting to dedicated checkout page:', redirectUrl);
-                        window.location.href = redirectUrl;
+                    if (checkoutUrl) {
+                        console.log('🔄 CoinSub - Opening checkout iframe:', checkoutUrl);
+                        
+                        // Remove any existing iframe to prevent duplicates
+                        $('#coinsub-checkout-iframe').remove();
+                        $('#coinsub-checkout-container').remove();
+                        
+                        // Create iframe container above the payment button
+                        var iframeContainer = $('<div id="coinsub-checkout-container" style="margin: 20px 0; background: white; border-radius: 16px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); overflow: hidden;"><iframe id="coinsub-checkout-iframe" src="' + checkoutUrl + '" style="width: 100%; height: 800px; border: none;" allow="clipboard-read *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *; clipboard-write *" onload="handleCoinSubIframeLoad()"></iframe></div>');
+                        
+                        // Insert above the payment button
+                        $('.woocommerce-checkout .form-row.place-order').before(iframeContainer);
+                        
+                        // Show the iframe container
+                        $('#coinsub-checkout-container').show();
+                        $('body').addClass('coinsub-iframe-visible');
+                        
+                        // Hide the payment button
+                        $('.woocommerce-checkout .form-row.place-order').hide();
+                        $('#place_order').hide();
+                        
+                        // Set up iframe redirect detection
+                        setupCoinSubIframeRedirectDetection();
+                        
+                        console.log('✅ CoinSub - Checkout iframe embedded above payment button');
                     } else {
                         console.log('Payment failed - response details:', response);
                         // Show detailed error
@@ -178,21 +266,76 @@ jQuery(document).ready(function($) {
         }
     });
     
+    // Set up iframe redirect detection
+    function setupCoinSubIframeRedirectDetection() {
+        console.log('🔄 CoinSub: Setting up iframe redirect detection...');
+        
+        // Listen for postMessage events from the iframe
+        window.addEventListener('message', function(event) {
+            console.log('📨 CoinSub: Received message from iframe:', event.data);
+            
+            // Check if this is a redirect message
+            if (event.data && typeof event.data === 'object') {
+                if (event.data.type === 'redirect' && event.data.url) {
+                    console.log('🔄 CoinSub: Redirecting parent window to:', event.data.url);
+                    window.location.href = event.data.url;
+                }
+            }
+            
+            // Also check for URL changes in the iframe
+            if (event.data && typeof event.data === 'string' && event.data.includes('order-received')) {
+                console.log('🔄 CoinSub: Found order-received URL in message:', event.data);
+                window.location.href = event.data;
+            }
+        });
+        
+        // Check iframe URL periodically for redirects
+        var checkInterval = setInterval(function() {
+            try {
+                var iframe = document.getElementById('coinsub-checkout-iframe');
+                if (iframe && iframe.contentWindow) {
+                    var iframeUrl = iframe.contentWindow.location.href;
+                    
+                    // Check if iframe has redirected to order-received page
+                    if (iframeUrl.includes('order-received')) {
+                        console.log('🔄 CoinSub: Iframe redirected to order-received, redirecting parent window');
+                        clearInterval(checkInterval);
+                        window.location.href = iframeUrl;
+                        return;
+                    }
+                }
+            } catch(e) {
+                // Cross-origin restrictions - this is expected
+                // The iframe may have redirected to a different domain
+            }
+        }, 1000);
+        
+        // Stop checking after 5 minutes
+        setTimeout(function() {
+            clearInterval(checkInterval);
+        }, 300000);
+    }
+    
+    // Handle iframe load
+    function handleCoinSubIframeLoad() {
+        console.log('✅ CoinSub: Iframe loaded');
+        setupCoinSubIframeRedirectDetection();
+    }
+    
+    // Make functions available globally
+    window.handleCoinSubIframeLoad = handleCoinSubIframeLoad;
+    window.ensurePlaceOrderButtonVisibility = ensurePlaceOrderButtonVisibility;
+    
     // Also check when WooCommerce updates checkout (AJAX)
-    // Just remove logo if switching away from CoinSub
     $(document.body).on('updated_checkout', function() {
-        var paymentMethod = $('input[name="payment_method"]:checked').val();
-        if (paymentMethod !== 'coinsub') {
-            removeCoinSubLogo();
-        }
+        console.log('🔄 CoinSub: WooCommerce checkout updated via AJAX');
+        ensurePlaceOrderButtonVisibility();
     });
     
     // Also watch for when payment methods are loaded/updated
     $(document.body).on('payment_method_selected', function() {
-        var paymentMethod = $('input[name="payment_method"]:checked').val();
-        if (paymentMethod !== 'coinsub') {
-            removeCoinSubLogo();
-        }
+        console.log('🔄 CoinSub: Payment method selected event fired');
+        ensurePlaceOrderButtonVisibility();
     });
 });
 </script>

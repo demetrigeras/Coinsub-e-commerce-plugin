@@ -480,40 +480,8 @@ function coinsub_checkout_page_shortcode($atts) {
     
     error_log('🎯 CoinSub Checkout Page: Final checkout URL to load: ' . $checkout_url);
     
-    // Check if checkout URL domain is known to block iframes
-    $checkout_url_parts = parse_url($checkout_url);
-    $checkout_domain = isset($checkout_url_parts['host']) ? $checkout_url_parts['host'] : '';
-    $domains_that_block_iframes = array('paymentservers.com', 'buy.paymentservers.com');
-    $domain_blocks_iframe = false;
-    
-    foreach ($domains_that_block_iframes as $blocked_domain) {
-        if (strpos($checkout_domain, $blocked_domain) !== false) {
-            $domain_blocks_iframe = true;
-            error_log('⚠️ CoinSub Checkout Page: Domain ' . $checkout_domain . ' is known to block iframe embedding - will redirect directly');
-            break;
-        }
-    }
-    
-    // If domain blocks iframes, redirect directly instead of using iframe
-    if ($domain_blocks_iframe) {
-        error_log('🔄 CoinSub Checkout Page: Redirecting directly to checkout URL (bypassing iframe)');
-        return '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 50px auto;">
-            <h2 style="margin-bottom: 20px;">Opening Payment Checkout</h2>
-            <p style="margin-bottom: 30px;">Redirecting to secure payment page...</p>
-            <div style="width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
-            <script>
-                setTimeout(function() {
-                    window.location.href = "' . esc_js($checkout_url) . '";
-                }, 500);
-            </script>
-            <style>
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            </style>
-        </div>';
-    }
+    // REMOVED: Domain blocking check - these domains work fine in iframes
+    // The JavaScript fallback will handle redirect if iframe is actually blocked by X-Frame-Options
     
     // Get whitelabel branding for page title (use cached data only, no API calls)
     $branding_data = get_option('coinsub_whitelabel_branding', array());
@@ -598,39 +566,10 @@ function coinsub_checkout_page_shortcode($atts) {
         var checkoutDomain = new URL(iframe.src).host;
         console.log('🌐 Checkout domain:', checkoutDomain);
         
-        // Check for known domains that might block iframes
-        var domainsThatBlockIframes = ['paymentservers.com', 'buy.paymentservers.com'];
-        var domainBlocksIframe = domainsThatBlockIframes.some(function(blockedDomain) {
-            return checkoutDomain.includes(blockedDomain);
-        });
-        
-        if (domainBlocksIframe) {
-            console.warn('⚠️ Domain ' + checkoutDomain + ' is known to potentially block iframe embedding');
-            console.warn('⚠️ Will check iframe accessibility and redirect if blocked');
-        }
-        
-        // Detect if iframe is blocked (check after a short delay)
-        var iframeBlockCheckTimeout = setTimeout(function() {
-            try {
-                // Try to access iframe content - if blocked, this will throw
-                var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                console.log('✅ Iframe is accessible (not blocked by X-Frame-Options)');
-            } catch(e) {
-                console.error('❌ IFRAME BLOCKED: Domain ' + checkoutDomain + ' is blocking iframe embedding');
-                console.error('❌ Error:', e.message);
-                console.error('🔄 Redirecting to checkout URL directly (bypassing iframe)');
-                
-                // Redirect directly to checkout URL if iframe is blocked
-                if (loadingDiv) {
-                    loadingDiv.innerHTML = '<div style="color: #2271b1;"><p style="margin: 0 0 10px; font-size: 16px;">Opening payment checkout...</p><p style="margin: 0; font-size: 14px;">The payment provider requires a direct redirect.</p></div>';
-                }
-                
-                // Redirect after a brief delay
-                setTimeout(function() {
-                    window.location.href = iframe.src;
-                }, 1000);
-            }
-        }, 2000); // Check after 2 seconds
+        // Note: We cannot check iframe.contentDocument for cross-origin iframes due to Same-Origin Policy
+        // This is normal - cross-origin iframes can still load and work fine, we just can't access their content
+        // We'll rely on the iframe's onload/onerror events to detect actual blocking
+        console.log('ℹ️ Iframe is cross-origin - cannot access content (this is normal and expected)');
         
         // Note: Browser should start loading iframe src automatically when HTML is parsed
         // Preconnect in <head> should have already established connection
@@ -674,6 +613,7 @@ function coinsub_checkout_page_shortcode($atts) {
             
             var loadTime = ((Date.now() - loadStartTime) / 1000).toFixed(2);
             console.log('✅ Iframe loaded successfully in ' + loadTime + ' seconds');
+            console.log('✅ Iframe is working - cross-origin restrictions are normal and expected');
             
             // Make iframe visible and bring to front
             iframe.style.opacity = '1';
@@ -698,6 +638,8 @@ function coinsub_checkout_page_shortcode($atts) {
         };
         
         // Handle iframe load errors
+        // Note: onerror may not fire for cross-origin iframes due to security restrictions
+        // We rely on the fallback timeout and onload event instead
         iframe.onerror = function() {
             if (loadTimeout) {
                 clearTimeout(loadTimeout);
@@ -708,30 +650,13 @@ function coinsub_checkout_page_shortcode($atts) {
             
             var loadTime = ((Date.now() - loadStartTime) / 1000).toFixed(2);
             var checkoutDomain = new URL(iframe.src).host;
-            console.error('❌ Iframe failed to load after ' + loadTime + ' seconds');
+            console.error('❌ Iframe onerror fired after ' + loadTime + ' seconds');
             console.error('❌ Iframe src:', iframe.src);
             console.error('❌ Domain:', checkoutDomain);
+            console.warn('⚠️ Note: onerror may not fire reliably for cross-origin iframes. Relying on fallback timeout.');
             
-            // Check if iframe is blocked by X-Frame-Options
-            try {
-                var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-            } catch(e) {
-                console.error('❌ IFRAME BLOCKED: Domain ' + checkoutDomain + ' is blocking iframe embedding (X-Frame-Options or CSP)');
-                console.error('❌ Error:', e.message);
-                
-                if (loadingDiv) {
-                    loadingDiv.innerHTML = '<div style="color: #d32f2f;"><p style="margin: 0 0 10px; font-size: 16px;">⚠️ Payment checkout cannot be loaded in iframe</p><p style="margin: 0; font-size: 14px;">The payment provider (' + checkoutDomain + ') is blocking iframe embedding. Redirecting to payment page...</p><a href="' + iframe.src + '" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Open Payment Page</a><script>setTimeout(function(){ window.location.href = "' + iframe.src + '"; }, 2000);</script></div>';
-                }
-                return;
-            }
-            
-            // Still try to show the iframe in case it partially loaded
-            iframe.style.opacity = '1';
-            iframe.style.zIndex = '9999';
-            
-            if (loadingDiv) {
-                loadingDiv.innerHTML = '<div style="color: #d32f2f;"><p style="margin: 0 0 10px; font-size: 16px;">⚠️ Failed to load payment checkout</p><p style="margin: 0; font-size: 14px;">Please try again or contact support</p><a href="<?php echo esc_js(wc_get_checkout_url()); ?>" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Return to Checkout</a></div>';
-            }
+            // Don't immediately redirect - let the fallback timeout handle it
+            // The iframe might still be loading
         };
         
         // Start postMessage listener immediately (before jQuery ready)

@@ -980,6 +980,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('  Currency: ' . $cart_data['currency']);
             error_log('  Has Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
             
+            // Ensure API client is using the correct environment settings
+            $api_base_url = $this->get_api_base_url();
+            $merchant_id = $this->get_option('merchant_id', '');
+            $api_key = $this->get_option('api_key', '');
+            $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
+            error_log('💳 CoinSub - API client updated with environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
+            error_log('💳 CoinSub - API Base URL: ' . $api_base_url);
+            
             // Create purchase session directly with cart totals
             $session_start_time = microtime(true);
             error_log('💳 CoinSub - Creating purchase session...');
@@ -1011,33 +1019,45 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
             
             error_log('🔗 CoinSub - Checkout URL from API (original): ' . $checkout_url);
+            error_log('🔗 CoinSub - Current environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
+            error_log('🔗 CoinSub - API Base URL used: ' . $this->get_api_base_url());
             
             // Replace checkout URL domain with whitelabel buyurl if available
+            // NOTE: In test mode, the API should return test URLs, so buyurl replacement should be safe
             $branding_data = get_option('coinsub_whitelabel_branding', array());
             if (!empty($branding_data['buyurl'])) {
                 $buyurl = $branding_data['buyurl'];
                 error_log('🎨 CoinSub - Whitelabel buyurl found: ' . $buyurl);
                 
-                // Extract domain from buyurl (e.g., https://buy.paymentservers.com)
-                $buyurl_parts = parse_url($buyurl);
-                if ($buyurl_parts && isset($buyurl_parts['scheme']) && isset($buyurl_parts['host'])) {
-                    $whitelabel_domain = $buyurl_parts['scheme'] . '://' . $buyurl_parts['host'];
-                    error_log('🎨 CoinSub - Whitelabel domain: ' . $whitelabel_domain);
-                    
-                    // Extract domain from original checkout URL
-                    $checkout_url_parts = parse_url($checkout_url);
-                    if ($checkout_url_parts && isset($checkout_url_parts['scheme']) && isset($checkout_url_parts['host'])) {
-                        $original_domain = $checkout_url_parts['scheme'] . '://' . $checkout_url_parts['host'];
-                        error_log('🔗 CoinSub - Original checkout domain: ' . $original_domain);
-                        
-                        // Replace the domain in checkout URL
-                        $checkout_url = str_replace($original_domain, $whitelabel_domain, $checkout_url);
-                        error_log('✅ CoinSub - Checkout URL replaced with whitelabel domain: ' . $checkout_url);
-                    } else {
-                        error_log('⚠️ CoinSub - Could not parse original checkout URL, using as-is');
-                    }
+                // Verify buyurl matches environment (test vs production)
+                $is_test_mode = $this->get_option('environment', 'production') === 'test';
+                $buyurl_is_test = strpos($buyurl, 'test') !== false || strpos($buyurl, 'test-') !== false;
+                
+                if ($is_test_mode && !$buyurl_is_test) {
+                    error_log('⚠️ CoinSub - WARNING: Test mode active but buyurl appears to be production URL. Using API checkout URL directly.');
                 } else {
-                    error_log('⚠️ CoinSub - Could not parse buyurl, using original checkout URL');
+                    // Extract domain from buyurl (e.g., https://buy.paymentservers.com)
+                    $buyurl_parts = parse_url($buyurl);
+                    if ($buyurl_parts && isset($buyurl_parts['scheme']) && isset($buyurl_parts['host'])) {
+                        $whitelabel_domain = $buyurl_parts['scheme'] . '://' . $buyurl_parts['host'];
+                        error_log('🎨 CoinSub - Whitelabel domain: ' . $whitelabel_domain);
+                        
+                        // Extract domain from original checkout URL
+                        $checkout_url_parts = parse_url($checkout_url);
+                        if ($checkout_url_parts && isset($checkout_url_parts['scheme']) && isset($checkout_url_parts['host'])) {
+                            $original_domain = $checkout_url_parts['scheme'] . '://' . $checkout_url_parts['host'];
+                            error_log('🔗 CoinSub - Original checkout domain: ' . $original_domain);
+                            
+                            // Replace the domain in checkout URL
+                            $checkout_url = str_replace($original_domain, $whitelabel_domain, $checkout_url);
+                            error_log('✅ CoinSub - Checkout URL replaced with whitelabel domain: ' . $checkout_url);
+                            error_log('✅ CoinSub - Environment check: ' . ($is_test_mode ? 'TEST' : 'PRODUCTION') . ' mode, buyurl is ' . ($buyurl_is_test ? 'TEST' : 'PRODUCTION'));
+                        } else {
+                            error_log('⚠️ CoinSub - Could not parse original checkout URL, using as-is');
+                        }
+                    } else {
+                        error_log('⚠️ CoinSub - Could not parse buyurl, using original checkout URL');
+                    }
                 }
             } else {
                 error_log('ℹ️ CoinSub - No whitelabel buyurl found, using original checkout URL from API');
