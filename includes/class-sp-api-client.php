@@ -68,10 +68,6 @@ class CoinSub_API_Client {
      * Create a purchase session
      */
     public function create_purchase_session($order_data) {
-        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-        error_log('XXX CREATE PURCHASE SESSION CALLED XXX');
-        error_log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-        
         // Purchase session uses base v1 URL
         $endpoint = rtrim($this->api_base_url, '/') . '/purchase/session/start';
         

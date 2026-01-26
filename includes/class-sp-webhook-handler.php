@@ -98,9 +98,8 @@ class CoinSub_Webhook_Handler {
         // Verify webhook signature if configured
         $raw_data = $request->get_body();
         if (!$this->verify_webhook_signature($raw_data)) {
-            error_log('❌ CoinSub Webhook - Invalid signature - but continuing for debugging');
-            // Temporarily disable signature verification for debugging
-            // return new WP_REST_Response(array('error' => 'Invalid signature'), 401);
+            error_log('❌ CoinSub Webhook - Invalid signature - rejecting webhook');
+            return new WP_REST_Response(array('error' => 'Invalid signature'), 401);
         }
         
         // Process the webhook

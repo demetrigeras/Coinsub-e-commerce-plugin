@@ -557,19 +557,10 @@ function coinsub_checkout_page_shortcode($atts) {
             return;
         }
         
-        // Log iframe URL for debugging
-        console.log('🔗 Loading checkout iframe:', iframe.src);
-        console.log('⏱️ Iframe load started at:', new Date().toISOString());
-        console.log('🌐 Page ready state:', document.readyState);
-        
-        // Check if iframe is potentially blocked by X-Frame-Options or CSP
-        var checkoutDomain = new URL(iframe.src).host;
-        console.log('🌐 Checkout domain:', checkoutDomain);
-        
+        // Security: Don't log iframe URL in console (sensitive one-time use URL)
         // Note: We cannot check iframe.contentDocument for cross-origin iframes due to Same-Origin Policy
         // This is normal - cross-origin iframes can still load and work fine, we just can't access their content
         // We'll rely on the iframe's onload/onerror events to detect actual blocking
-        console.log('ℹ️ Iframe is cross-origin - cannot access content (this is normal and expected)');
         
         // Note: Browser should start loading iframe src automatically when HTML is parsed
         // Preconnect in <head> should have already established connection
@@ -612,8 +603,7 @@ function coinsub_checkout_page_shortcode($atts) {
             }
             
             var loadTime = ((Date.now() - loadStartTime) / 1000).toFixed(2);
-            console.log('✅ Iframe loaded successfully in ' + loadTime + ' seconds');
-            console.log('✅ Iframe is working - cross-origin restrictions are normal and expected');
+            // Security: Don't log iframe load details (URL is sensitive)
             
             // Make iframe visible and bring to front
             iframe.style.opacity = '1';
@@ -667,14 +657,15 @@ function coinsub_checkout_page_shortcode($atts) {
             // Check if this is a redirect message
             if (event.data && typeof event.data === 'object') {
                 if (event.data.type === 'redirect' && event.data.url) {
-                    console.log('🔄 Redirecting to:', event.data.url);
+                    // Security: Don't log redirect URL (sensitive)
                     window.location.href = event.data.url;
                     return;
                 }
                 
                 // Check for error messages from iframe
                 if (event.data.type === 'error' || event.data.error) {
-                    console.error('❌ Error received from checkout iframe:', event.data.error || event.data);
+                    // Log error type but not full data (may contain sensitive URLs)
+                    console.error('❌ Error received from checkout iframe');
                     if (loadingDiv) {
                         loadingDiv.style.display = 'block';
                         loadingDiv.innerHTML = '<div style="color: #d32f2f;"><p style="margin: 0 0 10px; font-size: 16px;">⚠️ Error in payment checkout</p><p style="margin: 0; font-size: 14px;">' + (event.data.message || 'Please try again or contact support') + '</p><a href="<?php echo esc_js(wc_get_checkout_url()); ?>" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Return to Checkout</a></div>';
@@ -685,7 +676,7 @@ function coinsub_checkout_page_shortcode($atts) {
             
             // Check for order-received URL in message
             if (event.data && typeof event.data === 'string' && event.data.includes('order-received')) {
-                console.log('🔄 Found order-received URL:', event.data);
+                // Security: Don't log order-received URL (sensitive)
                 window.location.href = event.data;
                 return;
             }
@@ -994,19 +985,21 @@ function coinsub_ajax_process_payment() {
     // Verify nonce - be more flexible with nonce verification
     $security_valid = false;
     
-    // Try different nonce actions
+    // Try different nonce actions (WooCommerce may use different nonce actions)
     $nonce_actions = ['woocommerce-process_checkout', 'wc_checkout_params', 'checkout_nonce', 'coinsub_process_payment'];
     
     foreach ($nonce_actions as $action) {
-        if (wp_verify_nonce($_POST['security'], $action)) {
+        if (isset($_POST['security']) && wp_verify_nonce($_POST['security'], $action)) {
             $security_valid = true;
             break;
         }
     }
     
-    // If still not valid, allow for debugging
+    // Security: Require valid nonce verification
     if (!$security_valid) {
-        $security_valid = true;
+        error_log('❌ CoinSub - Security check failed: Invalid or missing nonce');
+        wp_send_json_error(array('message' => 'Security check failed. Please refresh the page and try again.'));
+        return;
     }
     
     // Check if cart is empty

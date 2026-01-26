@@ -173,26 +173,24 @@ jQuery(document).ready(function($) {
                     shipping_country: $('select[name="shipping_country"]').val()
                 },
                 success: function(response) {
-                    console.log('✅ CoinSub AJAX Response:', response);
-                    
                     // Get the checkout URL from the response
                     // The response should include coinsub_checkout_url (the API checkout URL)
+                    // NOTE: Do not log checkout URL in console for security (one-time use URL)
                     var checkoutUrl = null;
                     
                     if (response.success && response.data) {
                         // PRIORITY: Get coinsub_checkout_url (the actual API checkout URL for iframe)
                         if (response.data.coinsub_checkout_url) {
                             checkoutUrl = response.data.coinsub_checkout_url;
-                            console.log('✅ CoinSub - Found checkout URL (API) for iframe:', checkoutUrl);
+                            // Security: Don't log checkout URL in console (sensitive one-time use URL)
                         } else {
                             console.error('❌ CoinSub - No coinsub_checkout_url in response!');
-                            console.error('❌ CoinSub - Response data:', response.data);
-                            console.error('❌ CoinSub - Cannot create iframe without checkout URL');
+                            // Don't log full response data - may contain sensitive info
                         }
                     }
                     
                     if (checkoutUrl) {
-                        console.log('🔄 CoinSub - Opening checkout iframe:', checkoutUrl);
+                        // Security: Checkout URL is sensitive (one-time use) - don't log it
                         
                         // Remove any existing iframe to prevent duplicates
                         $('#coinsub-checkout-iframe').remove();
@@ -215,7 +213,7 @@ jQuery(document).ready(function($) {
                         // Set up iframe redirect detection
                         setupCoinSubIframeRedirectDetection();
                         
-                        console.log('✅ CoinSub - Checkout iframe embedded above payment button');
+                        // Security: Don't log that iframe was embedded (URL is sensitive)
                     } else {
                         console.log('Payment failed - response details:', response);
                         // Show detailed error
@@ -268,23 +266,21 @@ jQuery(document).ready(function($) {
     
     // Set up iframe redirect detection
     function setupCoinSubIframeRedirectDetection() {
-        console.log('🔄 CoinSub: Setting up iframe redirect detection...');
-        
         // Listen for postMessage events from the iframe
         window.addEventListener('message', function(event) {
-            console.log('📨 CoinSub: Received message from iframe:', event.data);
+            // Security: Don't log message data - may contain sensitive URLs
             
             // Check if this is a redirect message
             if (event.data && typeof event.data === 'object') {
                 if (event.data.type === 'redirect' && event.data.url) {
-                    console.log('🔄 CoinSub: Redirecting parent window to:', event.data.url);
+                    // Security: Don't log redirect URL (sensitive)
                     window.location.href = event.data.url;
                 }
             }
             
             // Also check for URL changes in the iframe
             if (event.data && typeof event.data === 'string' && event.data.includes('order-received')) {
-                console.log('🔄 CoinSub: Found order-received URL in message:', event.data);
+                // Security: Don't log order-received URL (sensitive)
                 window.location.href = event.data;
             }
         });
@@ -298,7 +294,7 @@ jQuery(document).ready(function($) {
                     
                     // Check if iframe has redirected to order-received page
                     if (iframeUrl.includes('order-received')) {
-                        console.log('🔄 CoinSub: Iframe redirected to order-received, redirecting parent window');
+                        // Security: Don't log iframe URL (sensitive)
                         clearInterval(checkInterval);
                         window.location.href = iframeUrl;
                         return;
@@ -318,7 +314,7 @@ jQuery(document).ready(function($) {
     
     // Handle iframe load
     function handleCoinSubIframeLoad() {
-        console.log('✅ CoinSub: Iframe loaded');
+        // Security: Don't log iframe load (URL is sensitive)
         setupCoinSubIframeRedirectDetection();
     }
     

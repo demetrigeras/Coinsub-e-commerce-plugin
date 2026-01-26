@@ -1357,6 +1357,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'amount' => $total_amount,
             'recurring' => $is_subscription,
             'metadata' => array(
+                'payment_gateway' => 'stablecoin_pay', // Identifier for data/analytics purposes
+                'payment_type' => 'stablecoin_pay', // Payment type identifier
                 'woocommerce_order_id' => $order->get_id(),
                 'order_number' => $order->get_order_number(),
                 'customer_email' => $order->get_billing_email(),
@@ -2786,6 +2788,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'amount' => $cart_data['total'],
             'recurring' => $cart_data['has_subscription'],
             'metadata' => array(
+                'payment_gateway' => 'stablecoin_pay', // Identifier for data/analytics purposes
+                'payment_type' => 'stablecoin_pay', // Payment type identifier
                 'woocommerce_order_id' => $order->get_id(),
                 'cart_items' => $cart_data['items'],
                 'subtotal' => $cart_data['subtotal'],
