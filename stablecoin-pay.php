@@ -382,6 +382,9 @@ function coinsub_checkout_page_preconnect() {
         // Try session first (if WooCommerce is initialized)
         if (function_exists('WC') && WC()->session) {
             $checkout_url = WC()->session->get('coinsub_checkout_url_' . $order_id);
+            if (!empty($checkout_url)) {
+                error_log('🔗 CoinSub Checkout Page: Checkout URL from session for order #' . $order_id . ': ' . $checkout_url);
+            }
         }
         
         // Fallback to order meta
@@ -438,6 +441,10 @@ function coinsub_checkout_page_shortcode($atts) {
         // CRITICAL: Check if checkout URL exists in session first (indicates active session)
         // If not in session, the user likely left the page and the checkout URL was already used
         $checkout_url = WC()->session->get('coinsub_checkout_url_' . $order_id);
+        
+        if (!empty($checkout_url)) {
+            error_log('🔗 CoinSub Checkout Page: Checkout URL found in session for order #' . $order_id . ': ' . $checkout_url);
+        }
         
         if (empty($checkout_url)) {
             // No checkout URL in session - user likely left the page
@@ -1093,6 +1100,9 @@ function coinsub_ajax_process_payment() {
     // If this order already has a checkout URL (rare race), reuse it
     $existing_checkout = $order->get_meta('_coinsub_checkout_url');
     if (!empty($existing_checkout)) {
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('🔗🔗🔗 CoinSub AJAX: FOUND EXISTING CHECKOUT URL: ' . $existing_checkout);
+        error_log('═══════════════════════════════════════════════════════════');
         // Store checkout URL in session to avoid long URLs
         WC()->session->set('coinsub_checkout_url_' . $order_id, $existing_checkout);
         
@@ -1108,10 +1118,55 @@ function coinsub_ajax_process_payment() {
         }
     } else {
         // Process payment - this will create the purchase session
+        error_log('🔗 CoinSub AJAX: Calling process_payment for order #' . $order->get_id());
         $result = $gateway->process_payment($order->get_id());
+        error_log('🔗 CoinSub AJAX: process_payment returned. Result keys: ' . implode(', ', array_keys($result)));
+        if (isset($result['coinsub_checkout_url'])) {
+            error_log('🔗 CoinSub AJAX: process_payment returned checkout URL: ' . $result['coinsub_checkout_url']);
+        } else {
+            error_log('⚠️ CoinSub AJAX: process_payment did NOT return coinsub_checkout_url in result');
+        }
     }
     
     if ($result['result'] === 'success') {
+        // Get checkout URL from all possible sources
+        $checkout_url = null;
+        
+        // Try result first
+        if (isset($result['coinsub_checkout_url']) && !empty($result['coinsub_checkout_url'])) {
+            $checkout_url = $result['coinsub_checkout_url'];
+            error_log('🔗🔗🔗 CoinSub AJAX: CHECKOUT URL FROM RESULT: ' . $checkout_url);
+        }
+        
+        // Try order meta
+        if (empty($checkout_url)) {
+            $checkout_url_from_order = $order->get_meta('_coinsub_checkout_url');
+            if (!empty($checkout_url_from_order)) {
+                $checkout_url = $checkout_url_from_order;
+                error_log('🔗🔗🔗 CoinSub AJAX: CHECKOUT URL FROM ORDER META: ' . $checkout_url);
+            }
+        }
+        
+        // Try session
+        if (empty($checkout_url)) {
+            $checkout_url_from_session = WC()->session->get('coinsub_checkout_url_' . $order_id);
+            if (!empty($checkout_url_from_session)) {
+                $checkout_url = $checkout_url_from_session;
+                error_log('🔗🔗🔗 CoinSub AJAX: CHECKOUT URL FROM SESSION: ' . $checkout_url);
+            }
+        }
+        
+        // Log final checkout URL prominently
+        if (!empty($checkout_url)) {
+            error_log('═══════════════════════════════════════════════════════════');
+            error_log('🔗🔗🔗 CoinSub AJAX: FINAL CHECKOUT URL: ' . $checkout_url);
+            error_log('═══════════════════════════════════════════════════════════');
+        } else {
+            error_log('⚠️⚠️⚠️ CoinSub AJAX: WARNING - NO CHECKOUT URL FOUND!');
+            error_log('Result keys: ' . implode(', ', array_keys($result)));
+            error_log('Result data: ' . json_encode($result));
+        }
+        
         wp_send_json_success($result);
     } else {
         error_log('CoinSub AJAX: Payment failed: ' . ($result['messages'] ?? 'Unknown error'));

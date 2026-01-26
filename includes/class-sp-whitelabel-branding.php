@@ -450,7 +450,7 @@ class CoinSub_Whitelabel_Branding {
         
         // Set asset base URL based on environment
         if ($environment === 'test') {
-            $asset_base = 'https://test-app.coinsub.io'; // Test environment
+            $asset_base = 'https://app.coinsub.io'; // Test environment - use app.coinsub.io as backup (test-app.coinsub.io may not resolve)
         } else {
             $asset_base = 'https://app.coinsub.io'; // Production (app subdomain serves assets) - NO trailing slash
         }
