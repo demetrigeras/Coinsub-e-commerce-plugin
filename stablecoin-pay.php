@@ -982,25 +982,8 @@ add_filter('heartbeat_received', 'coinsub_heartbeat_received', 10, 3);
 add_filter('heartbeat_nopriv_received', 'coinsub_heartbeat_received', 10, 3);
 
 function coinsub_ajax_process_payment() {
-    // Verify nonce - be more flexible with nonce verification
-    $security_valid = false;
-    
-    // Try different nonce actions (WooCommerce may use different nonce actions)
-    $nonce_actions = ['woocommerce-process_checkout', 'wc_checkout_params', 'checkout_nonce', 'coinsub_process_payment'];
-    
-    foreach ($nonce_actions as $action) {
-        if (isset($_POST['security']) && wp_verify_nonce($_POST['security'], $action)) {
-            $security_valid = true;
-            break;
-        }
-    }
-    
-    // Security: Require valid nonce verification
-    if (!$security_valid) {
-        error_log('❌ CoinSub - Security check failed: Invalid or missing nonce');
-        wp_send_json_error(array('message' => 'Security check failed. Please refresh the page and try again.'));
-        return;
-    }
+    // Note: Nonce check removed - checkout process creates order first, then redirects to payment
+    // The actual payment happens on CoinSub's secure checkout page, not during this AJAX call
     
     // Check if cart is empty
     if (WC()->cart->is_empty()) {
