@@ -24,7 +24,7 @@ if (!defined('ABSPATH')) {
 
 #coinsub-checkout-iframe {
 	width: 100%;
-	height: 600px;
+	height: 550px;
 	border: none;
 }
 
@@ -41,7 +41,7 @@ body.coinsub-iframe-visible .woocommerce-checkout #place_order {
 	}
 	
 	#coinsub-checkout-iframe {
-		height: 600px;
+		height: 550px;
 	}
 }
 </style>
