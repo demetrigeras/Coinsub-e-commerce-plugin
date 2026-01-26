@@ -380,8 +380,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'description' => __('Select the environment for testing or production use.', 'coinsub'),
                 'default' => 'production',
                 'options' => array(
-                    'production' => __('Production', 'coinsub'),
-                    'test' => __('Test', 'coinsub'),
+                    'production' => __('Real Card', 'coinsub'),
+                    'test' => __('Test Card', 'coinsub'),
                 ),
             ),
             'merchant_id' => array(
