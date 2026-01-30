@@ -570,10 +570,7 @@ class CoinSub_API_Client {
         
         error_log('CoinSub API: ✅✅✅ SUCCESS - Environment configs retrieved ✅✅✅');
         if (isset($data['environment_configs'])) {
-            error_log('CoinSub API: 📊 Found ' . count($data['environment_configs']) . ' environment configs');
-            foreach ($data['environment_configs'] as $index => $config) {
-                error_log('CoinSub API: 📋 Config #' . $index . ' - environment_id: ' . (isset($config['environment_id']) ? $config['environment_id'] : 'N/A'));
-            }
+            error_log('CoinSub API: 📊 Found ' . count($data['environment_configs']) . ' environment configs (details will be logged only for matching merchant)');
         }
         error_log('═══════════════════════════════════════════════════════════');
         

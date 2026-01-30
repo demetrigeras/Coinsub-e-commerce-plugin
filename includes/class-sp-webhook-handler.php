@@ -72,9 +72,23 @@ class CoinSub_Webhook_Handler {
             $headers = $request->get_headers();
             $provided = $headers['x-coinsub-secret'][0] ?? null;
         }
-        if (!empty($expected) && hash_equals($expected, (string)$provided) === false) {
-            error_log('❌ CoinSub Webhook - Secret mismatch or missing');
-            return new WP_REST_Response(array('error' => 'Unauthorized'), 401);
+        
+        error_log('🔔 CoinSub Webhook - Secret check: Expected=' . ($expected ? 'SET (' . strlen($expected) . ' chars)' : 'EMPTY') . ', Provided=' . ($provided ? 'SET (' . strlen($provided) . ' chars)' : 'EMPTY'));
+        
+        if (!empty($expected)) {
+            if (empty($provided)) {
+                error_log('❌ CoinSub Webhook - Secret required but not provided');
+                return new WP_REST_Response(array('error' => 'Unauthorized - Secret required'), 401);
+            }
+            if (hash_equals($expected, (string)$provided) === false) {
+                error_log('❌ CoinSub Webhook - Secret mismatch');
+                error_log('❌ CoinSub Webhook - Expected: ' . substr($expected, 0, 10) . '...');
+                error_log('❌ CoinSub Webhook - Provided: ' . substr($provided, 0, 10) . '...');
+                return new WP_REST_Response(array('error' => 'Unauthorized - Secret mismatch'), 401);
+            }
+            error_log('✅ CoinSub Webhook - Secret verified');
+        } else {
+            error_log('⚠️ CoinSub Webhook - No secret configured, allowing webhook (not recommended for production)');
         }
         
         // Get the request body
@@ -95,11 +109,18 @@ class CoinSub_Webhook_Handler {
             error_log('🔔 CoinSub Webhook - Transaction details: ' . json_encode($data['transaction_details']));
         }
         
-        // Verify webhook signature if configured
+        // Verify webhook signature if signature header is present (optional)
         $raw_data = $request->get_body();
-        if (!$this->verify_webhook_signature($raw_data)) {
-            error_log('❌ CoinSub Webhook - Invalid signature - rejecting webhook');
-            return new WP_REST_Response(array('error' => 'Invalid signature'), 401);
+        $signature_header = $_SERVER['HTTP_X_COINSUB_SIGNATURE'] ?? '';
+        if (!empty($signature_header)) {
+            // Only verify signature if header is present
+            if (!$this->verify_webhook_signature($raw_data)) {
+                error_log('❌ CoinSub Webhook - Invalid signature - rejecting webhook');
+                return new WP_REST_Response(array('error' => 'Invalid signature'), 401);
+            }
+            error_log('✅ CoinSub Webhook - Signature verified');
+        } else {
+            error_log('ℹ️ CoinSub Webhook - No signature header present, skipping signature verification (using secret only)');
         }
         
         // Process the webhook

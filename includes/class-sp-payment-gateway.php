@@ -415,10 +415,28 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     
     /**
      * Get API base URL - centralized for all merchants
+     * Uses environment_id from stored branding for white-label deployments
      * Default: api.coinsub.io/v1
      */
     public function get_api_base_url() {
-        // Check environment setting
+        // Check if we have stored branding with environment_id (for white-label)
+        $branding = get_option('coinsub_whitelabel_branding', false);
+        
+        if ($branding && is_array($branding) && !empty($branding['environment_id'])) {
+            $environment_id = $branding['environment_id'];
+            $environment = $this->get_option('environment', 'production');
+            
+            // Construct white-label API URL from environment_id
+            // Test: https://test-api.{environment_id}/v1
+            // Production: https://api.{environment_id}/v1
+            if ($environment === 'test') {
+                return 'https://test-api.' . $environment_id . '/v1';
+            } else {
+                return 'https://api.' . $environment_id . '/v1';
+            }
+        }
+        
+        // Fallback to default CoinSub URLs
         $environment = $this->get_option('environment', 'production');
         
         if ($environment === 'test') {
@@ -510,6 +528,23 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Credentials exist - proceed with branding load
         $branding = new CoinSub_Whitelabel_Branding();
         $branding_data = $branding->get_branding($force_refresh);
+        
+        // FALLBACK: If no branding found but credentials exist, try to fetch it once
+        // This handles the case where a new site has credentials but branding wasn't fetched yet
+        if (empty($branding_data) && !$force_refresh) {
+            // Check if we've already tried to fetch in this session (prevent infinite loops)
+            $fetch_attempted = get_transient('coinsub_branding_fetch_attempted_' . $merchant_id);
+            if (!$fetch_attempted) {
+                error_log('CoinSub Whitelabel: ⚠️ No branding found but credentials exist - attempting one-time fetch...');
+                set_transient('coinsub_branding_fetch_attempted_' . $merchant_id, true, 300); // 5 minute lock
+                $branding_data = $branding->get_branding(true); // Force refresh
+                if (!empty($branding_data) && isset($branding_data['company'])) {
+                    error_log('CoinSub Whitelabel: ✅ Successfully fetched branding on checkout - Company: "' . $branding_data['company'] . '"');
+                } else {
+                    error_log('CoinSub Whitelabel: ⚠️ Fetch attempt failed or returned empty - will use default');
+                }
+            }
+        }
         
         // Only update if branding data exists and has company name
         if (!empty($branding_data) && isset($branding_data['company']) && !empty($branding_data['company'])) {
@@ -626,12 +661,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
+        $environment = $this->get_option('environment', 'production');
         // Use centralized API URL
         $api_base_url = $this->get_api_base_url();
         
         error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('🌍🌍🌍 CoinSub Whitelabel: 📝 Settings - ENVIRONMENT: ' . strtoupper($environment) . ' 🌍🌍🌍');
         error_log('CoinSub Whitelabel: 📝 Settings - API Base URL: ' . $api_base_url);
+        error_log('═══════════════════════════════════════════════════════════');
         
         // Update API client if we have credentials
         if (!empty($merchant_id) && !empty($api_key)) {
@@ -888,7 +927,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('═══════════════════════════════════════════════════════════');
         error_log('CoinSub Whitelabel: POST data keys: ' . implode(', ', array_keys($_POST)));
         
-        // Log POST data for merchant_id and api_key
+        // Log POST data for merchant_id, api_key, and environment
         if (isset($_POST['woocommerce_coinsub_merchant_id'])) {
             $merchant_id_preview = substr($_POST['woocommerce_coinsub_merchant_id'], 0, 20);
             error_log('CoinSub Whitelabel: 📝 POST merchant_id: ' . $merchant_id_preview . '... (length: ' . strlen($_POST['woocommerce_coinsub_merchant_id']) . ')');
@@ -901,6 +940,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: 📝 POST api_key: ' . ($api_key_length > 0 ? substr($_POST['woocommerce_coinsub_api_key'], 0, 10) . '... (length: ' . $api_key_length . ')' : 'EMPTY'));
         } else {
             error_log('CoinSub Whitelabel: ⚠️ POST api_key NOT SET - This is normal for password fields if unchanged');
+        }
+        
+        if (isset($_POST['woocommerce_coinsub_environment'])) {
+            error_log('🌍🌍🌍 CoinSub Whitelabel: 📝 POST environment: ' . $_POST['woocommerce_coinsub_environment']);
+        } else {
+            error_log('CoinSub Whitelabel: ⚠️ POST environment NOT SET');
         }
         
         // IMPORTANT: For password fields, WooCommerce only sends them in POST if they're changed
@@ -920,8 +965,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Verify settings were saved
         $saved_merchant_id = $this->get_option('merchant_id', '');
         $saved_api_key = $this->get_option('api_key', '');
+        $saved_environment = $this->get_option('environment', 'production');
         error_log('CoinSub Whitelabel: ✅ Saved merchant_id: ' . (empty($saved_merchant_id) ? 'EMPTY' : substr($saved_merchant_id, 0, 20) . '... (length: ' . strlen($saved_merchant_id) . ')'));
         error_log('CoinSub Whitelabel: ✅ Saved api_key: ' . (empty($saved_api_key) ? 'EMPTY' : substr($saved_api_key, 0, 10) . '... (length: ' . strlen($saved_api_key) . ')'));
+        error_log('═══════════════════════════════════════════════════════════');
+        error_log('🌍🌍🌍 CoinSub Whitelabel: ✅ SAVED ENVIRONMENT: ' . strtoupper($saved_environment) . ' 🌍🌍🌍');
+        error_log('═══════════════════════════════════════════════════════════');
         
         // Now fetch branding (if we have credentials)
         // Wrap in try-catch to prevent fatal errors from breaking the save process
