@@ -160,32 +160,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Inject instructions box at the top (after the h2 title, before the form table)
             var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
             var webhookUrl = <?php echo json_encode($webhook_url); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds use the same network and token as the original payment.</strong> If the original payment information is not available, refunds default to <strong>USDC on Polygon</strong>.<li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add Tokens for Refunds</h3><p><strong>Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).</strong><p>To process refunds, you\'ll need sufficient tokens in your merchant wallet on the same network as the original payment. If you don\'t have enough tokens, you can purchase them through Meld.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Buy Tokens via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of tokens (especially USDC on Polygon as the default fallback) to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
-            
-            // Add test environment warning and instructions - will be inserted after refunds section
-            var testWarning = $('<div id="coinsub-test-warning" style="display:none;margin:20px 0;padding:15px;background:#fff3cd;border-left:4px solid #ff9800;border-radius:4px;"><h3 style=margin-top:0;color:#856404>⚠️ Test Environment Active</h3><div style="margin-bottom:15px;padding:12px;background:#ffebee;border-radius:4px;border:1px solid #f44336"><p style=margin-bottom:8px;color:#c62828;font-weight:bold>🚨 CRITICAL WARNING</p><p style=margin-bottom:8px><strong>When Test mode is active, ALL customers will use the test environment.</strong> This means:</p><ul style=margin-top:8px;margin-bottom:8px;line-height:1.8><li><strong>Customers will NOT be charged real cryptocurrency</strong> - all payments use test tokens only</li><li><strong>Customers may think they are making real payments</strong> - the checkout process looks identical to production</li><li><strong>You cannot accept real payments while in test mode</strong> - the entire plugin operates in test mode</li><li><strong>You cannot run both environments simultaneously</strong> - it\'s either all test or all production</li></ul><p style=margin-bottom:0;font-size:13px;color:#c62828><strong>⚠️ Important:</strong> Only use Test mode when you are actively testing. Switch back to Production immediately when you want to accept real customer payments.</p></div><div style="margin-top:15px;padding:12px;background:#fff;border-radius:4px;border:1px solid #ffc107"><h4 style=margin-top:0;margin-bottom:10px>🔑 Test Account Credentials</h4><p style=margin-bottom:10px><strong>Important:</strong> When using Test mode, your <strong>Merchant ID</strong> and <strong>API Key</strong> must come from your test account.</p><ol style=margin-top:8px;margin-bottom:10px;line-height:1.8><li>Visit your payment provider\'s website</li><li>Log into your <strong>test account</strong> (separate from your production account)</li><li>Navigate to <strong>Settings</strong> in your test dashboard</li><li>Copy your <strong>Test Merchant ID</strong> and <strong>Test API Key</strong></li><li>Paste them into the fields below</li></ol></div><div style="margin-top:15px;padding:12px;background:#fff;border-radius:4px;border:1px solid #ffc107"><h4 style=margin-top:0;margin-bottom:10px>🧪 Getting Test Crypto</h4><p style=margin-bottom:10px><strong>To test payments, you need test tokens in your merchant wallet:</strong></p><ol style=margin-top:8px;margin-bottom:10px;line-height:1.8><li><strong>Get your wallet address:</strong><ul style=margin-top:5px;margin-bottom:5px><li>Log into your payment provider dashboard (test account)</li><li>Navigate to <strong>Settings</strong> or <strong>Wallet</strong> section</li><li>Copy your merchant wallet address</li></ul><li><strong>Get test tokens from faucet:</strong><ul style=margin-top:5px;margin-bottom:5px><li>Visit <a href="https://faucet.circle.com/" target="_blank" style="color:#0284c7;text-decoration:underline"><strong>Circle Faucet</strong></a> (test environment faucet)</li><li>Select <strong>Polygon PoS Amoy</strong> from the Network dropdown</li><li>Paste your wallet address in the "Send to" field</li><li>Click <strong>Send 20 USDC</strong> to request test tokens</li><li>Wait for tokens to arrive in your wallet (usually within a few minutes)</li><li><em>Note: You can request 20 USDC every 2 hours per address</em></li></ul><li><strong>You can also use your own wallet:</strong><ul style=margin-top:5px;margin-bottom:5px><li>If you prefer, connect your own wallet to the test environment</li><li>Make sure you\'re connected to the test network</li><li>Use the same faucet to get test tokens</li></ul></ol><p style=margin-bottom:0;font-size:13px;color:#856404><strong>Note:</strong> Test tokens have no real value and cannot be converted to real cryptocurrency. Switch back to Production when ready to accept real payments.</p></div></div>');
-            
-            // Append test warning to instructions div (will appear after all content including refunds)
-            instructions.append(testWarning);
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds use the same network and token as the original payment.</strong> If the original payment information is not available, refunds default to <strong>USDC on Polygon</strong>.<li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add Tokens for Refunds</h3><p><strong>Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).</strong><p>To process refunds, you\'ll need sufficient tokens in your merchant wallet on the same network as the original payment. If you don\'t have enough tokens, you can purchase them through Meld.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Buy Tokens via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of tokens (especially USDC on Polygon as the default fallback) to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
-            
-            // Show/hide warning based on environment selection
-            function toggleTestWarning() {
-                var env = $('#woocommerce_coinsub_environment').val();
-                if (env === 'test') {
-                    $('#coinsub-test-warning').slideDown();
-                } else {
-                    $('#coinsub-test-warning').slideUp();
-                }
-            }
-            
-            // Check on page load
-            toggleTestWarning();
-            
-            // Check when environment changes
-            $('#woocommerce_coinsub_environment').on('change', toggleTestWarning);
             
             // CRITICAL FIX: Ensure form action is set (run multiple times to catch dynamic form generation)
             function ensureFormAction() {
@@ -374,16 +352,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'label' => __('Enable Stablecoin Pay Crypto Payments', 'coinsub'),
                 'default' => 'no'
             ),
-            'environment' => array(
-                'title' => __('Environment', 'coinsub'),
-                'type' => 'select',
-                'description' => __('Select the environment for testing or production use.', 'coinsub'),
-                'default' => 'production',
-                'options' => array(
-                    'production' => __('Real Card', 'coinsub'),
-                    'test' => __('Test Card', 'coinsub'),
-                ),
-            ),
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
@@ -416,6 +384,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     /**
      * Get API base URL - centralized for all merchants
      * Uses environment_id from stored branding for white-label deployments
+     * Always uses production environment
      * Default: api.coinsub.io/v1
      */
     public function get_api_base_url() {
@@ -424,40 +393,21 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         if ($branding && is_array($branding) && !empty($branding['environment_id'])) {
             $environment_id = $branding['environment_id'];
-            $environment = $this->get_option('environment', 'production');
             
-            // Construct white-label API URL from environment_id
-            // Test: https://test-api.{environment_id}/v1
-            // Production: https://api.{environment_id}/v1
-            if ($environment === 'test') {
-                return 'https://test-api.' . $environment_id . '/v1';
-            } else {
-                return 'https://api.' . $environment_id . '/v1';
-            }
+            // Construct white-label API URL from environment_id (production only)
+            return 'https://api.' . $environment_id . '/v1';
         }
         
-        // Fallback to default CoinSub URLs
-        $environment = $this->get_option('environment', 'production');
-        
-        if ($environment === 'test') {
-            return 'https://test-api.coinsub.io/v1'; // Test environment
-        }
-        
-        return 'https://api.coinsub.io/v1'; // Production
+        // Fallback to default CoinSub URL (production)
+        return 'https://api.coinsub.io/v1';
     }
     
     /**
      * Get asset base URL (for logos, favicons, etc.)
+     * Always uses production environment
      */
     public function get_asset_base_url() {
-        // Check environment setting
-        $environment = $this->get_option('environment', 'production');
-        
-        if ($environment === 'test') {
-            return 'https://test-app.coinsub.io'; // Test environment
-        }
-        
-        return 'https://app.coinsub.io'; // Production
+        return 'https://app.coinsub.io'; // Production only
     }
     
     /**
@@ -661,14 +611,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
-        $environment = $this->get_option('environment', 'production');
-        // Use centralized API URL
+        // Use centralized API URL (always production)
         $api_base_url = $this->get_api_base_url();
         
         error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
         error_log('═══════════════════════════════════════════════════════════');
-        error_log('🌍🌍🌍 CoinSub Whitelabel: 📝 Settings - ENVIRONMENT: ' . strtoupper($environment) . ' 🌍🌍🌍');
         error_log('CoinSub Whitelabel: 📝 Settings - API Base URL: ' . $api_base_url);
         error_log('═══════════════════════════════════════════════════════════');
         
@@ -751,12 +699,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('CoinSub Whitelabel: ⚠️ POST api_key NOT SET - This is normal for password fields if unchanged');
         }
         
-        if (isset($_POST['woocommerce_coinsub_environment'])) {
-            error_log('🌍🌍🌍 CoinSub Whitelabel: 📝 POST environment: ' . $_POST['woocommerce_coinsub_environment']);
-        } else {
-            error_log('CoinSub Whitelabel: ⚠️ POST environment NOT SET');
-        }
-        
         // IMPORTANT: For password fields, WooCommerce only sends them in POST if they're changed
         // If api_key is not in POST, we need to preserve the existing value
         $existing_api_key = $this->get_option('api_key', '');
@@ -774,11 +716,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Verify settings were saved
         $saved_merchant_id = $this->get_option('merchant_id', '');
         $saved_api_key = $this->get_option('api_key', '');
-        $saved_environment = $this->get_option('environment', 'production');
         error_log('CoinSub Whitelabel: ✅ Saved merchant_id: ' . (empty($saved_merchant_id) ? 'EMPTY' : substr($saved_merchant_id, 0, 20) . '... (length: ' . strlen($saved_merchant_id) . ')'));
         error_log('CoinSub Whitelabel: ✅ Saved api_key: ' . (empty($saved_api_key) ? 'EMPTY' : substr($saved_api_key, 0, 10) . '... (length: ' . strlen($saved_api_key) . ')'));
-        error_log('═══════════════════════════════════════════════════════════');
-        error_log('🌍🌍🌍 CoinSub Whitelabel: ✅ SAVED ENVIRONMENT: ' . strtoupper($saved_environment) . ' 🌍🌍🌍');
         error_log('═══════════════════════════════════════════════════════════');
         
         // Now fetch branding (if we have credentials)
@@ -848,12 +787,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('  Currency: ' . $cart_data['currency']);
             error_log('  Has Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
             
-            // Ensure API client is using the correct environment settings
+            // Ensure API client is using production settings
             $api_base_url = $this->get_api_base_url();
             $merchant_id = $this->get_option('merchant_id', '');
             $api_key = $this->get_option('api_key', '');
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
-            error_log('💳 CoinSub - API client updated with environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
+            error_log('💳 CoinSub - API client updated (production mode)');
             error_log('💳 CoinSub - API Base URL: ' . $api_base_url);
             
             // Create purchase session directly with cart totals
@@ -887,13 +826,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
             
             error_log('🔗 CoinSub - Checkout URL from API (original): ' . $checkout_url);
-            error_log('🔗 CoinSub - Current environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
             error_log('🔗 CoinSub - API Base URL used: ' . $this->get_api_base_url());
             
             // Replace checkout URL domain with whitelabel buyurl if available
-            // CRITICAL: In test mode, only use buyurl if it's also a test URL
             $branding_data = get_option('coinsub_whitelabel_branding', array());
-            $is_test_mode = $this->get_option('environment', 'production') === 'test';
             
             error_log('🔍 CoinSub - Checking for buyurl in branding data...');
             error_log('🔍 CoinSub - Branding data keys: ' . json_encode(array_keys($branding_data)));
@@ -914,53 +850,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
             
             if (!empty($buyurl)) {
-                
-                // Check if buyurl is a test URL
-                $buyurl_is_test = strpos($buyurl, 'test') !== false || 
-                                 strpos($buyurl, 'test-') !== false ||
-                                 strpos($buyurl, 'test.') !== false ||
-                                 strpos(strtolower($buyurl), 'test') !== false;
-                
-                // Check if original checkout URL is a test URL
-                $checkout_url_is_test = strpos($checkout_url, 'test') !== false || 
-                                       strpos($checkout_url, 'test-') !== false ||
-                                       strpos($checkout_url, 'test.') !== false;
-                
-                error_log('🔍 CoinSub - Environment check:');
-                error_log('   - Current mode: ' . ($is_test_mode ? 'TEST' : 'PRODUCTION'));
-                error_log('   - Buyurl is test: ' . ($buyurl_is_test ? 'YES' : 'NO'));
-                error_log('   - Checkout URL is test: ' . ($checkout_url_is_test ? 'YES' : 'NO'));
-                
-                // In test mode, if buyurl is production, construct test version
-                // Example: https://buy.paymentservers.com -> https://test-buy.paymentservers.com
-                if ($is_test_mode && !$buyurl_is_test) {
-                    error_log('🔄 CoinSub - Test mode: Constructing test buyurl from production buyurl');
-                    $buyurl_parts = parse_url($buyurl);
-                    if ($buyurl_parts && isset($buyurl_parts['host'])) {
-                        $host = $buyurl_parts['host'];
-                        // Check if host already has a subdomain (e.g., buy.paymentservers.com)
-                        $host_parts = explode('.', $host);
-                        if (count($host_parts) >= 2) {
-                            // Add "test-" prefix to first subdomain
-                            // buy.paymentservers.com -> test-buy.paymentservers.com
-                            $first_part = $host_parts[0];
-                            $rest = implode('.', array_slice($host_parts, 1));
-                            $test_host = 'test-' . $first_part . '.' . $rest;
-                            $buyurl_parts['host'] = $test_host;
-                            $buyurl = $buyurl_parts['scheme'] . '://' . $test_host;
-                            error_log('✅ CoinSub - Constructed test buyurl: ' . $buyurl);
-                            $buyurl_is_test = true; // Now it's a test URL
-                        }
-                    }
-                }
-                
-                // Now proceed with replacement
-                if ($is_test_mode && $buyurl_is_test && !$checkout_url_is_test) {
-                    // Test mode, buyurl is test, but checkout URL is production - this shouldn't happen but be safe
-                    error_log('⚠️ CoinSub - WARNING: Test mode but checkout URL appears production. Using API URL.');
-                } else {
-                    // Safe to replace: either production mode, or both are test
-                    // Extract domain from buyurl (e.g., https://buy.paymentservers.com or https://test-buy.paymentservers.com)
+                // Extract domain from buyurl (e.g., https://buy.paymentservers.com)
                     $buyurl_parts = parse_url($buyurl);
                     if ($buyurl_parts && isset($buyurl_parts['scheme']) && isset($buyurl_parts['host'])) {
                         $whitelabel_domain = $buyurl_parts['scheme'] . '://' . $buyurl_parts['host'];
@@ -980,13 +870,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                             error_log('   - AFTER:  ' . $checkout_url);
                             error_log('   - Original domain: ' . $original_domain);
                             error_log('   - Whitelabel domain: ' . $whitelabel_domain);
-                            error_log('✅ CoinSub - Environment: ' . ($is_test_mode ? 'TEST' : 'PRODUCTION') . ' mode, buyurl is ' . ($buyurl_is_test ? 'TEST' : 'PRODUCTION'));
+                        error_log('✅ CoinSub - Production mode, using whitelabel buyurl');
                         } else {
                             error_log('⚠️ CoinSub - Could not parse original checkout URL, using as-is');
                         }
                     } else {
                         error_log('⚠️ CoinSub - Could not parse buyurl, using original checkout URL');
-                    }
                 }
             } else {
                 error_log('❌ CoinSub - No whitelabel buyurl found in branding data!');
@@ -1476,15 +1365,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('🔄 CoinSub Refund - Chain ID: ' . $chain_id);
         error_log('🔄 CoinSub Refund - Token: ' . $token_symbol);
         
-        // Initialize API client with current environment settings
+        // Initialize API client with production settings
         $api_client = new CoinSub_API_Client();
         $api_base_url = $this->get_api_base_url();
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
         
-        // Ensure API client uses the correct environment (production or test)
+        // Ensure API client uses production environment
         $api_client->update_settings($api_base_url, $merchant_id, $api_key);
-        error_log('🔄 CoinSub Refund - API client initialized with environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
+        error_log('🔄 CoinSub Refund - API client initialized (production mode)');
         error_log('🔄 CoinSub Refund - API Base URL: ' . $api_base_url);
         
         error_log('🔄 CoinSub Refund - About to call refund API...');
