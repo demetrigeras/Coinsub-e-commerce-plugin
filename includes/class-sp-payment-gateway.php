@@ -662,8 +662,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
         $environment = $this->get_option('environment', 'production');
-        // Use centralized API URL
-        $api_base_url = $this->get_api_base_url();
+        
+        // CRITICAL: For initial branding fetch, we MUST use api.coinsub.io (or test-api.coinsub.io for test)
+        // because environment configs endpoint is only available there
+        // After branding is stored with environment_id, future calls will use white-label domain via get_api_base_url()
+        if ($environment === 'test') {
+            $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
+        } else {
+            $api_base_url = 'https://api.coinsub.io/v1'; // Production
+        }
         
         error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
         error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));

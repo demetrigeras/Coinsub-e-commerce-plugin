@@ -10,25 +10,53 @@ if (!defined('ABSPATH')) {
 }
 
 class CoinSub_Whitelabel_Branding {
-    
+
+    /**
+     * Relative path to whitelabel config file (plugin root). When set, we fetch branding by environment_id instead of merchant_id.
+     */
+    const WHITELABEL_CONFIG_FILE = 'coinsub-whitelabel-config.php';
+
     /**
      * Database option key for branding data (persists in database, not transient)
      */
     const BRANDING_OPTION_KEY = 'coinsub_whitelabel_branding';
     const BRANDING_FETCH_LOCK_KEY = 'coinsub_whitelabel_fetching'; // Prevent multiple simultaneous fetches
-    
+
     /**
      * No default branding - if branding is not found, return null/empty
      * This ensures the gateway doesn't show incorrect branding
      */
-    
+
     /**
      * API client instance
      */
     private $api_client;
+
+    /**
+     * Get environment_id from whitelabel config file (if present). When set, we look up config by this id and whitelabel from there.
+     *
+     * @return string|null environment_id (e.g. bxnk.com) or null for Stablecoin Pay (no whitelabel)
+     */
+    public static function get_whitelabel_env_id_from_config() {
+        if (!defined('COINSUB_PLUGIN_DIR')) {
+            return null;
+        }
+        $path = COINSUB_PLUGIN_DIR . self::WHITELABEL_CONFIG_FILE;
+        if (!is_readable($path)) {
+            return null;
+        }
+        $config = include $path;
+        if (!is_array($config) || empty($config['environment_id'])) {
+            return null;
+        }
+        return $config['environment_id'];
+    }
     
     /**
      * Constructor
+     * CRITICAL: Always uses api.coinsub.io (or test-api.coinsub.io) for initial branding fetch
+     * because environment configs endpoint is only available there
+     * After branding is stored with environment_id, future calls will use white-label domain
      */
     public function __construct() {
         $this->api_client = new CoinSub_API_Client();
@@ -41,7 +69,9 @@ class CoinSub_Whitelabel_Branding {
         // Get environment setting (default to production)
         $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
         
-        // Set API URL based on environment
+        // CRITICAL: Always use main API for branding fetch (environment configs are only on main API)
+        // Test: https://test-api.coinsub.io/v1
+        // Production: https://api.coinsub.io/v1
         if ($environment === 'test') {
             $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
         } else {
@@ -50,6 +80,9 @@ class CoinSub_Whitelabel_Branding {
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
+        } elseif (!empty($merchant_id)) {
+            // For merchant-info endpoint, API key not required
+            $this->api_client->update_settings($api_base_url, $merchant_id, '');
         }
     }
     
@@ -114,32 +147,54 @@ class CoinSub_Whitelabel_Branding {
         set_transient(self::BRANDING_FETCH_LOCK_KEY, true, 30); // Lock for 30 seconds
         set_transient(self::BRANDING_FETCH_LOCK_KEY . '_time', time(), 30); // Track when lock was set
         error_log('Stablecoin Pay Whitelabel: 🔒 Acquired fetch lock for 30 seconds');
-        
-        // Get merchant ID and payment provider name from settings
+
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
+        $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
+        $api_base_url = ($environment === 'test') ? 'https://test-api.coinsub.io/v1' : 'https://api.coinsub.io/v1';
+
+        // Whitelabel-by-env_id: config file has environment_id set → fetch by that id and use that row (no merchant match).
+        $env_id_from_config = self::get_whitelabel_env_id_from_config();
+        if (!empty($env_id_from_config)) {
+            error_log('Stablecoin Pay Whitelabel: 📋 Using environment_id from config file: ' . $env_id_from_config);
+            $this->api_client->update_settings($api_base_url, '', '');
+            $env_configs = $this->api_client->get_environment_configs();
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY);
+            delete_transient(self::BRANDING_FETCH_LOCK_KEY . '_time');
+            if (is_wp_error($env_configs)) {
+                error_log('Stablecoin Pay Whitelabel: ❌ Failed to get environment configs: ' . $env_configs->get_error_message());
+                return array();
+            }
+            if (!isset($env_configs['environment_configs']) || !is_array($env_configs['environment_configs'])) {
+                error_log('Stablecoin Pay Whitelabel: Invalid environment_configs structure');
+                return array();
+            }
+            foreach ($env_configs['environment_configs'] as $config) {
+                $config_env_id = isset($config['environment_id']) ? $config['environment_id'] : '';
+                if ($config_env_id === $env_id_from_config) {
+                    $branding = $this->build_branding_from_config_row($config);
+                    if (!empty($branding)) {
+                        update_option(self::BRANDING_OPTION_KEY, $branding);
+                        error_log('Stablecoin Pay Whitelabel: ✅ Branding from env_id match - Company: "' . $branding['company'] . '"');
+                        return $branding;
+                    }
+                }
+            }
+            error_log('Stablecoin Pay Whitelabel: ❌ No config row found for environment_id: ' . $env_id_from_config);
+            return array();
+        }
+
+        // Stablecoin Pay path: match by merchant_id → parent_merchant_id → environment_configs
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
-        
-        // Check if we have credentials for API fetch
+
         if (empty($merchant_id) || empty($api_key)) {
             error_log('Stablecoin Pay Whitelabel: ❌ No merchant ID or API key in settings - cannot fetch branding');
-            return array(); // Return empty array, no default
+            return array();
         }
-        
-        // Get environment setting (default to production)
-        $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
-        
-        // Set API URL based on environment
-        if ($environment === 'test') {
-            $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
-        } else {
-            $api_base_url = 'https://api.coinsub.io/v1'; // Production
-        }
-        
-        // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
-        $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine
+
+        $this->api_client->update_settings($api_base_url, $merchant_id, '');
         error_log('Stablecoin Pay Whitelabel: Updated API client - Merchant ID: ' . $merchant_id . ' (no API key needed for merchant-info endpoint)');
-        
+
         // Fetch merchant info to check if submerchant and get parent merchant ID
         // NEW: Use headerless endpoint that only requires Merchant-ID (no API key needed)
         error_log('Stablecoin Pay Whitelabel: Attempting to fetch merchant info for merchant ID: ' . $merchant_id);
@@ -370,6 +425,54 @@ class CoinSub_Whitelabel_Branding {
         error_log('Stablecoin Pay Whitelabel: ❌ No matching branding found for parent merchant ID: ' . $parent_merchant_id);
         
         return array(); // Return empty array, no default
+    }
+
+    /**
+     * Build branding array from a single env_config row (used when environment_id is set in whitelabel config file).
+     * config_data shape: { "db": {...}, "app": { "company", "logo", "favicon", "merchantID", ... } }
+     *
+     * @param array $config One entry from environment_configs (environment_id + config_data)
+     * @return array Branding array or empty if invalid
+     */
+    private function build_branding_from_config_row($config) {
+        if (!isset($config['config_data'])) {
+            return array();
+        }
+        $config_data = is_string($config['config_data'])
+            ? json_decode($config['config_data'], true)
+            : $config['config_data'];
+        if (!is_array($config_data)) {
+            return array();
+        }
+        if (!isset($config_data['app'])) {
+            if (isset($config_data['merchantID']) || isset($config_data['company'])) {
+                $config_data = array('app' => $config_data);
+            } else {
+                return array();
+            }
+        }
+        $app_data = $config_data['app'];
+        $company_name = isset($app_data['company']) && $app_data['company'] !== '' ? $app_data['company'] : '';
+        if ($company_name === '') {
+            return array();
+        }
+        $environment_id = isset($config['environment_id']) ? $config['environment_id'] : '';
+        $logo_data = $this->extract_logo_data($app_data);
+        $company_slug = $this->get_company_slug($company_name);
+        $branding = array(
+            'company' => $company_name,
+            'company_slug' => $company_slug,
+            'environment_id' => $environment_id,
+            'powered_by' => isset($app_data['powered_by']) && $app_data['powered_by'] !== '' ? $app_data['powered_by'] : 'Powered by ' . $company_name,
+            'logo' => $this->normalize_logo_urls($logo_data, $company_name),
+            'favicon' => isset($app_data['favicon']) ? $app_data['favicon'] : '',
+            'buyurl' => isset($app_data['buyurl']) ? $app_data['buyurl'] : '',
+            'documentation_url' => isset($app_data['documentation_url']) ? $app_data['documentation_url'] : '',
+            'privacy_policy_url' => isset($app_data['privacy_policy_url']) ? $app_data['privacy_policy_url'] : '',
+            'terms_of_service_url' => isset($app_data['terms_of_service_url']) ? $app_data['terms_of_service_url'] : '',
+            'copyright' => isset($app_data['copyright']) ? $app_data['copyright'] : '',
+        );
+        return $branding;
     }
     
     /**
