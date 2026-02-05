@@ -430,13 +430,6 @@ function coinsub_checkout_page_preconnect() {
 function coinsub_checkout_page_shortcode($atts) {
     error_log('🎬 CoinSub Checkout Page: Shortcode called');
     
-    // Get and log environment
-    $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-    $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
-    error_log('═══════════════════════════════════════════════════════════');
-    error_log('🌍🌍🌍 CoinSub Checkout Page: ENVIRONMENT = ' . strtoupper($environment) . ' 🌍🌍🌍');
-    error_log('═══════════════════════════════════════════════════════════');
-    
     // Get checkout URL from query parameter OR from session using order_id
     $checkout_url = '';
     
@@ -998,13 +991,6 @@ add_filter('heartbeat_nopriv_received', 'coinsub_heartbeat_received', 10, 3);
 function coinsub_ajax_process_payment() {
     // Note: Nonce check removed - checkout process creates order first, then redirects to payment
     // The actual payment happens on CoinSub's secure checkout page, not during this AJAX call
-    
-    // Get and log environment
-    $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-    $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
-    error_log('═══════════════════════════════════════════════════════════');
-    error_log('🌍🌍🌍 CoinSub AJAX Process Payment: ENVIRONMENT = ' . strtoupper($environment) . ' 🌍🌍🌍');
-    error_log('═══════════════════════════════════════════════════════════');
     
     // Check if cart is empty
     if (WC()->cart->is_empty()) {

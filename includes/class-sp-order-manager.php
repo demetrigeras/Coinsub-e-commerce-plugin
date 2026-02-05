@@ -63,8 +63,8 @@ class CoinSub_Order_Manager {
      * WooCommerce will handle all emails automatically when order status changes
      */
     private function handle_order_processing($order) {
-        error_log('✅ CoinSub Order Manager: Order #' . $order->get_id() . ' changed to processing');
-        error_log('ℹ️ CoinSub Order Manager: Email sending disabled - WooCommerce will handle emails automatically');
+        error_log('PP Order Manager: Order #' . $order->get_id() . ' changed to processing');
+        error_log('PP Order Manager: Email sending disabled - WooCommerce will handle emails automatically');
         
         // All email logic removed - WooCommerce will send emails based on order status
         // Merchant can configure email settings in WooCommerce > Settings > Emails
@@ -83,7 +83,7 @@ class CoinSub_Order_Manager {
         $order_id = $order->get_id();
         
         if (in_array($order_id, $processed_orders)) {
-            error_log('📧 CoinSub Order Manager: Order #' . $order_id . ' already processed, skipping duplicate');
+            error_log('PP Order Manager: Order #' . $order_id . ' already processed, skipping duplicate');
             return;
         }
         
@@ -91,7 +91,7 @@ class CoinSub_Order_Manager {
         
         $merchant_email = get_option('admin_email');
         if (!$merchant_email) {
-            error_log('❌ CoinSub Order Manager: No admin email configured');
+            error_log('PP Order Manager: No admin email configured');
             return;
         }
         
@@ -99,7 +99,7 @@ class CoinSub_Order_Manager {
         $transaction_id = $order->get_meta('_coinsub_transaction_id');
         $chain_id = $order->get_meta('_coinsub_chain_id');
         
-        $subject = sprintf('[Coinsub] Payment Received - Order #%s', $order->get_id());
+        $subject = sprintf('[Payment] Payment Received - Order #%s', $order->get_id());
         
         // Get order breakdown
         $subtotal = $order->get_subtotal();
@@ -125,7 +125,7 @@ class CoinSub_Order_Manager {
         // Build message
         $message = "🚨 NEW PAYMENT RECEIVED\n";
         $message .= "==========================================\n\n";
-        $message .= "A customer has successfully completed a payment via Coinsub.\n\n";
+        $message .= "A customer has successfully completed a payment via the payment provider.\n\n";
         $message .= "📋 ORDER INFORMATION:\n";
         $message .= "Order ID: #" . $order->get_id() . "\n";
         $message .= "Customer: " . $order->get_billing_first_name() . " " . $order->get_billing_last_name() . "\n";
@@ -151,7 +151,7 @@ class CoinSub_Order_Manager {
         $message .= "3. Update order status when shipped\n\n";
         $message .= "🔗 VIEW ORDER: " . admin_url('post.php?post=' . $order->get_id() . '&action=edit') . "\n\n";
         $message .= "---\n";
-        $message .= "This is an automated notification from your Coinsub payment gateway.\n";
+        $message .= "This is an automated notification from your payment provider.\n";
         $message .= "Please process this order promptly to maintain customer satisfaction.";
         
         // Send the email with multiple fallback methods
@@ -170,18 +170,18 @@ class CoinSub_Order_Manager {
         // Validate email addresses
         $admin_email = get_option('admin_email');
         if (empty($admin_email) || !is_email($admin_email)) {
-            error_log('❌ CoinSub Order Manager: Invalid admin email: ' . $admin_email);
+            error_log('PP Order Manager: Invalid admin email: ' . $admin_email);
             return false;
         }
         
         if (empty($to) || !is_email($to)) {
-            error_log('❌ CoinSub Order Manager: Invalid recipient email: ' . $to);
+            error_log('PP Order Manager: Invalid recipient email: ' . $to);
             return false;
         }
         
-        error_log('📧 CoinSub Order Manager: Sending email via wp_mail to: ' . $to);
-        error_log('📧 CoinSub Order Manager: From: ' . get_bloginfo('name') . ' <' . $admin_email . '>');
-        error_log('📧 CoinSub Order Manager: Subject: ' . $subject);
+        error_log('PP Order Manager: Sending email via wp_mail to: ' . $to);
+        error_log('PP Order Manager: From: ' . get_bloginfo('name') . ' <' . $admin_email . '>');
+        error_log('PP Order Manager: Subject: ' . $subject);
         
         // Configure PHPMailer to use SMTP if available, fallback to mail()
         $this->configure_phpmailer();
@@ -190,17 +190,17 @@ class CoinSub_Order_Manager {
             'Content-Type' => 'text/plain; charset=UTF-8',
             'From' => get_bloginfo('name') . ' <' . $admin_email . '>',
             'Reply-To' => $admin_email,
-            'X-Mailer' => 'CoinSub WooCommerce Plugin'
+            'X-Mailer' => 'Payment Provider WooCommerce'
         );
         
         // Try to send the email
         $result = wp_mail($to, $subject, $message, $headers);
         
         if ($result) {
-            error_log('✅ CoinSub Order Manager: Email sent successfully via wp_mail');
+            error_log('PP Order Manager: Email sent successfully via wp_mail');
             return true;
         } else {
-            error_log('❌ CoinSub Order Manager: Failed to send email via wp_mail');
+            error_log('PP Order Manager: Failed to send email via wp_mail');
             
             // Try alternative method
             return $this->send_email_alternative($to, $subject, $message, $admin_email);
@@ -219,7 +219,7 @@ class CoinSub_Order_Manager {
             }
             
             // Set additional headers for better delivery
-            $phpmailer->addCustomHeader('X-Mailer', 'CoinSub WooCommerce Plugin');
+            $phpmailer->addCustomHeader('X-Mailer', 'Payment Provider WooCommerce');
             $phpmailer->addCustomHeader('X-Priority', '3');
         });
     }
@@ -228,30 +228,30 @@ class CoinSub_Order_Manager {
      * Alternative email sending method
      */
     private function send_email_alternative($to, $subject, $message, $from_email) {
-        error_log('📧 CoinSub Order Manager: Trying alternative email method');
+        error_log('PP Order Manager: Trying alternative email method');
         
         // Try using mail() function directly
         if (function_exists('mail')) {
             $headers = "From: " . get_bloginfo('name') . " <" . $from_email . ">\r\n";
             $headers .= "Reply-To: " . $from_email . "\r\n";
             $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
-            $headers .= "X-Mailer: CoinSub WooCommerce Plugin\r\n";
+            $headers .= "X-Mailer: Payment Provider WooCommerce\r\n";
             
             $result = mail($to, $subject, $message, $headers);
             
             if ($result) {
-                error_log('✅ CoinSub Order Manager: Email sent successfully via mail() function');
+                error_log('PP Order Manager: Email sent successfully via mail() function');
                 return true;
             } else {
-                error_log('❌ CoinSub Order Manager: Failed to send email via mail() function');
+                error_log('PP Order Manager: Failed to send email via mail() function');
             }
         }
         
         // If all else fails, log the order details for manual processing
-        error_log('📧 CoinSub Order Manager: All email methods failed. Order details logged for manual processing:');
-        error_log('📧 CoinSub Order Manager: To: ' . $to);
-        error_log('📧 CoinSub Order Manager: Subject: ' . $subject);
-        error_log('📧 CoinSub Order Manager: Message: ' . substr($message, 0, 200) . '...');
+        error_log('PP Order Manager: All email methods failed. Order details logged for manual processing:');
+        error_log('PP Order Manager: To: ' . $to);
+        error_log('PP Order Manager: Subject: ' . $subject);
+        error_log('PP Order Manager: Message: ' . substr($message, 0, 200) . '...');
         
         return false;
     }
@@ -260,7 +260,7 @@ class CoinSub_Order_Manager {
      * Simple email sending method as final fallback
      */
     private function send_simple_email($to, $subject, $message) {
-        error_log('📧 CoinSub Order Manager: Trying simple email method as final fallback');
+        error_log('PP Order Manager: Trying simple email method as final fallback');
         
         // Run server diagnostics first
         $this->run_server_mail_diagnostics();
@@ -277,10 +277,10 @@ class CoinSub_Order_Manager {
             $result = @mail($to, $subject, $message, $headers);
             
             if ($result) {
-                error_log('✅ CoinSub Order Manager: Email sent successfully via simple mail() method');
+                error_log('PP Order Manager: Email sent successfully via simple mail() method');
                 return true;
             } else {
-                error_log('❌ CoinSub Order Manager: Simple mail() method also failed');
+                error_log('PP Order Manager: Simple mail() method also failed');
             }
         }
         
@@ -288,10 +288,10 @@ class CoinSub_Order_Manager {
         $this->send_alternative_notification($to, $subject, $message);
         
         // If everything fails, at least log the important details
-        error_log('🚨 CoinSub Order Manager: CRITICAL - All email methods failed!');
-        error_log('🚨 CoinSub Order Manager: Manual notification required for order details');
-        error_log('🚨 CoinSub Order Manager: Recipient: ' . $to);
-        error_log('🚨 CoinSub Order Manager: Subject: ' . $subject);
+        error_log('PP Order Manager: CRITICAL - All email methods failed!');
+        error_log('PP Order Manager: Manual notification required for order details');
+        error_log('PP Order Manager: Recipient: ' . $to);
+        error_log('PP Order Manager: Subject: ' . $subject);
         
         // Add admin notice for email failure
         $this->add_email_failure_notice($to, $subject);
@@ -306,33 +306,33 @@ class CoinSub_Order_Manager {
      * Run server mail diagnostics
      */
     private function run_server_mail_diagnostics() {
-        error_log('🔍 CoinSub Order Manager: Running server mail diagnostics...');
+        error_log('PP Order Manager: Running server mail diagnostics...');
         
         // Check if mail function exists
         $mail_function_exists = function_exists('mail');
-        error_log('🔍 CoinSub Order Manager: mail() function exists: ' . ($mail_function_exists ? 'YES' : 'NO'));
+        error_log('PP Order Manager: mail() function exists: ' . ($mail_function_exists ? 'YES' : 'NO'));
         
         // Check if sendmail is available
         $sendmail_path = ini_get('sendmail_path');
-        error_log('🔍 CoinSub Order Manager: sendmail_path: ' . ($sendmail_path ?: 'NOT SET'));
+        error_log('PP Order Manager: sendmail_path: ' . ($sendmail_path ?: 'NOT SET'));
         
         // Check SMTP settings
         $smtp_host = ini_get('SMTP');
         $smtp_port = ini_get('smtp_port');
-        error_log('🔍 CoinSub Order Manager: SMTP host: ' . ($smtp_host ?: 'NOT SET'));
-        error_log('🔍 CoinSub Order Manager: SMTP port: ' . ($smtp_port ?: 'NOT SET'));
+        error_log('PP Order Manager: SMTP host: ' . ($smtp_host ?: 'NOT SET'));
+        error_log('PP Order Manager: SMTP port: ' . ($smtp_port ?: 'NOT SET'));
         
         // Check if we can create a simple test
         if ($mail_function_exists) {
             $test_result = @mail('test@example.com', 'Test', 'Test message', 'From: test@example.com');
-            error_log('🔍 CoinSub Order Manager: Basic mail() test result: ' . ($test_result ? 'SUCCESS' : 'FAILED'));
+            error_log('PP Order Manager: Basic mail() test result: ' . ($test_result ? 'SUCCESS' : 'FAILED'));
         }
         
         // Check WordPress mail configuration
         global $phpmailer;
         if (isset($phpmailer)) {
-            error_log('🔍 CoinSub Order Manager: PHPMailer class: ' . get_class($phpmailer));
-            error_log('🔍 CoinSub Order Manager: PHPMailer is SMTP: ' . ($phpmailer->isSMTP() ? 'YES' : 'NO'));
+            error_log('PP Order Manager: PHPMailer class: ' . get_class($phpmailer));
+            error_log('PP Order Manager: PHPMailer is SMTP: ' . ($phpmailer->isSMTP() ? 'YES' : 'NO'));
         }
     }
     
@@ -340,7 +340,7 @@ class CoinSub_Order_Manager {
      * Send alternative notification methods
      */
     private function send_alternative_notification($to, $subject, $message) {
-        error_log('📧 CoinSub Order Manager: Trying alternative notification methods...');
+        error_log('PP Order Manager: Trying alternative notification methods...');
         
         // Method 1: Log to a file
         $this->log_to_file($to, $subject, $message);
@@ -362,7 +362,7 @@ class CoinSub_Order_Manager {
         $log_entry .= str_repeat('-', 80) . "\n\n";
         
         file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-        error_log('📧 CoinSub Order Manager: Email details logged to file: ' . $log_file);
+        error_log('PP Order Manager: Email details logged to file: ' . $log_file);
     }
     
     /**
@@ -385,7 +385,7 @@ class CoinSub_Order_Manager {
         }
         
         update_option('coinsub_failed_emails', $failed_emails);
-        error_log('📧 CoinSub Order Manager: Email details stored in WordPress options');
+        error_log('PP Order Manager: Email details stored in WordPress options');
     }
     
     /**
@@ -394,7 +394,7 @@ class CoinSub_Order_Manager {
     private function try_external_notification($to, $subject, $message) {
         // This could be extended to use services like Slack, Discord, etc.
         // For now, just log that we would try external service
-        error_log('📧 CoinSub Order Manager: External notification service not configured');
+        error_log('PP Order Manager: External notification service not configured');
     }
     
     /**
@@ -442,7 +442,7 @@ class CoinSub_Order_Manager {
             )
         );
         
-        error_log('📧 CoinSub Order Manager: Failed email logged to database');
+        error_log('PP Order Manager: Failed email logged to database');
     }
     
     /**
@@ -454,7 +454,7 @@ class CoinSub_Order_Manager {
             'to' => $to,
             'subject' => $subject,
             'time' => current_time('mysql'),
-            'message' => 'CoinSub email notification failed to send. Check server mail configuration.'
+            'message' => 'Payment provider email notification failed to send. Check server mail configuration.'
         );
         
         set_transient('coinsub_email_failure', $failure_data, 3600); // Store for 1 hour
@@ -471,7 +471,7 @@ class CoinSub_Order_Manager {
         
         if ($failure_data) {
             echo '<div class="notice notice-error is-dismissible">';
-            echo '<p><strong>CoinSub Email Error:</strong> Failed to send merchant notification email.</p>';
+            echo '<p><strong>Payment Provider Email Error:</strong> Failed to send merchant notification email.</p>';
             echo '<p>Recipient: ' . esc_html($failure_data['to']) . '</p>';
             echo '<p>Subject: ' . esc_html($failure_data['subject']) . '</p>';
             echo '<p>Time: ' . esc_html($failure_data['time']) . '</p>';
@@ -508,16 +508,16 @@ class CoinSub_Order_Manager {
             'Content-Type: text/plain; charset=UTF-8',
             'From: ' . get_bloginfo('name') . ' <' . get_option('admin_email') . '>',
             'Reply-To: ' . get_option('admin_email'),
-            'X-Mailer: CoinSub WooCommerce Plugin (API)'
+            'X-Mailer: Payment Provider WooCommerce (API)'
         );
         
-        error_log('📧 CoinSub Order Manager: Sending custom merchant email via API context to: ' . $to);
+        error_log('PP Order Manager: Sending custom merchant email via API context to: ' . $to);
         
         if (wp_mail($to, $subject, $message, $headers)) {
-            error_log('✅ CoinSub Order Manager: Custom merchant email sent successfully via API context');
+            error_log('PP Order Manager: Custom merchant email sent successfully via API context');
             return true;
         } else {
-            error_log('❌ CoinSub Order Manager: Failed to send custom merchant email via API context');
+            error_log('PP Order Manager: Failed to send custom merchant email via API context');
             return false;
         }
     }
@@ -533,7 +533,7 @@ class CoinSub_Order_Manager {
         }
         
         // Add order note
-        $order->add_order_note(__('Order cancelled - CoinSub payment session may still be active', 'coinsub-commerce'));
+        $order->add_order_note(__('Order cancelled - payment provider session may still be active', 'coinsub-commerce'));
         
         // Optionally, you could call CoinSub API to cancel the session
         // $this->cancel_coinsub_session($purchase_session_id);
@@ -550,7 +550,7 @@ class CoinSub_Order_Manager {
         }
         
         // Add order note
-        $order->add_order_note(__('Order refunded - CoinSub payment may need manual refund processing', 'coinsub-commerce'));
+        $order->add_order_note(__('Order refunded - payment may need manual refund processing', 'coinsub-commerce'));
     }
     
     /**
@@ -571,7 +571,7 @@ class CoinSub_Order_Manager {
         
         ?>
         <div class="address">
-            <p><strong><?php _e('Coinsub Payment', 'coinsub-commerce'); ?></strong></p>
+            <p><strong><?php _e('Payment', 'coinsub-commerce'); ?></strong></p>
             
             <?php if ($payment_id): ?>
             
@@ -719,7 +719,7 @@ class CoinSub_Order_Manager {
         $payments = $api_client->get_all_payments();
         
         if (is_wp_error($payments)) {
-            error_log('❌ CoinSub - Failed to fetch payments: ' . $payments->get_error_message());
+            error_log('PP Order Manager: Failed to fetch payments: ' . $payments->get_error_message());
             return;
         }
         
@@ -971,7 +971,7 @@ class CoinSub_Order_Manager {
         }
         
         // No data available to construct a link
-        error_log('⚠️ CoinSub: Cannot build explorer URL - missing explorer_url/network_name/chain_id');
+        error_log('PP: Cannot build explorer URL - missing explorer_url/network_name/chain_id');
         return '';
     }
     
@@ -1052,7 +1052,7 @@ class CoinSub_Order_Manager {
         $explorer_url = $this->get_explorer_url($chain_id, $transaction_hash, $order);
         
         if ($plain_text) {
-            echo "\n" . __('CoinSub Payment Information:', 'coinsub-commerce') . "\n";
+            echo "\n" . __('Payment Information:', 'coinsub-commerce') . "\n";
             echo __('Transaction Hash: ', 'coinsub-commerce') . $transaction_hash . "\n";
             if ($explorer_url) {
                 echo __('View on Blockchain: ', 'coinsub-commerce') . $explorer_url . "\n";
@@ -1112,13 +1112,13 @@ class CoinSub_Order_Manager {
         switch ($coinsub_status) {
             case 'completed':
                 if ($order->get_status() !== 'processing' && $order->get_status() !== 'completed') {
-                    $order->update_status('processing', __('Payment confirmed via CoinSub', 'coinsub-commerce'));
+                    $order->update_status('processing', __('Payment confirmed via payment provider', 'coinsub-commerce'));
                 }
                 break;
                 
             case 'failed':
                 if ($order->get_status() !== 'failed') {
-                    $order->update_status('failed', __('Payment failed via CoinSub', 'coinsub-commerce'));
+                    $order->update_status('failed', __('Payment failed via payment provider', 'coinsub-commerce'));
                 }
                 break;
                 
@@ -1251,7 +1251,7 @@ class CoinSub_Order_Manager {
         // Mark refund as requested
         $order->update_meta_data('_coinsub_refund_requested', 'yes');
         $order->update_meta_data('_coinsub_refund_requested_date', current_time('mysql'));
-        $order->add_order_note('Customer requested refund via CoinSub');
+        $order->add_order_note('Customer requested refund via payment provider');
         $order->save();
         
         // Send notification to admin
@@ -1267,7 +1267,7 @@ class CoinSub_Order_Manager {
      */
     private function send_refund_notification($order, $purchase_session_id) {
         $admin_email = get_option('admin_email');
-        $subject = 'CoinSub Refund Request - Order #' . $order->get_id();
+        $subject = 'Refund Request - Order #' . $order->get_id();
         $message = 'A customer has requested a refund for order #' . $order->get_id() . "\n\n";
         $message .= 'Customer: ' . $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() . "\n";
         $message .= 'Email: ' . $order->get_billing_email() . "\n";

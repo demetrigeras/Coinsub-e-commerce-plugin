@@ -1,8 +1,7 @@
 <?php
 /**
- * CoinSub Admin Subscriptions Page
- * 
- * Merchant-facing subscriptions management page in WooCommerce admin
+ * Payment Provider Admin Subscriptions Page
+ * Merchant-facing subscriptions management (whitelabel-friendly: uses display company name).
  */
 
 if (!defined('ABSPATH')) {
@@ -63,20 +62,18 @@ class CoinSub_Admin_Subscriptions {
     private function get_display_company_name() {
         // Only use whitelabel branding if settings are saved
         if (!$this->are_settings_saved()) {
-            return 'Stablecoin Pay';
+            return __('Payment Provider', 'coinsub');
         }
-        
-        // Settings are saved - try to get whitelabel branding
         $branding = $this->get_branding();
         $branding_data = $branding->get_branding(false);
-        return !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
+        return !empty($branding_data['company']) ? $branding_data['company'] : __('Payment Provider', 'coinsub');
     }
     
     /**
      * Add admin menu item
      */
     public function add_admin_menu() {
-        $menu_title = __('Stablecoin Subscriptions', 'coinsub');
+        $menu_title = $this->get_display_company_name() . ' ' . __('Subscriptions', 'coinsub');
         
         add_submenu_page(
             'woocommerce',
@@ -103,7 +100,7 @@ class CoinSub_Admin_Subscriptions {
      * Render subscriptions management page
      */
     public function render_subscriptions_page() {
-        $page_title = __('Stablecoin Subscriptions', 'coinsub');
+        $page_title = $this->get_display_company_name() . ' ' . __('Subscriptions', 'coinsub');
         
         // Get all subscription orders
         $subscriptions = $this->get_all_subscriptions();
@@ -348,7 +345,7 @@ class CoinSub_Admin_Subscriptions {
                     $agreement_data = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
                     
                     // Log for debugging
-                    error_log('🔍 Agreement data for ' . $agreement_id . ': ' . json_encode($agreement_data));
+                    error_log('PP - Agreement data for ' . $agreement_id . ': ' . json_encode($agreement_data));
                     
                     // Extract dates from agreement data - check multiple possible field names and nests
                     if (isset($agreement_data['created_at'])) {
@@ -390,7 +387,7 @@ class CoinSub_Admin_Subscriptions {
                         $frequency_text_override = $agreement_frequency_text;
                     }
                 } else {
-                    error_log('❌ Error retrieving agreement: ' . $agreement_response->get_error_message());
+                    error_log('PP - Error retrieving agreement: ' . $agreement_response->get_error_message());
                 }
             }
             

@@ -23,7 +23,7 @@ class WC_CoinSub_Cart_Sync {
         // Hook into checkout updates (when shipping/taxes calculated)
         add_action('woocommerce_checkout_update_order_review', array($this, 'on_checkout_update'), 10);
         
-        error_log('🔄 CoinSub Cart Sync - Initialized');
+        error_log('PP Cart Sync: Initialized');
     }
     
     /**
@@ -33,7 +33,7 @@ class WC_CoinSub_Cart_Sync {
         if ($this->api_client === null) {
             // Check if class exists before instantiating
             if (!class_exists('CoinSub_API_Client')) {
-                error_log('❌ CoinSub Cart Sync - API Client class not loaded yet');
+                error_log('PP Cart Sync: API Client class not loaded yet');
                 return null;
             }
             $this->api_client = new CoinSub_API_Client();
@@ -45,7 +45,7 @@ class WC_CoinSub_Cart_Sync {
      * When cart changes (item added, removed, quantity changed)
      */
     public function on_cart_changed() {
-        error_log('🛒 CoinSub Cart Sync - Cart changed, updating order...');
+        error_log('PP Cart Sync: Cart changed, updating order...');
         $this->sync_cart_to_order();
     }
     
@@ -53,7 +53,7 @@ class WC_CoinSub_Cart_Sync {
      * When checkout is updated (shipping/taxes calculated)
      */
     public function on_checkout_update($post_data) {
-        error_log('🛒 CoinSub Cart Sync - Checkout updated (shipping/taxes), updating order...');
+        error_log('PP Cart Sync: Checkout updated (shipping/taxes), updating order...');
         $this->sync_cart_to_order();
     }
     
@@ -63,14 +63,14 @@ class WC_CoinSub_Cart_Sync {
     private function sync_cart_to_order() {
         // Check if WooCommerce is fully loaded
         if (!function_exists('WC') || !WC()->cart || !WC()->session) {
-            error_log('🛒 CoinSub Cart Sync - WooCommerce not ready, skipping');
+            error_log('PP Cart Sync: WooCommerce not ready, skipping');
             return;
         }
         
         $cart = WC()->cart;
         
         if ($cart->is_empty()) {
-            error_log('🛒 CoinSub Cart Sync - Cart is empty, skipping');
+            error_log('PP Cart Sync: Cart is empty, skipping');
             return;
         }
         
@@ -169,7 +169,7 @@ class WC_CoinSub_Cart_Sync {
         
         WC()->session->set('coinsub_cart_data', $cart_data);
         
-        error_log('🛒 CoinSub Cart Sync - Cart data stored in session:');
+        error_log('PP Cart Sync: Cart data stored in session:');
         error_log('  Subtotal: $' . $subtotal);
         error_log('  Shipping: $' . $shipping);
         error_log('  Tax: $' . $tax);
@@ -225,7 +225,7 @@ class WC_CoinSub_Cart_Sync {
             
             if (!$is_subscription) {
                 $cart->remove_cart_item($cart_item_key);
-                error_log('🛒 Removed regular product from cart: ' . $product->get_name());
+                error_log('PP Cart Sync: Removed regular product from cart: ' . $product->get_name());
             }
         }
     }
