@@ -1,8 +1,7 @@
 <?php
 /**
- * CoinSub Admin Log Viewer
- * 
- * View debug logs directly in WordPress admin
+ * Payment Provider Admin Log Viewer
+ * View debug logs directly in WordPress admin (whitelabel-friendly: no platform name in UI).
  */
 
 if (!defined('ABSPATH')) {
@@ -21,8 +20,8 @@ class CoinSub_Admin_Logs {
     public function add_admin_menu() {
         add_submenu_page(
             'woocommerce',
-            'Stablecoin Pay Logs',
-            'Stablecoin Pay Logs',
+            'Payment Provider Logs',
+            'Payment Provider Logs',
             'manage_woocommerce',
             'coinsub-logs',
             array($this, 'display_logs_page')
@@ -41,7 +40,7 @@ class CoinSub_Admin_Logs {
         
         ?>
         <div class="wrap">
-            <h1>🔍 Stablecoin Pay Debug Logs</h1>
+            <h1>🔍 Payment Provider Debug Logs</h1>
             
             <div style="background: #fff; padding: 20px; border: 1px solid #ccc; margin: 20px 0;">
                 <div style="margin: 20px 0;">
@@ -55,7 +54,7 @@ class CoinSub_Admin_Logs {
                 $logs = $this->get_coinsub_logs(200);
                 
                 if (empty($logs)) {
-                    echo '<div class="notice notice-warning"><p>⚠️ No Stablecoin Pay logs found yet.</p></div>';
+                    echo '<div class="notice notice-warning"><p>⚠️ No payment provider logs found yet.</p></div>';
                     echo '<h3>Enable Debug Logging:</h3>';
                     echo '<p>Add this to your <code>wp-config.php</code> file:</p>';
                     echo '<pre style="background:#f5f5f5;padding:15px;border-radius:5px;overflow-x:auto;">define(\'WP_DEBUG\', true);
@@ -63,7 +62,7 @@ define(\'WP_DEBUG_LOG\', true);
 define(\'WP_DEBUG_DISPLAY\', false);</pre>';
                     echo '<p><strong>Then:</strong> Go to checkout and try to place an order. Logs will appear here.</p>';
                 } else {
-                    echo '<h3>📋 Stablecoin Pay Logs (Most Recent First):</h3>';
+                    echo '<h3>📋 Payment Provider Logs (Most Recent First):</h3>';
                     echo '<div style="background: #1e1e1e; color: #00ff00; padding: 20px; border-radius: 5px; font-family: monospace; font-size: 13px; overflow-x: auto; max-height: 600px; overflow-y: scroll; line-height: 1.6;">';
                     
                     foreach (array_reverse($logs) as $log_line) {
@@ -80,7 +79,7 @@ define(\'WP_DEBUG_DISPLAY\', false);</pre>';
                     }
                     
                     echo '</div>';
-                    echo '<p style="margin-top: 15px;"><em>Showing last ' . count($logs) . ' Stablecoin Pay-related log entries</em></p>';
+                    echo '<p style="margin-top: 15px;"><em>Showing last ' . count($logs) . ' payment provider log entries</em></p>';
                 }
                 ?>
             </div>
@@ -89,7 +88,7 @@ define(\'WP_DEBUG_DISPLAY\', false);</pre>';
                 <h3>🎯 How to Use This:</h3>
                 <ol>
                     <li>Make sure debug logging is enabled (see above)</li>
-                    <li>Go to your store and try to checkout with Stablecoin Pay</li>
+                    <li>Go to your store and try to checkout with your payment provider</li>
                     <li>Come back here and click "🔄 Refresh"</li>
                     <li>You'll see exactly what happened!</li>
                 </ol>
@@ -99,7 +98,7 @@ define(\'WP_DEBUG_DISPLAY\', false);</pre>';
     }
     
     /**
-     * Get CoinSub-related logs only
+     * Get payment provider-related logs only (filters debug.log by plugin prefix).
      */
     private function get_coinsub_logs($max_lines = 200) {
         $log_file = WP_CONTENT_DIR . '/debug.log';
@@ -113,10 +112,10 @@ define(\'WP_DEBUG_DISPLAY\', false);</pre>';
             return array();
         }
         
-        // Filter for CoinSub-related logs only
+        // Filter for payment provider plugin logs only (coinsub = option/class names; PP = log prefix)
         $coinsub_logs = array();
         foreach ($file_lines as $line) {
-            if (stripos($line, 'coinsub') !== false) {
+            if (stripos($line, 'coinsub') !== false || stripos($line, 'PP ') !== false || stripos($line, 'PP API') !== false) {
                 $coinsub_logs[] = $line;
             }
         }

@@ -1,9 +1,17 @@
 #!/bin/bash
 
-# Stablecoin Pay Plugin Package Creator
-# This script creates a deployable WordPress plugin package
+# Plugin Package Creator
+#
+# Partner-specific values: ONLY in coinsub-whitelabel-config.php (and this script
+# reading that file). To build a partner zip, set environment_id + plugin_name + zip_name
+# in the config, then run this script. For Stablecoin Pay (default), omit the config
+# or set environment_id null.
 
-echo "🚀 Creating Stablecoin Pay Plugin Package..."
+# Always run from the directory where this script lives
+cd "$(dirname "$0")"
+
+echo "🚀 Creating Plugin Package..."
+echo "📂 Working directory: $(pwd)"
 
 # Create package directory
 PACKAGE_DIR="stablecoin-pay-plugin"
@@ -12,6 +20,26 @@ mkdir -p "$PACKAGE_DIR"
 # Copy main plugin file
 echo "📦 Copying main plugin file..."
 cp stablecoin-pay.php "$PACKAGE_DIR/"
+
+# Whitelabel build: config file is the single source (zip name, etc.)
+WHITELABEL_BUILD=0
+ZIP_NAME="stablecoin-pay.zip"
+
+if [ -f "coinsub-whitelabel-config.php" ]; then
+    echo "📦 Copying whitelabel config (partner build)..."
+    cp coinsub-whitelabel-config.php "$PACKAGE_DIR/"
+    WHITELABEL_BUILD=1
+    # Zip name from config (only place it's hardcoded)
+    EXTRACTED=$(grep -E "'zip_name'|\"zip_name\"" coinsub-whitelabel-config.php | sed -n "s/.*['\"]zip_name['\"][^'\"]*['\"]\\([^'\"]*\\)['\"].*/\1/p" | tr -d ' ')
+    if [ -n "$EXTRACTED" ]; then
+        ZIP_NAME="$EXTRACTED"
+    else
+        ZIP_NAME="whitelabel-plugin.zip"
+    fi
+    echo "📦 Partner zip name from config: $ZIP_NAME"
+else
+    echo "📦 No whitelabel config - package will run as Stablecoin Pay (default)"
+fi
 
 # Copy includes directory
 echo "📦 Copying includes directory..."
@@ -97,9 +125,9 @@ composer.lock
 EOF
 
 # Create zip package
-echo "📦 Creating ZIP package..."
+echo "📦 Creating ZIP package: $ZIP_NAME"
 cd "$PACKAGE_DIR"
-zip -r "../stablecoin-pay.zip" . -x "*.DS_Store" "*.git*"
+zip -r "../$ZIP_NAME" . -x "*.DS_Store" "*.git*"
 cd ..
 
 # Clean up
@@ -107,22 +135,22 @@ echo "🧹 Cleaning up..."
 rm -rf "$PACKAGE_DIR"
 
 echo "✅ Plugin package created successfully!"
-echo "📁 Package: stablecoin-pay.zip"
-echo "📋 Size: $(du -h stablecoin-pay.zip | cut -f1)"
+echo "📁 Package: $ZIP_NAME"
+echo "📋 Size: $(du -h "$ZIP_NAME" | cut -f1)"
 
 # Copy to Downloads folder
 DOWNLOADS_DIR="$HOME/Downloads"
 if [ -d "$DOWNLOADS_DIR" ]; then
     echo "📥 Copying to Downloads folder..."
-    cp stablecoin-pay.zip "$DOWNLOADS_DIR/"
-    echo "✅ Also saved to: $DOWNLOADS_DIR/stablecoin-pay.zip"
+    cp "$ZIP_NAME" "$DOWNLOADS_DIR/"
+    echo "✅ Also saved to: $DOWNLOADS_DIR/$ZIP_NAME"
 else
     echo "⚠️  Downloads folder not found, skipping copy"
 fi
 
 echo ""
 echo "🚀 Ready for deployment!"
-echo "1. Upload stablecoin-pay.zip to WordPress"
+echo "1. Upload $ZIP_NAME to WordPress (Plugins → Add New → Upload)"
 echo "2. Activate the plugin"
 echo "3. Configure settings in WooCommerce"
 echo "4. Set up webhook in your dashboard"

@@ -26,6 +26,22 @@ define('COINSUB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('COINSUB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('COINSUB_VERSION', '1.0.0');
 
+/**
+ * Display name from whitelabel config (e.g. "Payment Servers"). Only config file is hardcoded.
+ * Use when branding class may not be loaded (e.g. WooCommerce missing notice).
+ */
+function coinsub_get_whitelabel_plugin_name() {
+    $path = COINSUB_PLUGIN_DIR . 'coinsub-whitelabel-config.php';
+    if (!is_readable($path)) {
+        return null;
+    }
+    $config = include $path;
+    if (!is_array($config) || empty($config['environment_id'])) {
+        return null;
+    }
+    return isset($config['plugin_name']) && $config['plugin_name'] !== '' ? $config['plugin_name'] : null;
+}
+
 // Check if WooCommerce is active
 if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
     add_action('admin_notices', 'coinsub_woocommerce_missing_notice');
@@ -36,7 +52,8 @@ if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get
  * WooCommerce missing notice
  */
 function coinsub_woocommerce_missing_notice() {
-    echo '<div class="error"><p><strong>Stablecoin Pay</strong> requires WooCommerce to be installed and active.</p></div>';
+    $label = coinsub_get_whitelabel_plugin_name() ?: 'Stablecoin Pay';
+    echo '<div class="error"><p><strong>' . esc_html($label) . '</strong> requires WooCommerce to be installed and active.</p></div>';
 }
 
 /**
@@ -75,6 +92,15 @@ function coinsub_commerce_init() {
         new WC_CoinSub_Cart_Sync();
     }
     
+    // Plugin list: show whitelabel name from config (config + build script are the only hardcoded places)
+    add_filter('all_plugins', function ($plugins) {
+        $name = coinsub_get_whitelabel_plugin_name();
+        if ($name && isset($plugins[plugin_basename(COINSUB_PLUGIN_FILE)])) {
+            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['Name'] = $name;
+        }
+        return $plugins;
+    });
+
     // Initialize admin tools (only in admin)
     if (is_admin()) {
         new CoinSub_Admin_Logs();
@@ -429,13 +455,6 @@ function coinsub_checkout_page_preconnect() {
  */
 function coinsub_checkout_page_shortcode($atts) {
     error_log('🎬 CoinSub Checkout Page: Shortcode called');
-    
-    // Get and log environment
-    $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-    $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
-    error_log('═══════════════════════════════════════════════════════════');
-    error_log('🌍🌍🌍 CoinSub Checkout Page: ENVIRONMENT = ' . strtoupper($environment) . ' 🌍🌍🌍');
-    error_log('═══════════════════════════════════════════════════════════');
     
     // Get checkout URL from query parameter OR from session using order_id
     $checkout_url = '';
@@ -998,13 +1017,6 @@ add_filter('heartbeat_nopriv_received', 'coinsub_heartbeat_received', 10, 3);
 function coinsub_ajax_process_payment() {
     // Note: Nonce check removed - checkout process creates order first, then redirects to payment
     // The actual payment happens on CoinSub's secure checkout page, not during this AJAX call
-    
-    // Get and log environment
-    $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-    $environment = isset($gateway_settings['environment']) ? $gateway_settings['environment'] : 'production';
-    error_log('═══════════════════════════════════════════════════════════');
-    error_log('🌍🌍🌍 CoinSub AJAX Process Payment: ENVIRONMENT = ' . strtoupper($environment) . ' 🌍🌍🌍');
-    error_log('═══════════════════════════════════════════════════════════');
     
     // Check if cart is empty
     if (WC()->cart->is_empty()) {

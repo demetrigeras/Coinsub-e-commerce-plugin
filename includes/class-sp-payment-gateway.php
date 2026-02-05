@@ -24,15 +24,18 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function __construct() {
         // Only log on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-        error_log('🏗️ Coinsub - Gateway constructor called');
+        error_log('PP Gateway: Constructor called');
         }
         
         $this->id = 'coinsub';
         // Icon set dynamically in get_icon() - no default icon for whitelabel compatibility (CoinSub logo only in checkout as fallback)
         $this->icon = '';
         $this->has_fields = true; // Enable custom payment box
-        $this->method_title = __('Stablecoin Pay', 'coinsub');
-        $this->method_description = __('Accept Crypto payments with Stablecoin Pay', 'coinsub');
+        // Display name from whitelabel config only (no hardcoding elsewhere)
+        $config_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        $gateway_label = $config_name ? $config_name : __('Stablecoin Pay', 'coinsub');
+        $this->method_title = $gateway_label;
+        $this->method_description = $config_name ? sprintf(__('Accept Crypto payments with %s', 'coinsub'), $config_name) : __('Accept Crypto payments with Stablecoin Pay', 'coinsub');
         
         // Declare supported features
         $this->supports = array(
@@ -42,16 +45,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only log on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-        error_log('🏗️ Coinsub - Supports: ' . json_encode($this->supports));
+        error_log('PP Gateway: Supports: ' . json_encode($this->supports));
         }
         
         // Load settings
         $this->init_form_fields();
         $this->init_settings();
         
-        // Set default title for admin (always "Stablecoin Pay" in admin)
-        // Whitelabel branding will only be applied on checkout (frontend)
-        $this->title = 'Pay with Coinsub'; // Default for admin display
+        // Admin title: from whitelabel config when set, else default
+        $this->title = $config_name ? ('Pay with ' . $config_name) : 'Pay with Coinsub';
         $this->description = '';
         $this->enabled = $this->get_option('enabled', 'yes');
         
@@ -65,7 +67,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // This prevents timeout during save - branding fetch happens on next page load
             $refresh_branding = get_transient('coinsub_refresh_branding_on_load');
             if ($refresh_branding) {
-                error_log('CoinSub Whitelabel: 🔄 Deferred branding fetch triggered - fetching now...');
+                error_log('PP Whitelabel: 🔄 Deferred branding fetch triggered - fetching now...');
                 delete_transient('coinsub_refresh_branding_on_load');
                 // Load branding with force refresh (this will make API calls)
                 $this->load_whitelabel_branding(true);
@@ -74,23 +76,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $this->load_whitelabel_branding(false);
             }
         } else {
-            // In admin, always use default branding (no whitelabel)
-            $this->checkout_title = 'Pay with Coinsub';
+            // In admin: use config display name when set (no hardcoding elsewhere)
+            $this->checkout_title = $config_name ? ('Pay with ' . $config_name) : 'Pay with Coinsub';
             $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            $this->button_company_name = 'Coinsub';
-            // Don't log in admin (reduces log noise)
+            $this->button_company_name = $config_name ? $config_name : 'Coinsub';
         }
         
         // Only log constructor details on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-        error_log('🏗️ CoinSub - Constructor - ID: ' . $this->id);
-        error_log('🏗️ CoinSub - Constructor - Title: ' . $this->title);
-        error_log('🏗️ CoinSub - Constructor - Description: ' . $this->description);
-        error_log('🏗️ CoinSub - Constructor - Enabled: ' . $this->enabled);
-        error_log('🏗️ CoinSub - Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
-        error_log('🏗️ CoinSub - Constructor - Method Title: ' . $this->method_title);
-        error_log('🏗️ CoinSub - Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
+        error_log('PP Gateway: Constructor - ID: ' . $this->id);
+        error_log('PP Gateway: Constructor - Title: ' . $this->title);
+        error_log('PP Gateway: Constructor - Description: ' . $this->description);
+        error_log('PP Gateway: Constructor - Enabled: ' . $this->enabled);
+        error_log('PP Gateway: Constructor - Merchant ID: ' . $this->get_option('merchant_id'));
+        error_log('PP Gateway: Constructor - Method Title: ' . $this->method_title);
+        error_log('PP Gateway: Constructor - Has fields: ' . ($this->has_fields ? 'YES' : 'NO'));
         }
         
         // Add hooks
@@ -149,51 +150,24 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         parent::admin_options();
         
         // Now inject instructions at the top using JavaScript (after form is rendered)
-        // Get Meld URL and webhook URL first (PHP) so we can properly escape them for JavaScript
-        $meld_url = esc_js($this->get_meld_onramp_url());
-        $secret = get_option('coinsub_webhook_secret');
-        $webhook_base = home_url('/wp-json/stablecoin/v1/webhook');
-        $webhook_url = $secret ? add_query_arg('secret', $secret, $webhook_base) : $webhook_base;
+        $instructions_html = $this->get_setup_instructions_html();
         ?>
         <script type="text/javascript">
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
-            var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var webhookUrl = <?php echo json_encode($webhook_url); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Select Environment & Get Your Stablecoin Pay Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable Stablecoin Pay</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Stablecoin Pay Crypto Payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> Stablecoin Pay works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds use the same network and token as the original payment.</strong> If the original payment information is not available, refunds default to <strong>USDC on Polygon</strong>.<li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add Tokens for Refunds</h3><p><strong>Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).</strong><p>To process refunds, you\'ll need sufficient tokens in your merchant wallet on the same network as the original payment. If you don\'t have enough tokens, you can purchase them through Meld.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Buy Tokens via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of tokens (especially USDC on Polygon as the default fallback) to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
-            
-            // Add test environment warning and instructions - will be inserted after refunds section
-            var testWarning = $('<div id="coinsub-test-warning" style="display:none;margin:20px 0;padding:15px;background:#fff3cd;border-left:4px solid #ff9800;border-radius:4px;"><h3 style=margin-top:0;color:#856404>⚠️ Test Environment Active</h3><div style="margin-bottom:15px;padding:12px;background:#ffebee;border-radius:4px;border:1px solid #f44336"><p style=margin-bottom:8px;color:#c62828;font-weight:bold>🚨 CRITICAL WARNING</p><p style=margin-bottom:8px><strong>When Test mode is active, ALL customers will use the test environment.</strong> This means:</p><ul style=margin-top:8px;margin-bottom:8px;line-height:1.8><li><strong>Customers will NOT be charged real cryptocurrency</strong> - all payments use test tokens only</li><li><strong>Customers may think they are making real payments</strong> - the checkout process looks identical to production</li><li><strong>You cannot accept real payments while in test mode</strong> - the entire plugin operates in test mode</li><li><strong>You cannot run both environments simultaneously</strong> - it\'s either all test or all production</li></ul><p style=margin-bottom:0;font-size:13px;color:#c62828><strong>⚠️ Important:</strong> Only use Test mode when you are actively testing. Switch back to Production immediately when you want to accept real customer payments.</p></div><div style="margin-top:15px;padding:12px;background:#fff;border-radius:4px;border:1px solid #ffc107"><h4 style=margin-top:0;margin-bottom:10px>🔑 Test Account Credentials</h4><p style=margin-bottom:10px><strong>Important:</strong> When using Test mode, your <strong>Merchant ID</strong> and <strong>API Key</strong> must come from your test account.</p><ol style=margin-top:8px;margin-bottom:10px;line-height:1.8><li>Visit your payment provider\'s website</li><li>Log into your <strong>test account</strong> (separate from your production account)</li><li>Navigate to <strong>Settings</strong> in your test dashboard</li><li>Copy your <strong>Test Merchant ID</strong> and <strong>Test API Key</strong></li><li>Paste them into the fields below</li></ol></div><div style="margin-top:15px;padding:12px;background:#fff;border-radius:4px;border:1px solid #ffc107"><h4 style=margin-top:0;margin-bottom:10px>🧪 Getting Test Crypto</h4><p style=margin-bottom:10px><strong>To test payments, you need test tokens in your merchant wallet:</strong></p><ol style=margin-top:8px;margin-bottom:10px;line-height:1.8><li><strong>Get your wallet address:</strong><ul style=margin-top:5px;margin-bottom:5px><li>Log into your payment provider dashboard (test account)</li><li>Navigate to <strong>Settings</strong> or <strong>Wallet</strong> section</li><li>Copy your merchant wallet address</li></ul><li><strong>Get test tokens from faucet:</strong><ul style=margin-top:5px;margin-bottom:5px><li>Visit <a href="https://faucet.circle.com/" target="_blank" style="color:#0284c7;text-decoration:underline"><strong>Circle Faucet</strong></a> (test environment faucet)</li><li>Select <strong>Polygon PoS Amoy</strong> from the Network dropdown</li><li>Paste your wallet address in the "Send to" field</li><li>Click <strong>Send 20 USDC</strong> to request test tokens</li><li>Wait for tokens to arrive in your wallet (usually within a few minutes)</li><li><em>Note: You can request 20 USDC every 2 hours per address</em></li></ul><li><strong>You can also use your own wallet:</strong><ul style=margin-top:5px;margin-bottom:5px><li>If you prefer, connect your own wallet to the test environment</li><li>Make sure you\'re connected to the test network</li><li>Use the same faucet to get test tokens</li></ul></ol><p style=margin-bottom:0;font-size:13px;color:#856404><strong>Note:</strong> Test tokens have no real value and cannot be converted to real cryptocurrency. Switch back to Production when ready to accept real payments.</p></div></div>');
-            
-            // Append test warning to instructions div (will appear after all content including refunds)
-            instructions.append(testWarning);
+            var instructionsHtml = <?php echo json_encode($instructions_html); ?>;
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327">').html(instructionsHtml);
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
-            
-            // Show/hide warning based on environment selection
-            function toggleTestWarning() {
-                var env = $('#woocommerce_coinsub_environment').val();
-                if (env === 'test') {
-                    $('#coinsub-test-warning').slideDown();
-                } else {
-                    $('#coinsub-test-warning').slideUp();
-                }
-            }
-            
-            // Check on page load
-            toggleTestWarning();
-            
-            // Check when environment changes
-            $('#woocommerce_coinsub_environment').on('change', toggleTestWarning);
             
             // CRITICAL FIX: Ensure form action is set (run multiple times to catch dynamic form generation)
             function ensureFormAction() {
                 var $form = $('form');
                 if ($form.length > 0) {
                     var currentAction = $form.attr('action');
-                    console.log('🔔 CoinSub: Form action check:', currentAction || 'EMPTY - THIS IS THE PROBLEM!');
-                    console.log('🔔 CoinSub: Form method:', $form.attr('method'));
+                    console.log('PP: Form action check:', currentAction || 'EMPTY - THIS IS THE PROBLEM!');
+                    console.log('PP: Form method:', $form.attr('method'));
                     
                     // If form action is empty, set it to the FULL current URL with query params
                     // WooCommerce needs the full URL with page, tab, and section parameters
@@ -201,10 +175,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                         // Get the FULL current URL including query parameters
                         var currentUrl = window.location.href;
                         $form.attr('action', currentUrl);
-                        console.log('🔔 CoinSub: ⚠️ Form action was empty! Fixed to:', currentUrl);
+                        console.log('PP: ⚠️ Form action was empty! Fixed to:', currentUrl);
                         return true; // Fixed
                     } else {
-                        console.log('🔔 CoinSub: ✅ Form action is set correctly:', currentAction);
+                        console.log('PP: ✅ Form action is set correctly:', currentAction);
                         return false; // Already set
                     }
                 }
@@ -217,14 +191,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Run again after a short delay (in case form is generated dynamically)
             setTimeout(function() {
                 if (ensureFormAction()) {
-                    console.log('🔔 CoinSub: ✅ Form action fixed on delayed check');
+                    console.log('PP: ✅ Form action fixed on delayed check');
                 }
             }, 100);
             
             // Run one more time after a longer delay (for very slow form generation)
             setTimeout(function() {
                 if (ensureFormAction()) {
-                    console.log('🔔 CoinSub: ✅ Form action fixed on final delayed check');
+                    console.log('PP: ✅ Form action fixed on final delayed check');
                 }
             }, 500);
             
@@ -234,51 +208,51 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Method 1: Listen for form submit (regular POST)
             $('form').on('submit', function(e) {
                 var $submitForm = $(this);
-                console.log('🔔 CoinSub: ✅✅✅ FORM SUBMIT EVENT FIRED! ✅✅✅');
-                console.log('🔔 CoinSub: Form action:', $submitForm.attr('action'));
-                console.log('🔔 CoinSub: Form method:', $submitForm.attr('method'));
-                console.log('🔔 CoinSub: Merchant ID value:', $('#woocommerce_coinsub_merchant_id').val());
-                console.log('🔔 CoinSub: API Key value:', $('#woocommerce_coinsub_api_key').val() ? '***SET***' : 'EMPTY');
+                console.log('PP: ✅✅✅ FORM SUBMIT EVENT FIRED! ✅✅✅');
+                console.log('PP: Form action:', $submitForm.attr('action'));
+                console.log('PP: Form method:', $submitForm.attr('method'));
+                console.log('PP: Merchant ID value:', $('#woocommerce_coinsub_merchant_id').val());
+                console.log('PP: API Key value:', $('#woocommerce_coinsub_api_key').val() ? '***SET***' : 'EMPTY');
                 
                 // Ensure form action is set before submission
                 if (!$submitForm.attr('action') || $submitForm.attr('action') === '') {
                     var currentUrl = window.location.href;
                     $submitForm.attr('action', currentUrl);
-                    console.log('🔔 CoinSub: ⚠️ Form action was empty on submit! Fixed to:', currentUrl);
+                    console.log('PP: ⚠️ Form action was empty on submit! Fixed to:', currentUrl);
                 }
                 
                 // CRITICAL: Verify all required fields are present
                 var merchantId = $('#woocommerce_coinsub_merchant_id').val();
                 var apiKey = $('#woocommerce_coinsub_api_key').val();
-                console.log('🔔 CoinSub: Pre-submit check - Merchant ID:', merchantId ? 'SET (' + merchantId.length + ' chars)' : 'EMPTY');
-                console.log('🔔 CoinSub: Pre-submit check - API Key:', apiKey ? 'SET (' + apiKey.length + ' chars)' : 'EMPTY');
+                console.log('PP: Pre-submit check - Merchant ID:', merchantId ? 'SET (' + merchantId.length + ' chars)' : 'EMPTY');
+                console.log('PP: Pre-submit check - API Key:', apiKey ? 'SET (' + apiKey.length + ' chars)' : 'EMPTY');
                 
                 // Ensure enabled checkbox is included
                 var enabledCheckbox = $('#woocommerce_coinsub_enabled');
                 if (enabledCheckbox.length > 0) {
-                    console.log('🔔 CoinSub: Enabled checkbox found, checked:', enabledCheckbox.is(':checked'));
+                    console.log('PP: Enabled checkbox found, checked:', enabledCheckbox.is(':checked'));
                 }
                 
-                console.log('🔔 CoinSub: Form will submit now...');
+                console.log('PP: Form will submit now...');
                 // Don't prevent default - let form submit normally
             });
             
             // Also listen for form submission via AJAX (WooCommerce might use AJAX)
             $(document).on('submit', 'form', function(e) {
-                console.log('🔔 CoinSub: 🔄 Form submit event (document level) - Form action:', $(this).attr('action'));
+                console.log('PP: 🔄 Form submit event (document level) - Form action:', $(this).attr('action'));
             });
             
             // Method 2: Listen for save button clicks (BEFORE form submit)
             $(document).on('click', 'button[name="save"], input[name="save"], .button-primary[name="save"]', function(e) {
                 var $form = $('form');
                 var $button = $(this);
-                console.log('🔔 CoinSub: ✅✅✅ SAVE BUTTON CLICKED! ✅✅✅');
-                console.log('🔔 CoinSub: Button type:', $button.attr('type'));
-                console.log('🔔 CoinSub: Button name:', $button.attr('name'));
-                console.log('🔔 CoinSub: Merchant ID value:', $('#woocommerce_coinsub_merchant_id').val());
-                console.log('🔔 CoinSub: API Key value:', $('#woocommerce_coinsub_api_key').val() ? '***SET***' : 'EMPTY');
-                console.log('🔔 CoinSub: Form exists:', $form.length > 0);
-                console.log('🔔 CoinSub: Form action:', $form.attr('action'));
+                console.log('PP: ✅✅✅ SAVE BUTTON CLICKED! ✅✅✅');
+                console.log('PP: Button type:', $button.attr('type'));
+                console.log('PP: Button name:', $button.attr('name'));
+                console.log('PP: Merchant ID value:', $('#woocommerce_coinsub_merchant_id').val());
+                console.log('PP: API Key value:', $('#woocommerce_coinsub_api_key').val() ? '***SET***' : 'EMPTY');
+                console.log('PP: Form exists:', $form.length > 0);
+                console.log('PP: Form action:', $form.attr('action'));
                 
                 // CRITICAL: Ensure form action is set before button click submits
                 if ($form.length > 0) {
@@ -286,37 +260,37 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                     if (!currentAction || currentAction === '' || currentAction === '#') {
                         var currentUrl = window.location.href;
                         $form.attr('action', currentUrl);
-                        console.log('🔔 CoinSub: ⚠️ Form action was empty on button click! Fixed to:', currentUrl);
+                        console.log('PP: ⚠️ Form action was empty on button click! Fixed to:', currentUrl);
                     }
                     
                     // CRITICAL: Also ensure the form has the correct method
                     if ($form.attr('method') !== 'post') {
                         $form.attr('method', 'post');
-                        console.log('🔔 CoinSub: ⚠️ Form method was not POST! Fixed to POST');
+                        console.log('PP: ⚠️ Form method was not POST! Fixed to POST');
                     }
                     
                     // CRITICAL: Ensure nonce field exists (WooCommerce requires this)
                     if ($form.find('input[name="_wpnonce"]').length === 0) {
-                        console.error('🔔 CoinSub: ⚠️ WARNING: No nonce field found! This might prevent form submission.');
+                        console.error('PP: ⚠️ WARNING: No nonce field found! This might prevent form submission.');
                     } else {
-                        console.log('🔔 CoinSub: ✅ Nonce field found');
+                        console.log('PP: ✅ Nonce field found');
                     }
                     
                     // Verify form will submit
-                    console.log('🔔 CoinSub: Final form action:', $form.attr('action'));
-                    console.log('🔔 CoinSub: Final form method:', $form.attr('method'));
-                    console.log('🔔 CoinSub: Form will submit in 100ms...');
+                    console.log('PP: Final form action:', $form.attr('action'));
+                    console.log('PP: Final form method:', $form.attr('method'));
+                    console.log('PP: Form will submit in 100ms...');
                     
                     // Force form submission if it doesn't happen automatically
                     setTimeout(function() {
                         if ($form.length > 0 && $form.attr('action')) {
-                            console.log('🔔 CoinSub: 🔄 Ensuring form submission...');
+                            console.log('PP: 🔄 Ensuring form submission...');
                             // Don't actually force submit - let WooCommerce handle it
                             // But log that we're ready
                         }
                     }, 100);
                 } else {
-                    console.error('🔔 CoinSub: ❌❌❌ NO FORM FOUND! This is a critical error!');
+                    console.error('PP: ❌❌❌ NO FORM FOUND! This is a critical error!');
                 }
                 
                 // Don't prevent default - let button submit form normally
@@ -325,32 +299,32 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Method 3: Listen for WooCommerce AJAX submission (if it uses AJAX)
             $(document).ajaxComplete(function(event, xhr, settings) {
                 if (settings.url && settings.url.indexOf('wc-settings') !== -1) {
-                    console.log('🔔 CoinSub: ✅✅✅ WOOCOMMERCE AJAX REQUEST DETECTED! ✅✅✅');
-                    console.log('🔔 CoinSub: AJAX URL:', settings.url);
-                    console.log('🔔 CoinSub: AJAX Method:', settings.type);
+                    console.log('PP: ✅✅✅ WOOCOMMERCE AJAX REQUEST DETECTED! ✅✅✅');
+                    console.log('PP: AJAX URL:', settings.url);
+                    console.log('PP: AJAX Method:', settings.type);
                 }
             });
             
             // Also check for any JavaScript errors that might prevent submission
             window.addEventListener('error', function(e) {
-                console.error('🔔 CoinSub: ❌ JavaScript Error detected:', e.message, e.filename, e.lineno);
+                console.error('PP: ❌ JavaScript Error detected:', e.message, e.filename, e.lineno);
             });
             
             // DIAGNOSTIC: Check form structure after page load
             setTimeout(function() {
                 var $form = $('form');
-                console.log('🔔 CoinSub: 🔍 FORM DIAGNOSTICS:');
-                console.log('🔔 CoinSub: - Form exists:', $form.length > 0);
+                console.log('PP: 🔍 FORM DIAGNOSTICS:');
+                console.log('PP: - Form exists:', $form.length > 0);
                 if ($form.length > 0) {
-                    console.log('🔔 CoinSub: - Form action:', $form.attr('action'));
-                    console.log('🔔 CoinSub: - Form method:', $form.attr('method'));
-                    console.log('🔔 CoinSub: - Form ID:', $form.attr('id'));
-                    console.log('🔔 CoinSub: - Form class:', $form.attr('class'));
-                    console.log('🔔 CoinSub: - Has nonce:', $form.find('input[name="_wpnonce"]').length > 0);
-                    console.log('🔔 CoinSub: - Has merchant_id field:', $('#woocommerce_coinsub_merchant_id').length > 0);
-                    console.log('🔔 CoinSub: - Has api_key field:', $('#woocommerce_coinsub_api_key').length > 0);
-                    console.log('🔔 CoinSub: - Has enabled checkbox:', $('#woocommerce_coinsub_enabled').length > 0);
-                    console.log('🔔 CoinSub: - Has save button:', $('button[name="save"], input[name="save"]').length > 0);
+                    console.log('PP: - Form action:', $form.attr('action'));
+                    console.log('PP: - Form method:', $form.attr('method'));
+                    console.log('PP: - Form ID:', $form.attr('id'));
+                    console.log('PP: - Form class:', $form.attr('class'));
+                    console.log('PP: - Has nonce:', $form.find('input[name="_wpnonce"]').length > 0);
+                    console.log('PP: - Has merchant_id field:', $('#woocommerce_coinsub_merchant_id').length > 0);
+                    console.log('PP: - Has api_key field:', $('#woocommerce_coinsub_api_key').length > 0);
+                    console.log('PP: - Has enabled checkbox:', $('#woocommerce_coinsub_enabled').length > 0);
+                    console.log('PP: - Has save button:', $('button[name="save"], input[name="save"]').length > 0);
                 }
             }, 1000);
         });
@@ -365,42 +339,32 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     public function init_form_fields() {
         // Only log on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-        error_log('🏗️ CoinSub - init_form_fields() called');
+        error_log('PP Gateway: init_form_fields() called');
         }
         $this->form_fields = array(
             'enabled' => array(
                 'title' => __('Enable/Disable', 'coinsub'),
                 'type' => 'checkbox',
-                'label' => __('Enable Stablecoin Pay Crypto Payments', 'coinsub'),
+                'label' => $this->get_enable_label(),
                 'default' => 'no'
-            ),
-            'environment' => array(
-                'title' => __('Environment', 'coinsub'),
-                'type' => 'select',
-                'description' => __('Select the environment for testing or production use.', 'coinsub'),
-                'default' => 'production',
-                'options' => array(
-                    'production' => __('Real Card', 'coinsub'),
-                    'test' => __('Test Card', 'coinsub'),
-                ),
             ),
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Get this from your merchant dashboard', 'coinsub'),
+                'description' => $this->get_credentials_source_description(),
                 'default' => '',
                 'placeholder' => 'e.g., 12345678-abcd-1234-abcd-123456789abc',
             ),
             'api_key' => array(
                 'title' => __('API Key', 'coinsub'),
                 'type' => 'password',
-                'description' => __('Get this from your merchant dashboard', 'coinsub'),
+                'description' => $this->get_credentials_source_description(),
                 'default' => '',
             ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Copy this URL and add it to your merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
+                'description' => $this->get_webhook_destination_description(),
                 'default' => (function() {
                     $secret = get_option('coinsub_webhook_secret');
                     $base = home_url('/wp-json/stablecoin/v1/webhook');
@@ -414,50 +378,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get API base URL - centralized for all merchants
-     * Uses environment_id from stored branding for white-label deployments
-     * Default: api.coinsub.io/v1
+     * Get API base URL - production only. Uses environment_id from stored branding for white-label.
      */
     public function get_api_base_url() {
-        // Check if we have stored branding with environment_id (for white-label)
         $branding = get_option('coinsub_whitelabel_branding', false);
-        
         if ($branding && is_array($branding) && !empty($branding['environment_id'])) {
-            $environment_id = $branding['environment_id'];
-            $environment = $this->get_option('environment', 'production');
-            
-            // Construct white-label API URL from environment_id
-            // Test: https://test-api.{environment_id}/v1
-            // Production: https://api.{environment_id}/v1
-            if ($environment === 'test') {
-                return 'https://test-api.' . $environment_id . '/v1';
-            } else {
-                return 'https://api.' . $environment_id . '/v1';
-            }
+            return 'https://api.' . $branding['environment_id'] . '/v1';
         }
-        
-        // Fallback to default CoinSub URLs
-        $environment = $this->get_option('environment', 'production');
-        
-        if ($environment === 'test') {
-            return 'https://test-api.coinsub.io/v1'; // Test environment
-        }
-        
-        return 'https://api.coinsub.io/v1'; // Production
+        return 'https://api.coinsub.io/v1';
     }
-    
+
     /**
-     * Get asset base URL (for logos, favicons, etc.)
+     * Get asset base URL (for logos, favicons, etc.) - production only.
      */
     public function get_asset_base_url() {
-        // Check environment setting
-        $environment = $this->get_option('environment', 'production');
-        
-        if ($environment === 'test') {
-            return 'https://test-app.coinsub.io'; // Test environment
+        $branding = get_option('coinsub_whitelabel_branding', false);
+        if ($branding && is_array($branding) && !empty($branding['environment_id'])) {
+            return 'https://app.' . $branding['environment_id'];
         }
-        
-        return 'https://app.coinsub.io'; // Production
+        return 'https://app.coinsub.io';
     }
     
     /**
@@ -476,10 +415,10 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         static $branding_loaded = false;
         static $cached_branding = null;
         
-        error_log('CoinSub Whitelabel: 🔍 Cache check - branding_loaded: ' . ($branding_loaded ? 'YES' : 'NO') . ', force_refresh: ' . ($force_refresh ? 'YES' : 'NO'));
+        error_log('PP Whitelabel: 🔍 Cache check - branding_loaded: ' . ($branding_loaded ? 'YES' : 'NO') . ', force_refresh: ' . ($force_refresh ? 'YES' : 'NO'));
         
         if ($branding_loaded && !$force_refresh) {
-            error_log('CoinSub Whitelabel: ⚡ Using cached branding from previous load in same request');
+            error_log('PP Whitelabel: ⚡ Using cached branding from previous load in same request');
             // Restore cached values
             if ($cached_branding) {
                 $this->brand_company = $cached_branding['brand_company'];
@@ -487,12 +426,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $this->checkout_icon = $cached_branding['checkout_icon'];
                 $this->button_logo_url = $cached_branding['button_logo_url'];
                 $this->button_company_name = $cached_branding['button_company_name'];
-                error_log('CoinSub Whitelabel: ⚡ Restored branding - Title: "' . $this->checkout_title . '", Company: "' . $this->brand_company . '"');
+                error_log('PP Whitelabel: ⚡ Restored branding - Title: "' . $this->checkout_title . '", Company: "' . $this->brand_company . '"');
             }
             return;
         }
         
-        error_log('CoinSub Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
+        error_log('PP Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
         
         // CRITICAL FIX: Check if credentials exist before loading branding
         // If no credentials, clear any old branding and use defaults
@@ -501,7 +440,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $api_key = $this->get_option('api_key');
         
         if (empty($merchant_id) && empty($api_key)) {
-            error_log('CoinSub Whitelabel: ⚠️ No credentials - clearing old branding and using defaults');
+            error_log('PP Whitelabel: ⚠️ No credentials - clearing old branding and using defaults');
         $branding = new CoinSub_Whitelabel_Branding();
             $branding->clear_cache(); // Clear any old branding from previous merchant
             $this->brand_company = 'Coinsub';
@@ -510,7 +449,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_company_name = 'Coinsub';
-            error_log('CoinSub Whitelabel: ✅ Using default branding (no credentials, no payment provider) - Checkout Title: "Pay with Coinsub"');
+            error_log('PP Whitelabel: ✅ Using default branding (no credentials, no payment provider) - Checkout Title: "Pay with Coinsub"');
             
             // Cache this for subsequent loads
             $branding_loaded = true;
@@ -521,7 +460,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 'button_logo_url' => $this->button_logo_url,
                 'button_company_name' => $this->button_company_name,
             );
-            error_log('CoinSub Whitelabel: 💾 Cached default branding');
+            error_log('PP Whitelabel: 💾 Cached default branding');
             return;
         }
         
@@ -535,13 +474,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Check if we've already tried to fetch in this session (prevent infinite loops)
             $fetch_attempted = get_transient('coinsub_branding_fetch_attempted_' . $merchant_id);
             if (!$fetch_attempted) {
-                error_log('CoinSub Whitelabel: ⚠️ No branding found but credentials exist - attempting one-time fetch...');
+                error_log('PP Whitelabel: ⚠️ No branding found but credentials exist - attempting one-time fetch...');
                 set_transient('coinsub_branding_fetch_attempted_' . $merchant_id, true, 300); // 5 minute lock
                 $branding_data = $branding->get_branding(true); // Force refresh
                 if (!empty($branding_data) && isset($branding_data['company'])) {
-                    error_log('CoinSub Whitelabel: ✅ Successfully fetched branding on checkout - Company: "' . $branding_data['company'] . '"');
+                    error_log('PP Whitelabel: ✅ Successfully fetched branding on checkout - Company: "' . $branding_data['company'] . '"');
                 } else {
-                    error_log('CoinSub Whitelabel: ⚠️ Fetch attempt failed or returned empty - will use default');
+                    error_log('PP Whitelabel: ⚠️ Fetch attempt failed or returned empty - will use default');
                 }
             }
         }
@@ -553,21 +492,21 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Store checkout-specific title (NOT $this->title which is for admin)
             $this->checkout_title = 'Pay with ' . $company_name;
         
-            error_log('CoinSub Whitelabel: ✅ CHECKOUT TITLE SET - Title: "' . $this->checkout_title . '" | Company: "' . $company_name . '" | brand_company property: "' . $this->brand_company . '"');
+            error_log('PP Whitelabel: ✅ CHECKOUT TITLE SET - Title: "' . $this->checkout_title . '" | Company: "' . $company_name . '" | brand_company property: "' . $this->brand_company . '"');
             
             // Update checkout icon - prefer favicon (smaller, better for payment method icon)
             $favicon_url = $branding->get_favicon_url();
             if ($favicon_url) {
                 $this->checkout_icon = $favicon_url;
-                error_log('CoinSub Whitelabel: 🖼️ ✅ Set checkout icon to favicon: ' . $favicon_url);
+                error_log('PP Whitelabel: 🖼️ ✅ Set checkout icon to favicon: ' . $favicon_url);
             } else {
                 // Fallback to default logo
                 $logo_url = $branding->get_logo_url('default', 'light');
                 if ($logo_url) {
                     $this->checkout_icon = $logo_url;
-                    error_log('CoinSub Whitelabel: 🖼️ ✅ Set checkout icon to logo: ' . $logo_url);
+                    error_log('PP Whitelabel: 🖼️ ✅ Set checkout icon to logo: ' . $logo_url);
                 } else {
-                    error_log('CoinSub Whitelabel: 🖼️ ⚠️ No logo URL returned, keeping default icon');
+                    error_log('PP Whitelabel: 🖼️ ⚠️ No logo URL returned, keeping default icon');
                     $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
                 }
             }
@@ -576,18 +515,18 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $logo_url = $branding->get_logo_url('default', 'light');
             $this->button_logo_url = $logo_url ?: COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_company_name = $company_name;
-            error_log('CoinSub Whitelabel: 🔘 Button logo URL set: ' . $this->button_logo_url);
+            error_log('PP Whitelabel: 🔘 Button logo URL set: ' . $this->button_logo_url);
         } else {
             // No branding found - use default "Pay with Coinsub" and CoinSub logo
-            error_log('CoinSub Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub" and CoinSub logo');
+            error_log('PP Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub" and CoinSub logo');
             $this->brand_company = 'Coinsub';
             $this->checkout_title = 'Pay with Coinsub';
             $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             // Set default button logo URL
             $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_company_name = 'Coinsub';
-            error_log('CoinSub Whitelabel: ✅ Set default checkout title: "' . $this->checkout_title . '" and default icon: ' . $this->checkout_icon);
-            error_log('CoinSub Whitelabel: 🔘 Button logo URL set to default: ' . $this->button_logo_url);
+            error_log('PP Whitelabel: ✅ Set default checkout title: "' . $this->checkout_title . '" and default icon: ' . $this->checkout_icon);
+            error_log('PP Whitelabel: 🔘 Button logo URL set to default: ' . $this->button_logo_url);
         }
         
         // Cache the branding for subsequent gateway instances in the same request
@@ -600,7 +539,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'button_logo_url' => $this->button_logo_url,
             'button_company_name' => $this->button_company_name,
         );
-        error_log('CoinSub Whitelabel: 💾 Cached branding for subsequent loads - Title: "' . $this->checkout_title . '", Company: "' . $this->brand_company . '"');
+        error_log('PP Whitelabel: 💾 Cached branding for subsequent loads - Title: "' . $this->checkout_title . '", Company: "' . $this->brand_company . '"');
     }
     
     /**
@@ -621,16 +560,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Check if form was submitted (save button clicked)
         if (isset($_POST['save']) && isset($_POST['woocommerce_' . $this->id . '_enabled'])) {
-            error_log('CoinSub Whitelabel: 🔔🔔🔔 maybe_process_admin_options() DETECTED FORM SUBMISSION! 🔔🔔🔔');
-            error_log('CoinSub Whitelabel: POST data keys: ' . implode(', ', array_keys($_POST)));
-            error_log('CoinSub Whitelabel: Merchant ID in POST: ' . (isset($_POST['woocommerce_coinsub_merchant_id']) ? 'YES - Value: ' . substr($_POST['woocommerce_coinsub_merchant_id'], 0, 20) . '...' : 'NO'));
-            error_log('CoinSub Whitelabel: API Key in POST: ' . (isset($_POST['woocommerce_coinsub_api_key']) ? 'YES - Length: ' . strlen($_POST['woocommerce_coinsub_api_key']) : 'NO'));
+            error_log('PP Whitelabel: 🔔🔔🔔 maybe_process_admin_options() DETECTED FORM SUBMISSION! 🔔🔔🔔');
+            error_log('PP Whitelabel: POST data keys: ' . implode(', ', array_keys($_POST)));
+            error_log('PP Whitelabel: Merchant ID in POST: ' . (isset($_POST['woocommerce_coinsub_merchant_id']) ? 'YES - Value: ' . substr($_POST['woocommerce_coinsub_merchant_id'], 0, 20) . '...' : 'NO'));
+            error_log('PP Whitelabel: API Key in POST: ' . (isset($_POST['woocommerce_coinsub_api_key']) ? 'YES - Length: ' . strlen($_POST['woocommerce_coinsub_api_key']) : 'NO'));
             
             // CRITICAL FIX: WooCommerce's process_admin_options() isn't being called automatically
             // So we need to call it manually as a backup to ensure settings are saved
-            error_log('CoinSub Whitelabel: ⚠️ WooCommerce process_admin_options() not called automatically - calling manually as backup...');
+            error_log('PP Whitelabel: ⚠️ WooCommerce process_admin_options() not called automatically - calling manually as backup...');
             $this->process_admin_options();
-            error_log('CoinSub Whitelabel: ✅ process_admin_options() called manually - settings should now be saved');
+            error_log('PP Whitelabel: ✅ process_admin_options() called manually - settings should now be saved');
         }
     }
     
@@ -646,14 +585,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Prevent duplicate execution (could be called from hook AND process_admin_options)
         static $executed = false;
         if ($executed) {
-            error_log('CoinSub Whitelabel: ⚠️ update_api_client_settings() already executed, skipping duplicate call');
+            error_log('PP Whitelabel: ⚠️ update_api_client_settings() already executed, skipping duplicate call');
             return;
         }
         $executed = true;
         
         error_log('═══════════════════════════════════════════════════════════');
-        error_log('CoinSub Whitelabel: 🔔🔔🔔 SETTINGS SAVE DETECTED! 🔔🔔🔔');
-        error_log('CoinSub Whitelabel: update_api_client_settings() CALLED');
+        error_log('PP Whitelabel: 🔔🔔🔔 SETTINGS SAVE DETECTED! 🔔🔔🔔');
+        error_log('PP Whitelabel: update_api_client_settings() CALLED');
         error_log('═══════════════════════════════════════════════════════════');
         
         // Reload settings from database (they were just saved by WooCommerce)
@@ -661,42 +600,31 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
-        $environment = $this->get_option('environment', 'production');
+        $api_base_url = $this->get_api_base_url();
         
-        // CRITICAL: For initial branding fetch, we MUST use api.coinsub.io (or test-api.coinsub.io for test)
-        // because environment configs endpoint is only available there
-        // After branding is stored with environment_id, future calls will use white-label domain via get_api_base_url()
-        if ($environment === 'test') {
-            $api_base_url = 'https://test-api.coinsub.io/v1'; // Test environment
-        } else {
-            $api_base_url = 'https://api.coinsub.io/v1'; // Production
-        }
-        
-        error_log('CoinSub Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
-        error_log('CoinSub Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
-        error_log('═══════════════════════════════════════════════════════════');
-        error_log('🌍🌍🌍 CoinSub Whitelabel: 📝 Settings - ENVIRONMENT: ' . strtoupper($environment) . ' 🌍🌍🌍');
-        error_log('CoinSub Whitelabel: 📝 Settings - API Base URL: ' . $api_base_url);
+        error_log('PP Whitelabel: 📝 Settings - Merchant ID: ' . (empty($merchant_id) ? 'EMPTY' : substr($merchant_id, 0, 20) . '...'));
+        error_log('PP Whitelabel: 📝 Settings - API Key: ' . (strlen($api_key) > 0 ? substr($api_key, 0, 10) . '...' : 'EMPTY'));
+        error_log('PP Whitelabel: 📝 Settings - API Base URL: ' . $api_base_url);
         error_log('═══════════════════════════════════════════════════════════');
         
         // Update API client if we have credentials
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
-            error_log('CoinSub Whitelabel: ✅ API client updated with credentials');
+            error_log('PP Whitelabel: ✅ API client updated with credentials');
         } else {
             // No credentials - skip everything
-            error_log('CoinSub Whitelabel: ⚠️ Skipping - no credentials');
+            error_log('PP Whitelabel: ⚠️ Skipping - no credentials');
             return;
         }
         
         // Clear any stuck fetch locks from previous attempts
         delete_transient('coinsub_whitelabel_fetching');
         delete_transient('coinsub_whitelabel_fetching_time');
-        error_log('CoinSub Whitelabel: 🔓 Cleared any existing fetch locks');
+        error_log('PP Whitelabel: 🔓 Cleared any existing fetch locks');
         
         // CRITICAL FIX: Try to fetch branding immediately, but don't block if it fails
         // If immediate fetch fails, it will be retried on next page load
-        error_log('CoinSub Whitelabel: 🔄 Attempting immediate branding fetch...');
+        error_log('PP Whitelabel: 🔄 Attempting immediate branding fetch...');
         
         try {
             $branding = new CoinSub_Whitelabel_Branding();
@@ -706,19 +634,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $branding_data = $branding->get_branding(true);
             
             if (!empty($branding_data) && isset($branding_data['company'])) {
-                error_log('CoinSub Whitelabel: ✅✅✅ Branding fetched immediately - Company: "' . $branding_data['company'] . '"');
+                error_log('PP Whitelabel: ✅✅✅ Branding fetched immediately - Company: "' . $branding_data['company'] . '"');
             } else {
-                error_log('CoinSub Whitelabel: ⚠️ Immediate fetch returned empty - will retry on next page load');
+                error_log('PP Whitelabel: ⚠️ Immediate fetch returned empty - will retry on next page load');
                 // Set flag to retry on next page load as fallback
                 set_transient('coinsub_refresh_branding_on_load', true, 60);
             }
             
         } catch (Exception $e) {
-            error_log('CoinSub Whitelabel: ❌ ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
+            error_log('PP Whitelabel: ❌ ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
             // Set flag to retry on next page load as fallback
             set_transient('coinsub_refresh_branding_on_load', true, 60);
         } catch (Error $e) {
-            error_log('CoinSub Whitelabel: ❌ FATAL ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
+            error_log('PP Whitelabel: ❌ FATAL ERROR fetching branding immediately: ' . $e->getMessage() . ' - Will retry on next page load');
             // Set flag to retry on next page load as fallback
             set_transient('coinsub_refresh_branding_on_load', true, 60);
         }
@@ -733,36 +661,31 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Prevent duplicate execution (could be called from WooCommerce AND maybe_process_admin_options)
         static $executed = false;
         if ($executed) {
-            error_log('CoinSub Whitelabel: ⚠️ process_admin_options() already executed, skipping duplicate call');
+            error_log('PP Whitelabel: ⚠️ process_admin_options() already executed, skipping duplicate call');
             return parent::process_admin_options(); // Still call parent to save, but skip our custom logic
         }
         $executed = true;
         
         error_log('═══════════════════════════════════════════════════════════');
-        error_log('CoinSub Whitelabel: 🔔🔔🔔 process_admin_options() CALLED - Settings are being saved! 🔔🔔🔔');
+        error_log('PP Whitelabel: 🔔🔔🔔 process_admin_options() CALLED - Settings are being saved! 🔔🔔🔔');
         error_log('═══════════════════════════════════════════════════════════');
-        error_log('CoinSub Whitelabel: POST data keys: ' . implode(', ', array_keys($_POST)));
+        error_log('PP Whitelabel: POST data keys: ' . implode(', ', array_keys($_POST)));
         
-        // Log POST data for merchant_id, api_key, and environment
+        // Log POST data for merchant_id, api_key
         if (isset($_POST['woocommerce_coinsub_merchant_id'])) {
             $merchant_id_preview = substr($_POST['woocommerce_coinsub_merchant_id'], 0, 20);
-            error_log('CoinSub Whitelabel: 📝 POST merchant_id: ' . $merchant_id_preview . '... (length: ' . strlen($_POST['woocommerce_coinsub_merchant_id']) . ')');
+            error_log('PP Whitelabel: 📝 POST merchant_id: ' . $merchant_id_preview . '... (length: ' . strlen($_POST['woocommerce_coinsub_merchant_id']) . ')');
         } else {
-            error_log('CoinSub Whitelabel: ⚠️ POST merchant_id NOT SET');
+            error_log('PP Whitelabel: ⚠️ POST merchant_id NOT SET');
         }
         
         if (isset($_POST['woocommerce_coinsub_api_key'])) {
             $api_key_length = strlen($_POST['woocommerce_coinsub_api_key']);
-            error_log('CoinSub Whitelabel: 📝 POST api_key: ' . ($api_key_length > 0 ? substr($_POST['woocommerce_coinsub_api_key'], 0, 10) . '... (length: ' . $api_key_length . ')' : 'EMPTY'));
+            error_log('PP Whitelabel: 📝 POST api_key: ' . ($api_key_length > 0 ? substr($_POST['woocommerce_coinsub_api_key'], 0, 10) . '... (length: ' . $api_key_length . ')' : 'EMPTY'));
         } else {
-            error_log('CoinSub Whitelabel: ⚠️ POST api_key NOT SET - This is normal for password fields if unchanged');
+            error_log('PP Whitelabel: ⚠️ POST api_key NOT SET - This is normal for password fields if unchanged');
         }
         
-        if (isset($_POST['woocommerce_coinsub_environment'])) {
-            error_log('🌍🌍🌍 CoinSub Whitelabel: 📝 POST environment: ' . $_POST['woocommerce_coinsub_environment']);
-        } else {
-            error_log('CoinSub Whitelabel: ⚠️ POST environment NOT SET');
-        }
         
         // IMPORTANT: For password fields, WooCommerce only sends them in POST if they're changed
         // If api_key is not in POST, we need to preserve the existing value
@@ -770,41 +693,38 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         if (!isset($_POST['woocommerce_coinsub_api_key']) && !empty($existing_api_key)) {
             // Password field not in POST means user didn't change it - preserve existing value
             $_POST['woocommerce_coinsub_api_key'] = $existing_api_key;
-            error_log('CoinSub Whitelabel: 🔒 Preserving existing API key (password field unchanged)');
+            error_log('PP Whitelabel: 🔒 Preserving existing API key (password field unchanged)');
         }
         
         // Call parent to save settings first
         $result = parent::process_admin_options();
         
-        error_log('CoinSub Whitelabel: 🔔 Parent process_admin_options() returned. Result: ' . ($result ? 'SUCCESS (true)' : 'FAILED (false)'));
+        error_log('PP Whitelabel: 🔔 Parent process_admin_options() returned. Result: ' . ($result ? 'SUCCESS (true)' : 'FAILED (false)'));
         
         // Verify settings were saved
         $saved_merchant_id = $this->get_option('merchant_id', '');
         $saved_api_key = $this->get_option('api_key', '');
-        $saved_environment = $this->get_option('environment', 'production');
-        error_log('CoinSub Whitelabel: ✅ Saved merchant_id: ' . (empty($saved_merchant_id) ? 'EMPTY' : substr($saved_merchant_id, 0, 20) . '... (length: ' . strlen($saved_merchant_id) . ')'));
-        error_log('CoinSub Whitelabel: ✅ Saved api_key: ' . (empty($saved_api_key) ? 'EMPTY' : substr($saved_api_key, 0, 10) . '... (length: ' . strlen($saved_api_key) . ')'));
-        error_log('═══════════════════════════════════════════════════════════');
-        error_log('🌍🌍🌍 CoinSub Whitelabel: ✅ SAVED ENVIRONMENT: ' . strtoupper($saved_environment) . ' 🌍🌍🌍');
+        error_log('PP Whitelabel: ✅ Saved merchant_id: ' . (empty($saved_merchant_id) ? 'EMPTY' : substr($saved_merchant_id, 0, 20) . '... (length: ' . strlen($saved_merchant_id) . ')'));
+        error_log('PP Whitelabel: ✅ Saved api_key: ' . (empty($saved_api_key) ? 'EMPTY' : substr($saved_api_key, 0, 10) . '... (length: ' . strlen($saved_api_key) . ')'));
         error_log('═══════════════════════════════════════════════════════════');
         
         // Now fetch branding (if we have credentials)
         // Wrap in try-catch to prevent fatal errors from breaking the save process
         if (!empty($saved_merchant_id) && !empty($saved_api_key)) {
             try {
-                error_log('CoinSub Whitelabel: 🔔 Calling update_api_client_settings() to fetch branding...');
+                error_log('PP Whitelabel: 🔔 Calling update_api_client_settings() to fetch branding...');
                 $this->update_api_client_settings();
             } catch (Exception $e) {
-                error_log('CoinSub Whitelabel: ❌ ERROR fetching branding: ' . $e->getMessage());
-                error_log('CoinSub Whitelabel: ❌ Stack trace: ' . $e->getTraceAsString());
+                error_log('PP Whitelabel: ❌ ERROR fetching branding: ' . $e->getMessage());
+                error_log('PP Whitelabel: ❌ Stack trace: ' . $e->getTraceAsString());
                 // Don't break the save process - settings were saved successfully
             } catch (Error $e) {
-                error_log('CoinSub Whitelabel: ❌ FATAL ERROR fetching branding: ' . $e->getMessage());
-                error_log('CoinSub Whitelabel: ❌ Stack trace: ' . $e->getTraceAsString());
+                error_log('PP Whitelabel: ❌ FATAL ERROR fetching branding: ' . $e->getMessage());
+                error_log('PP Whitelabel: ❌ Stack trace: ' . $e->getTraceAsString());
                 // Don't break the save process - settings were saved successfully
             }
         } else {
-            error_log('CoinSub Whitelabel: ⚠️ Skipping branding fetch - no credentials AND no payment provider name');
+            error_log('PP Whitelabel: ⚠️ Skipping branding fetch - no credentials AND no payment provider name');
         }
         
         error_log('═══════════════════════════════════════════════════════════');
@@ -825,48 +745,43 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Process the payment and return the result
      */
     public function process_payment($order_id) {
-        error_log('🚀🚀🚀 CoinSub - process_payment() called for order #' . $order_id . ' 🚀🚀🚀');
-        error_log('🎯 CoinSub - Payment method selected: ' . ($_POST['payment_method'] ?? 'none'));
-        error_log('🎯 CoinSub - Order total: $' . wc_get_order($order_id)->get_total());
+        error_log('PP Gateway: process_payment() called for order #' . $order_id);
+        error_log('PP Gateway: Payment method: ' . ($_POST['payment_method'] ?? 'none'));
+        error_log('PP Gateway: Order total: $' . wc_get_order($order_id)->get_total());
         
         $order = wc_get_order($order_id);
         
         if (!$order) {
-            error_log('❌ CoinSub - Order not found: ' . $order_id);
+            error_log('PP Gateway: Order not found: ' . $order_id);
             return array(
                 'result' => 'failure',
                 'messages' => __('Order not found', 'coinsub')
             );
         }
         
-        error_log('✅ CoinSub - Order found. Starting payment process...');
+        error_log('PP Gateway: Order found. Starting payment process...');
         
         try {
             // Get cart data from session (calculated by cart sync)
             $cart_data = WC()->session->get('coinsub_cart_data');
             
             if (!$cart_data) {
-                error_log('⚠️ CoinSub - No cart data from session, calculating now...');
+                error_log('PP Gateway: No cart data from session, calculating now...');
                 $cart_data = $this->calculate_cart_totals();
             }
             
-            error_log('✅ CoinSub - Using cart data from session:');
-            error_log('  Total: $' . $cart_data['total']);
-            error_log('  Currency: ' . $cart_data['currency']);
-            error_log('  Has Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
+            error_log('PP Gateway: Using cart data from session: Total $' . $cart_data['total'] . ' ' . $cart_data['currency'] . ', Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
             
-            // Ensure API client is using the correct environment settings
+            // Ensure API client is using production settings
             $api_base_url = $this->get_api_base_url();
             $merchant_id = $this->get_option('merchant_id', '');
             $api_key = $this->get_option('api_key', '');
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
-            error_log('💳 CoinSub - API client updated with environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
-            error_log('💳 CoinSub - API Base URL: ' . $api_base_url);
+            error_log('PP Gateway: API client updated (production), Base URL: ' . $api_base_url);
             
             // Create purchase session directly with cart totals
             $session_start_time = microtime(true);
-            error_log('💳 CoinSub - Creating purchase session...');
-            error_log('⏱️ CoinSub - Purchase session API call started at ' . date('H:i:s'));
+            error_log('PP Gateway: Creating purchase session at ' . date('H:i:s'));
             
             $purchase_session_data = $this->prepare_purchase_session_from_cart($order, $cart_data);
             
@@ -874,144 +789,53 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             
             $session_end_time = microtime(true);
             $session_duration = round($session_end_time - $session_start_time, 2);
-            error_log('⏱️ CoinSub - Purchase session creation took ' . $session_duration . ' seconds');
+            error_log('PP Gateway: Purchase session creation took ' . $session_duration . ' seconds');
             
             // Check for errors BEFORE trying to access as array
             if (is_wp_error($purchase_session)) {
-                error_log('❌ CoinSub - Purchase session failed: ' . $purchase_session->get_error_message());
+                error_log('PP Gateway: Purchase session failed: ' . $purchase_session->get_error_message());
                 throw new Exception($purchase_session->get_error_message());
             }
             
-            error_log('✅ CoinSub - Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
+            error_log('PP Gateway: Purchase session created: ' . ($purchase_session['purchase_session_id'] ?? 'unknown'));
             
             // Get checkout URL from purchase session
             $checkout_url = isset($purchase_session['checkout_url']) ? $purchase_session['checkout_url'] : '';
             
             if (empty($checkout_url)) {
-                error_log('❌ CoinSub - CRITICAL: Checkout URL is empty in purchase session response!');
-                error_log('📦 Purchase session data: ' . json_encode($purchase_session));
+                error_log('PP Gateway: CRITICAL: Checkout URL is empty in purchase session response. Data: ' . json_encode($purchase_session));
                 throw new Exception('Checkout URL not received from API');
             }
             
-            error_log('🔗 CoinSub - Checkout URL from API (original): ' . $checkout_url);
-            error_log('🔗 CoinSub - Current environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
-            error_log('🔗 CoinSub - API Base URL used: ' . $this->get_api_base_url());
+            error_log('PP Gateway: Checkout URL from API: ' . $checkout_url);
             
-            // Replace checkout URL domain with whitelabel buyurl if available
-            // CRITICAL: In test mode, only use buyurl if it's also a test URL
+            // Replace checkout URL domain with whitelabel buyurl when available (production only)
             $branding_data = get_option('coinsub_whitelabel_branding', array());
-            $is_test_mode = $this->get_option('environment', 'production') === 'test';
-            
-            error_log('🔍 CoinSub - Checking for buyurl in branding data...');
-            error_log('🔍 CoinSub - Branding data keys: ' . json_encode(array_keys($branding_data)));
-            error_log('🔍 CoinSub - Buyurl in branding: ' . (isset($branding_data['buyurl']) ? $branding_data['buyurl'] : 'NOT SET'));
-            error_log('🔍 CoinSub - Company slug in branding: ' . (isset($branding_data['company_slug']) ? $branding_data['company_slug'] : 'NOT SET'));
-            
-            // Get buyurl from branding, or construct it from company_slug
-            $buyurl = '';
-            if (!empty($branding_data['buyurl'])) {
-                $buyurl = $branding_data['buyurl'];
-                error_log('🎨 CoinSub - ✅ Whitelabel buyurl found in branding: ' . $buyurl);
-            } elseif (!empty($branding_data['company_slug'])) {
-                // Construct buyurl from company_slug
-                // Example: paymentservers -> https://buy.paymentservers.com
-                $company_slug = $branding_data['company_slug'];
-                $buyurl = 'https://buy.' . $company_slug . '.com';
-                error_log('🔧 CoinSub - Constructed buyurl from company_slug: ' . $buyurl);
+            $buyurl = !empty($branding_data['buyurl']) ? $branding_data['buyurl'] : '';
+            if (empty($buyurl) && !empty($branding_data['company_slug'])) {
+                $buyurl = 'https://buy.' . $branding_data['company_slug'] . '.com';
             }
-            
             if (!empty($buyurl)) {
-                
-                // Check if buyurl is a test URL
-                $buyurl_is_test = strpos($buyurl, 'test') !== false || 
-                                 strpos($buyurl, 'test-') !== false ||
-                                 strpos($buyurl, 'test.') !== false ||
-                                 strpos(strtolower($buyurl), 'test') !== false;
-                
-                // Check if original checkout URL is a test URL
-                $checkout_url_is_test = strpos($checkout_url, 'test') !== false || 
-                                       strpos($checkout_url, 'test-') !== false ||
-                                       strpos($checkout_url, 'test.') !== false;
-                
-                error_log('🔍 CoinSub - Environment check:');
-                error_log('   - Current mode: ' . ($is_test_mode ? 'TEST' : 'PRODUCTION'));
-                error_log('   - Buyurl is test: ' . ($buyurl_is_test ? 'YES' : 'NO'));
-                error_log('   - Checkout URL is test: ' . ($checkout_url_is_test ? 'YES' : 'NO'));
-                
-                // In test mode, if buyurl is production, construct test version
-                // Example: https://buy.paymentservers.com -> https://test-buy.paymentservers.com
-                if ($is_test_mode && !$buyurl_is_test) {
-                    error_log('🔄 CoinSub - Test mode: Constructing test buyurl from production buyurl');
-                    $buyurl_parts = parse_url($buyurl);
-                    if ($buyurl_parts && isset($buyurl_parts['host'])) {
-                        $host = $buyurl_parts['host'];
-                        // Check if host already has a subdomain (e.g., buy.paymentservers.com)
-                        $host_parts = explode('.', $host);
-                        if (count($host_parts) >= 2) {
-                            // Add "test-" prefix to first subdomain
-                            // buy.paymentservers.com -> test-buy.paymentservers.com
-                            $first_part = $host_parts[0];
-                            $rest = implode('.', array_slice($host_parts, 1));
-                            $test_host = 'test-' . $first_part . '.' . $rest;
-                            $buyurl_parts['host'] = $test_host;
-                            $buyurl = $buyurl_parts['scheme'] . '://' . $test_host;
-                            error_log('✅ CoinSub - Constructed test buyurl: ' . $buyurl);
-                            $buyurl_is_test = true; // Now it's a test URL
-                        }
+                $buyurl_parts = parse_url($buyurl);
+                if ($buyurl_parts && isset($buyurl_parts['scheme'], $buyurl_parts['host'])) {
+                    $whitelabel_domain = $buyurl_parts['scheme'] . '://' . $buyurl_parts['host'];
+                    $checkout_url_parts = parse_url($checkout_url);
+                    if ($checkout_url_parts && isset($checkout_url_parts['scheme'], $checkout_url_parts['host'])) {
+                        $original_domain = $checkout_url_parts['scheme'] . '://' . $checkout_url_parts['host'];
+                        $checkout_url = str_replace($original_domain, $whitelabel_domain, $checkout_url);
+                        error_log('PP Gateway: Whitelabel checkout URL: ' . $checkout_url);
                     }
                 }
-                
-                // Now proceed with replacement
-                if ($is_test_mode && $buyurl_is_test && !$checkout_url_is_test) {
-                    // Test mode, buyurl is test, but checkout URL is production - this shouldn't happen but be safe
-                    error_log('⚠️ CoinSub - WARNING: Test mode but checkout URL appears production. Using API URL.');
-                } else {
-                    // Safe to replace: either production mode, or both are test
-                    // Extract domain from buyurl (e.g., https://buy.paymentservers.com or https://test-buy.paymentservers.com)
-                    $buyurl_parts = parse_url($buyurl);
-                    if ($buyurl_parts && isset($buyurl_parts['scheme']) && isset($buyurl_parts['host'])) {
-                        $whitelabel_domain = $buyurl_parts['scheme'] . '://' . $buyurl_parts['host'];
-                        error_log('🎨 CoinSub - Whitelabel domain: ' . $whitelabel_domain);
-                        
-                        // Extract domain from original checkout URL
-                        $checkout_url_parts = parse_url($checkout_url);
-                        if ($checkout_url_parts && isset($checkout_url_parts['scheme']) && isset($checkout_url_parts['host'])) {
-                            $original_domain = $checkout_url_parts['scheme'] . '://' . $checkout_url_parts['host'];
-                            error_log('🔗 CoinSub - Original checkout domain: ' . $original_domain);
-                            
-                            // Replace the domain in checkout URL
-                            $checkout_url_before = $checkout_url;
-                            $checkout_url = str_replace($original_domain, $whitelabel_domain, $checkout_url);
-                            error_log('🔄 CoinSub - URL REPLACEMENT:');
-                            error_log('   - BEFORE: ' . $checkout_url_before);
-                            error_log('   - AFTER:  ' . $checkout_url);
-                            error_log('   - Original domain: ' . $original_domain);
-                            error_log('   - Whitelabel domain: ' . $whitelabel_domain);
-                            error_log('✅ CoinSub - Environment: ' . ($is_test_mode ? 'TEST' : 'PRODUCTION') . ' mode, buyurl is ' . ($buyurl_is_test ? 'TEST' : 'PRODUCTION'));
-                        } else {
-                            error_log('⚠️ CoinSub - Could not parse original checkout URL, using as-is');
-                        }
-                    } else {
-                        error_log('⚠️ CoinSub - Could not parse buyurl, using original checkout URL');
-                    }
-                }
-            } else {
-                error_log('❌ CoinSub - No whitelabel buyurl found in branding data!');
-                error_log('❌ CoinSub - Branding data structure: ' . json_encode($branding_data));
-                error_log('❌ CoinSub - Using original checkout URL from API (coinsub domain): ' . $checkout_url);
             }
             
-            error_log('🔗 CoinSub - ════════════════════════════════════════');
-            error_log('🔗 CoinSub - FINAL CHECKOUT URL: ' . $checkout_url);
-            error_log('🔗 CoinSub - ════════════════════════════════════════');
+            error_log('PP Gateway: FINAL CHECKOUT URL: ' . $checkout_url);
             
             // Store CoinSub data in order meta
             $order->update_meta_data('_coinsub_purchase_session_id', $purchase_session['purchase_session_id']);
             $order->update_meta_data('_coinsub_checkout_url', $checkout_url);
             $order->update_meta_data('_coinsub_merchant_id', $this->get_option('merchant_id'));
             
-            error_log('✅ CoinSub - Stored purchase session ID: ' . $purchase_session['purchase_session_id']);
-            error_log('✅ CoinSub - Stored checkout URL in order meta: ' . $checkout_url);
+            error_log('PP Gateway: Stored purchase session ID and checkout URL in order meta');
             
             // Store subscription data if applicable
             if ($cart_data['has_subscription']) {
@@ -1028,13 +852,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // Verify it was stored
             $stored_url = $order->get_meta('_coinsub_checkout_url');
             if ($stored_url !== $checkout_url) {
-                error_log('⚠️ CoinSub - WARNING: Checkout URL mismatch! Stored: ' . $stored_url . ' vs Expected: ' . $checkout_url);
+                error_log('PP Gateway: WARNING: Checkout URL mismatch in order meta');
             } else {
-                error_log('✅ CoinSub - Verified checkout URL stored correctly in order meta');
+                error_log('PP Gateway: Checkout URL stored in order meta');
             }
             
             // Update order status - awaiting payment confirmation
-            $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to Stablecoin Pay checkout.', 'coinsub'));
+            $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to payment provider checkout.', 'coinsub'));
             
             // Store order ID in session (used for tracking, not cart restoration)
             // Note: We intentionally DON'T restore cart on return - fresh checkout each time
@@ -1042,21 +866,21 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             
             // Store checkout URL in session to avoid long URLs (use order ID as key)
             WC()->session->set('coinsub_checkout_url_' . $order->get_id(), $checkout_url);
-            error_log('✅ CoinSub - Stored checkout URL in session with key: coinsub_checkout_url_' . $order->get_id());
+            error_log('PP Gateway: Stored checkout URL in session');
             
             // Verify session storage
             $session_url = WC()->session->get('coinsub_checkout_url_' . $order->get_id());
             if ($session_url !== $checkout_url) {
-                error_log('⚠️ CoinSub - WARNING: Checkout URL mismatch in session! Stored: ' . $session_url . ' vs Expected: ' . $checkout_url);
+                error_log('PP Gateway: WARNING: Checkout URL mismatch in session');
             } else {
-                error_log('✅ CoinSub - Verified checkout URL stored correctly in session');
+                error_log('PP Gateway: Checkout URL stored in session');
             }
             
             // Empty cart (cart will NOT be restored on return - fresh checkout required)
             // This ensures new purchase session is created if user adds items and returns
             WC()->cart->empty_cart();
             
-            error_log('🎉 CoinSub - Payment process complete! Checkout URL: ' . $checkout_url);
+            error_log('PP Gateway: Payment process complete');
             
             // Get dedicated checkout page URL
             $checkout_page_id = get_option('coinsub_checkout_page_id');
@@ -1064,7 +888,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $checkout_page_url = get_permalink($checkout_page_id);
                 // Use order ID instead of full URL to keep URL short
                 $redirect_url = add_query_arg('order_id', $order->get_id(), $checkout_page_url);
-                error_log('🎯 CoinSub - Redirecting to dedicated checkout page (short URL): ' . $redirect_url);
+                error_log('PP Gateway: Redirecting to dedicated checkout page');
                 
                 return array(
                     'result' => 'success',
@@ -1073,7 +897,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 );
             } else {
                 // Fallback: redirect directly to checkout URL (external)
-                error_log('⚠️ CoinSub - Checkout page not found, redirecting directly to checkout URL');
+                error_log('PP Gateway: Checkout page not found, redirecting to checkout URL');
                 return array(
                     'result' => 'success',
                     'redirect' => $checkout_url,
@@ -1082,7 +906,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             }
             
         } catch (Exception $e) {
-            error_log('❌ CoinSub - Payment error: ' . $e->getMessage());
+            error_log('PP Gateway: Payment error: ' . $e->getMessage());
             wc_add_notice(__('Payment error: ', 'coinsub') . $e->getMessage(), 'error');
             return array(
                 'result' => 'failure',
@@ -1213,7 +1037,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $details_string = implode(' | ', $details_parts);
         
         $success_url = $this->get_return_url($order);
-        error_log('🔗 CoinSub - Success URL: ' . $success_url);
+        error_log('PP Gateway: Success URL: ' . $success_url);
         
         $session_data = array(
             'name' => $order_name,
@@ -1357,7 +1181,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 var coinsubWindow = window.open('<?php echo esc_js($checkout_url); ?>', '_blank');
                 
                 // Show notice to user
-                $('body').prepend('<div id="coinsub-checkout-notice" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">🚀 Complete Your Payment</strong><br><br>A new tab has opened with your Stablecoin Pay checkout.<br><br><small>Your order will be confirmed once payment is received.</small><br><br><button onclick="window.open(\'<?php echo esc_js($checkout_url); ?>\', \'_blank\')" style="background: white; color: #1e3a8a; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold;">Reopen Payment Page</button></div>');
+                $('body').prepend('<div id="coinsub-checkout-notice" style="position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px;"><strong style="font-size: 16px;">🚀 Complete Your Payment</strong><br><br>A new tab has opened with your payment checkout.<br><br><small>Your order will be confirmed once payment is received.</small><br><br><button onclick="window.open(\'<?php echo esc_js($checkout_url); ?>\', \'_blank\')" style="background: white; color: #1e3a8a; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold;">Reopen Payment Page</button></div>');
                 
                 // Remove notice after 30 seconds
                 setTimeout(function() {
@@ -1374,7 +1198,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function payment_fields() {
         echo '<div id="coinsub-payment-description">';
-        echo '<p>' . __('Pay securely with cryptocurrency using CoinSub.', 'coinsub') . '</p>';
+        echo '<p>' . __('Pay securely with cryptocurrency.', 'coinsub') . '</p>';
         echo '</div>';
         
         // Initialize empty checkout URL for the template
@@ -1391,31 +1215,31 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Process refunds (Automatic API refund for single payments)
      */
     public function process_refund($order_id, $amount = null, $reason = '') {
-        error_log('🔄 CoinSub Refund - process_refund called');
-        error_log('🔄 CoinSub Refund - Order ID: ' . $order_id);
-        error_log('🔄 CoinSub Refund - Amount parameter: ' . ($amount ?? 'NULL'));
-        error_log('🔄 CoinSub Refund - Reason: ' . $reason);
+        error_log('PP Refund: process_refund called');
+        error_log('PP Refund: Order ID: ' . $order_id);
+        error_log('PP Refund: Amount parameter: ' . ($amount ?? 'NULL'));
+        error_log('PP Refund: Reason: ' . $reason);
         
         $order = wc_get_order($order_id);
         
         if (!$order) {
-            error_log('❌ CoinSub Refund - Order not found: ' . $order_id);
+            error_log('PP Refund: Order not found: ' . $order_id);
             return new WP_Error('invalid_order', __('Invalid order.', 'coinsub'));
         }
         
-        error_log('🔄 CoinSub Refund - Order total: ' . $order->get_total());
-        error_log('🔄 CoinSub Refund - Order status: ' . $order->get_status());
-        error_log('🔄 CoinSub Refund - Payment method: ' . $order->get_payment_method());
+        error_log('PP Refund: Order total: ' . $order->get_total());
+        error_log('PP Refund: Order status: ' . $order->get_status());
+        error_log('PP Refund: Payment method: ' . $order->get_payment_method());
         
         // If amount is null or 0, use the order total
         if ($amount === null || $amount == 0) {
             $amount = $order->get_total();
-            error_log('🔄 CoinSub Refund - Using order total as refund amount: ' . $amount);
+            error_log('PP Refund: Using order total as refund amount: ' . $amount);
         }
         
         // Check if this is a subscription order (for logging only)
         $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
-        error_log('🔄 CoinSub Refund - Is subscription: ' . ($is_subscription ? 'YES' : 'NO'));
+        error_log('PP Refund: Is subscription: ' . ($is_subscription ? 'YES' : 'NO'));
         
         // Process automatic refund for ALL orders (including subscriptions) via API
         // IMPORTANT: All refunds are processed as USDC on Polygon for simplicity and wide acceptance
@@ -1429,20 +1253,20 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $agreement_message_json = $order->get_meta('_coinsub_agreement_message');
         $agreement_message = $agreement_message_json ? json_decode($agreement_message_json, true) : null;
         
-        error_log('🔄 CoinSub Refund - Customer wallet: ' . ($customer_wallet ?: 'NOT FOUND'));
-        error_log('🔄 CoinSub Refund - Customer email: ' . ($customer_email ?: 'NOT FOUND'));
-        error_log('🔄 CoinSub Refund - Agreement message: ' . ($agreement_message_json ?: 'NOT FOUND'));
+        error_log('PP Refund: Customer wallet: ' . ($customer_wallet ?: 'NOT FOUND'));
+        error_log('PP Refund: Customer email: ' . ($customer_email ?: 'NOT FOUND'));
+        error_log('PP Refund: Agreement message: ' . ($agreement_message_json ?: 'NOT FOUND'));
         
         // Debug: Show all order meta
         $all_meta = $order->get_meta_data();
-        error_log('🔄 CoinSub Refund - All order meta keys: ' . implode(', ', array_map(function($meta) { return $meta->key; }, $all_meta)));
+        error_log('PP Refund: All order meta keys: ' . implode(', ', array_map(function($meta) { return $meta->key; }, $all_meta)));
         
         // Use customer email as to_address (preferred) or fallback to wallet address
         $to_address = $customer_email ?: $customer_wallet;
         
         // Validate required data for automatic refund
         if (empty($to_address)) {
-            error_log('❌ CoinSub Refund - No customer email or wallet found, cannot process refund');
+            error_log('PP Refund: No customer email or wallet found, cannot process refund');
             
             // Fallback to manual refund for orders without customer data
             $refund_note = sprintf(
@@ -1466,35 +1290,35 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // If chain ID is missing, fallback to Polygon Mainnet (Production)
         if (empty($chain_id)) {
             $chain_id = '137'; // Polygon Mainnet (Production)
-            error_log('🔄 CoinSub Refund - Chain ID not found in order, using fallback: Polygon Mainnet Production (137)');
+            error_log('PP Refund: Chain ID not found in order, using fallback: Polygon Mainnet Production (137)');
         }
         
         // If token symbol is missing, fallback to USDC (on the same chain)
         if (empty($token_symbol)) {
             $token_symbol = 'USDC';
-            error_log('🔄 CoinSub Refund - Token symbol not found in order, using fallback: USDC on chain_id ' . $chain_id);
+            error_log('PP Refund: Token symbol not found in order, using fallback: USDC on chain_id ' . $chain_id);
         }
         
-        error_log('🔄 CoinSub Refund - Using refund chain/token: ' . $token_symbol . ' on chain_id ' . $chain_id);
+        error_log('PP Refund: Using refund chain/token: ' . $token_symbol . ' on chain_id ' . $chain_id);
         
-        error_log('🔄 CoinSub Refund - Processing automatic refund for order #' . $order_id);
-        error_log('🔄 CoinSub Refund - Amount: ' . $amount);
-        error_log('🔄 CoinSub Refund - To Address (email/wallet): ' . $to_address);
-        error_log('🔄 CoinSub Refund - Chain ID: ' . $chain_id);
-        error_log('🔄 CoinSub Refund - Token: ' . $token_symbol);
+        error_log('PP Refund: Processing automatic refund for order #' . $order_id);
+        error_log('PP Refund: Amount: ' . $amount);
+        error_log('PP Refund: To Address (email/wallet): ' . $to_address);
+        error_log('PP Refund: Chain ID: ' . $chain_id);
+        error_log('PP Refund: Token: ' . $token_symbol);
         
-        // Initialize API client with current environment settings
+        // Initialize API client with production settings
         $api_client = new CoinSub_API_Client();
         $api_base_url = $this->get_api_base_url();
         $merchant_id = $this->get_option('merchant_id', '');
         $api_key = $this->get_option('api_key', '');
         
-        // Ensure API client uses the correct environment (production or test)
+        // Ensure API client uses production
         $api_client->update_settings($api_base_url, $merchant_id, $api_key);
-        error_log('🔄 CoinSub Refund - API client initialized with environment: ' . ($this->get_option('environment', 'production') === 'test' ? 'TEST' : 'PRODUCTION'));
-        error_log('🔄 CoinSub Refund - API Base URL: ' . $api_base_url);
+        error_log('PP Refund: API client initialized (production)');
+        error_log('PP Refund: API Base URL: ' . $api_base_url);
         
-        error_log('🔄 CoinSub Refund - About to call refund API...');
+        error_log('PP Refund: About to call refund API...');
         
         // Call refund API using customer email or wallet address
         $refund_result = $api_client->refund_transfer_request(
@@ -1504,13 +1328,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $token_symbol
         );
         
-        error_log('🔄 CoinSub Refund - API call completed. Result: ' . (is_wp_error($refund_result) ? 'ERROR' : 'SUCCESS'));
+        error_log('PP Refund: API call completed. Result: ' . (is_wp_error($refund_result) ? 'ERROR' : 'SUCCESS'));
         
         if (is_wp_error($refund_result)) {
             $error_message = $refund_result->get_error_message();
-            error_log('❌ CoinSub Refund - API returned WP_Error: ' . $error_message);
-            error_log('❌ CoinSub Refund - Error code: ' . $refund_result->get_error_code());
-            error_log('❌ CoinSub Refund - Error data: ' . json_encode($refund_result->get_error_data()));
+            error_log('PP Refund: API returned WP_Error: ' . $error_message);
+            error_log('PP Refund: Error code: ' . $refund_result->get_error_code());
+            error_log('PP Refund: Error data: ' . json_encode($refund_result->get_error_data()));
             
             // Check for insufficient funds error
             if (strpos(strtolower($error_message), 'insufficient') !== false || 
@@ -1529,18 +1353,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $insufficient_funds_note .= 'You need ' . $amount . ' USDC on Polygon to process this refund.<br><br>';
                 
                 $insufficient_funds_note .= '<strong>To add funds:</strong><br>';
-                $insufficient_funds_note .= '1. Go to <strong>WooCommerce → Settings → Payments → Stablecoin Pay</strong><br>';
+                $settings_label = $this->get_title();
+                $insufficient_funds_note .= '1. Go to <strong>WooCommerce → Settings → Payments</strong> (' . esc_html($settings_label) . ')<br>';
                 $insufficient_funds_note .= '2. Click <strong>"Manage"</strong> or scroll down<br>';
                 $insufficient_funds_note .= '3. Click the <strong>"Onramp USDC Polygon via Meld"</strong> button<br>';
                 $insufficient_funds_note .= '4. Complete the onramp process<br>';
                 $insufficient_funds_note .= '5. Retry the refund once funds are available<br><br>';
                 
-                $insufficient_funds_note .= '<a href="' . esc_url($coinsub_settings_url) . '" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">Go to Payment ProviderSettings</a>';
+                $insufficient_funds_note .= '<a href="' . esc_url($coinsub_settings_url) . '" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">Go to ' . esc_html($settings_label) . ' Settings</a>';
                 
                 $order->add_order_note($insufficient_funds_note);
                 $order->update_status('refund-pending', __('Refund pending - insufficient funds. Please add USDC to Polygon wallet.', 'coinsub'));
                 
-                error_log('❌ CoinSub Refund - Insufficient funds: ' . $error_message);
+                error_log('PP Refund: Insufficient funds: ' . $error_message);
                 return new WP_Error('insufficient_funds', $error_message);
             }
             
@@ -1552,13 +1377,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $error_message
             );
             $order->add_order_note($refund_note);
-            error_log('❌ CoinSub Refund - API Error: ' . $error_message);
+            error_log('PP Refund: API Error: ' . $error_message);
             return $refund_result;
         }
         
         // Validate API response
         if (!is_array($refund_result) || empty($refund_result)) {
-            error_log('❌ CoinSub Refund - API returned invalid response: ' . json_encode($refund_result));
+            error_log('PP Refund: API returned invalid response: ' . json_encode($refund_result));
             $refund_note = sprintf(
                 __('REFUND FAILED: %s. Reason: %s. API returned invalid response. Please try again or process manually.', 'coinsub'),
                 wc_price($amount),
@@ -1569,18 +1394,21 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             return new WP_Error('invalid_api_response', __('API returned invalid response. Please try again.', 'coinsub'));
         }
         
-        error_log('✅ CoinSub Refund - API response received: ' . json_encode($refund_result));
+        error_log('PP Refund: API response received: ' . json_encode($refund_result));
         
         // Success - add order note and update status
         $refund_id = $refund_result['refund_id'] ?? $refund_result['transfer_id'] ?? 'N/A';
         $transaction_hash = $refund_result['transaction_hash'] ?? $refund_result['hash'] ?? 'N/A';
         
-        // Get network name for display
-        $network_name = $this->get_network_name($chain_id);
+        // Prefer network name from webhook; fall back to chain_id map for older orders
+        $network_name = $order->get_meta('_coinsub_network_name');
+        if (empty($network_name)) {
+            $network_name = $this->get_network_name($chain_id);
+        }
         
         // Note: Refund uses the same chain/token as original payment (or USDC fallback)
         $refund_note = sprintf(
-            __('REFUND INITIATED: %s. Reason: %s. Customer wallet: %s. Refund ID: %s. Refund will be sent as %s on %s (same as original payment). Refund initiated via Stablecoin Pay API. Waiting for transfer confirmation...', 'coinsub'),
+            __('REFUND INITIATED: %s. Reason: %s. Customer wallet: %s. Refund ID: %s. Refund will be sent as %s on %s (same as original payment). Refund initiated via payment provider API. Waiting for transfer confirmation...', 'coinsub'),
             wc_price($amount),
             $reason,
             $customer_wallet ?: $to_address,
@@ -1604,19 +1432,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         if (!empty($refund_id)) {
             $order->update_meta_data('_coinsub_refund_id', $refund_id);
-            error_log('✅ CoinSub Refund - Stored refund ID: ' . $refund_id);
+            error_log('PP Refund: Stored refund ID: ' . $refund_id);
         }
         if (!empty($transaction_hash) && $transaction_hash !== 'N/A') {
             $order->update_meta_data('_coinsub_refund_transaction_hash', $transaction_hash);
-            error_log('✅ CoinSub Refund - Stored transaction hash: ' . $transaction_hash);
+            error_log('PP Refund: Stored transaction hash: ' . $transaction_hash);
         }
         
         // Don't mark as refunded yet - wait for transfer webhook confirmation
         // WooCommerce will mark it as refunded when we return true, but we'll track status separately
         $order->save();
         
-        error_log('✅ CoinSub Refund - Refund initiated for order #' . $order_id . ' - waiting for transfer confirmation via webhook');
-        error_log('✅ CoinSub Refund - Refund ID: ' . $refund_id . ', Transaction Hash: ' . $transaction_hash);
+        error_log('PP Refund: Refund initiated for order #' . $order_id . ' - waiting for transfer confirmation via webhook');
+        error_log('PP Refund: Refund ID: ' . $refund_id . ', Transaction Hash: ' . $transaction_hash);
         
         // Return true to WooCommerce so it shows the refund UI, but we'll update status when transfer webhook arrives
         return true;
@@ -1710,7 +1538,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get network name for chain ID
+     * Get network name for chain ID (fallback when webhook did not set _coinsub_network_name on the order).
      */
     private function get_network_name($chain_id) {
         $networks = array(
@@ -1737,22 +1565,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      * Override can_refund to always allow refunds for CoinSub orders
      */
     public function can_refund($order) {
-        error_log('🔍 CoinSub Refund - can_refund() called for order #' . $order->get_id());
-        error_log('🔍 CoinSub Refund - Order payment method: ' . $order->get_payment_method());
-        error_log('🔍 CoinSub Refund - Order status: ' . $order->get_status());
-        error_log('🔍 CoinSub Refund - Gateway supports: ' . json_encode($this->supports));
+        error_log('PP Refund: can_refund() called for order #' . $order->get_id());
+        error_log('PP Refund: Order payment method: ' . $order->get_payment_method());
+        error_log('PP Refund: Order status: ' . $order->get_status());
+        error_log('PP Refund: Gateway supports: ' . json_encode($this->supports));
         
         // Always allow refunds for CoinSub orders that have been paid
         if ($order->get_payment_method() === 'coinsub') {
             $paid_statuses = array('processing', 'completed', 'on-hold');
             $can_refund = in_array($order->get_status(), $paid_statuses);
-            error_log('🔍 CoinSub Refund - can_refund result: ' . ($can_refund ? 'YES' : 'NO'));
+            error_log('PP Refund: can_refund result: ' . ($can_refund ? 'YES' : 'NO'));
             return $can_refund;
         }
         
         // For other payment methods, use default behavior
         $result = parent::can_refund($order);
-        error_log('🔍 CoinSub Refund - can_refund (parent) result: ' . ($result ? 'YES' : 'NO'));
+        error_log('PP Refund: can_refund (parent) result: ' . ($result ? 'YES' : 'NO'));
         return $result;
     }
 
@@ -1765,13 +1593,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get payment method title
-     * CRITICAL: Returns "Stablecoin Pay" in admin, whitelabel name on checkout
+     * Get payment method title (from config when whitelabel; no hardcoding elsewhere)
      */
     public function get_title() {
-        // In admin, always return "Stablecoin Pay" (no whitelabel)
+        $config_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
         if (is_admin()) {
-            return __('Stablecoin Pay', 'coinsub');
+            return $config_name ? $config_name : __('Stablecoin Pay', 'coinsub');
         }
         
         // On checkout (frontend), use whitelabel title if available
@@ -1781,6 +1608,166 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Fallback to default
         return $this->title ?: __('Pay with Coinsub', 'coinsub');
+    }
+    
+    /**
+     * Label for the Enable checkbox in gateway settings (from config when whitelabel).
+     */
+    public function get_enable_label() {
+        $config_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        if ($config_name) {
+            return sprintf(__('Enable %s crypto payments', 'coinsub'), $config_name);
+        }
+        return __('Enable Stablecoin Pay crypto payments', 'coinsub');
+    }
+
+    /**
+     * Dashboard URL from whitelabel config (where merchants log in). Null when not whitelabel.
+     *
+     * @return string|null
+     */
+    public function get_dashboard_url_from_config() {
+        return class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_dashboard_url_from_config() : null;
+    }
+
+    /**
+     * HTML for "where to get credentials" - dashboard link when whitelabel, else generic.
+     * Used in form field descriptions.
+     *
+     * @return string
+     */
+    public function get_credentials_source_description() {
+        $dashboard_url = $this->get_dashboard_url_from_config();
+        $plugin_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        if ($dashboard_url && $plugin_name) {
+            $host = parse_url($dashboard_url, PHP_URL_HOST);
+            $link = '<a href="' . esc_url($dashboard_url) . '" target="_blank" rel="noopener">' . esc_html($host ?: $dashboard_url) . '</a>';
+            return sprintf(__('Get this from your %1$s dashboard at %2$s', 'coinsub'), esc_html($plugin_name), $link);
+        }
+        return __('Get this from your merchant dashboard', 'coinsub');
+    }
+
+    /**
+     * HTML for "add webhook to dashboard" - dashboard link when whitelabel.
+     *
+     * @return string
+     */
+    public function get_webhook_destination_description() {
+        $dashboard_url = $this->get_dashboard_url_from_config();
+        $plugin_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        if ($dashboard_url && $plugin_name) {
+            $host = parse_url($dashboard_url, PHP_URL_HOST);
+            $link = '<a href="' . esc_url($dashboard_url) . '" target="_blank" rel="noopener">' . esc_html($host ?: $dashboard_url) . '</a>';
+            return sprintf(__('Copy this URL and add it to your %1$s dashboard at %2$s. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'), esc_html($plugin_name), $link);
+        }
+        return __('Copy this URL and add it to your merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub');
+    }
+
+    /**
+     * Inner HTML for the setup instructions box (whitelabel-aware: dashboard URL and plugin name).
+     *
+     * @return string
+     */
+    public function get_setup_instructions_html() {
+        $dashboard_url = $this->get_dashboard_url_from_config();
+        $plugin_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        $meld_url = $this->get_meld_onramp_url();
+
+        $step1_title = $plugin_name
+            ? sprintf(__('Step 1. Get Your %s Credentials', 'coinsub'), esc_html($plugin_name))
+            : __('Step 1. Get Your Payment Provider Credentials', 'coinsub');
+        $dashboard_link = '';
+        if ($dashboard_url) {
+            $host = parse_url($dashboard_url, PHP_URL_HOST);
+            $dashboard_link = '<a href="' . esc_url($dashboard_url) . '" target="_blank" rel="noopener">' . esc_html($host ?: $dashboard_url) . '</a>';
+        }
+        $login_phrase = $dashboard_link ? sprintf(__('Log in to your account at %s', 'coinsub'), $dashboard_link) : __('Log in to your account', 'coinsub');
+        // Dashboard URL shown only once (in login line); no need to repeat in next steps
+        $nav_dashboard_phrase = __('Navigate to <strong>Settings</strong> in your dashboard', 'coinsub');
+        $go_back_phrase = __('Go back to your dashboard <strong>Settings</strong>', 'coinsub');
+
+        $step4_title = $plugin_name ? sprintf(__('Step 4: Enable %s', 'coinsub'), esc_html($plugin_name)) : __('Step 4: Enable payment provider', 'coinsub');
+        $important_phrase = $plugin_name
+            ? sprintf(__('<strong>⚠️ Important:</strong> %s works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!', 'coinsub'), esc_html($plugin_name))
+            : __('<strong>⚠️ Important:</strong> The payment provider works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!', 'coinsub');
+
+        $subscription_checkbox = $plugin_name
+            ? sprintf(__('"%s Subscription"', 'coinsub'), esc_html($plugin_name))
+            : __('"Stablecoin Pay Subscription"', 'coinsub');
+
+        ob_start();
+        ?>
+        <h3 style="margin-top:0;font-size:1.3em"><?php echo esc_html(__('Setup Instructions', 'coinsub')); ?></h3>
+        <h4 style="margin:1.5em 0 .5em"><?php echo $step1_title; ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo $login_phrase; ?></li>
+            <li><?php echo $nav_dashboard_phrase; ?></li>
+            <li><?php echo __('Copy your <strong>Merchant ID</strong>', 'coinsub'); ?></li>
+            <li><?php echo __('Create and copy your <strong>API Key</strong>', 'coinsub'); ?></li>
+            <li><?php esc_html_e('Paste both into the fields below', 'coinsub'); ?></li>
+        </ol>
+        <h4 style="margin:1.5em 0 .5em"><?php esc_html_e('Step 2: Configure Webhook (CRITICAL)', 'coinsub'); ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo __('Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)', 'coinsub'); ?></li>
+            <li><?php echo $go_back_phrase; ?></li>
+            <li><?php echo __('Find the <strong>Webhook URL</strong> field', 'coinsub'); ?></li>
+            <li><?php echo __('<strong>Paste your webhook URL</strong> into that field and save', 'coinsub'); ?></li>
+            <li><em><?php esc_html_e('This is essential', 'coinsub'); ?></em> — <?php esc_html_e('without this, orders won\'t update when payments complete!', 'coinsub'); ?></li>
+        </ol>
+        <h4 style="margin:1.5em 0 .5em"><?php esc_html_e('Step 3: Fix WordPress Checkout Page (If Needed)', 'coinsub'); ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo __('Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong>', 'coinsub'); ?></li>
+            <li><?php echo __('In the page editor, click the <strong style="font-size:1.2em;line-height:1">⋮</strong> (three vertical dots) in the top right', 'coinsub'); ?></li>
+            <li><?php echo __('Select <strong>Code Editor</strong>', 'coinsub'); ?></li>
+            <li><?php echo __('Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code>', 'coinsub'); ?></li>
+            <li><?php echo __('Click <strong>Update</strong> to save', 'coinsub'); ?></li>
+        </ol>
+        <h4 style="margin:1.5em 0 .5em"><?php echo $step4_title; ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo sprintf(__('Check the <strong>%s</strong> box below', 'coinsub'), esc_html($this->get_enable_label())); ?></li>
+            <li><?php echo __('Click <strong>Save changes</strong>', 'coinsub'); ?></li>
+            <li><?php esc_html_e('Done! Customers will now see the payment option at checkout!', 'coinsub'); ?></li>
+        </ol>
+        <p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><?php echo $important_phrase; ?></p>
+        <div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50">
+            <h3 style="margin-top:0">💳 <?php esc_html_e('Setting Up Subscription Products', 'coinsub'); ?></h3>
+            <p><strong><?php esc_html_e('To enable recurring payments for a product:', 'coinsub'); ?></strong></p>
+            <ol style="line-height:1.6;margin-top:10px">
+                <li><?php echo __('Go to <strong>Products</strong> → Select the product you want to make a subscription', 'coinsub'); ?></li>
+                <li><?php echo __('Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section', 'coinsub'); ?></li>
+                <li><?php echo sprintf(__('Check the <strong>%s</strong> checkbox', 'coinsub'), $subscription_checkbox); ?></li>
+                <li><?php esc_html_e('Configure the subscription settings:', 'coinsub'); ?>
+                    <ul style="margin-top:8px">
+                        <li><?php echo __('<strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)', 'coinsub'); ?></li>
+                        <li><?php echo __('<strong>Interval:</strong> Time period (Day, Week, Month, Year)', 'coinsub'); ?></li>
+                        <li><?php echo __('<strong>Duration:</strong> Number of payments (0 = Until Cancelled)', 'coinsub'); ?></li>
+                    </ul>
+                </li>
+                <li><?php echo __('Click <strong>Update</strong> to save the product', 'coinsub'); ?></li>
+            </ol>
+            <p style="margin-bottom:0;font-size:13px;color:#2e7d32"><strong><?php esc_html_e('Note:', 'coinsub'); ?></strong> <?php esc_html_e('Each product must be configured individually. Customers can manage their subscriptions from their account page.', 'coinsub'); ?></p>
+        </div>
+        <div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107">
+            <h3 style="margin-top:0">⚠️ <?php esc_html_e('Refund Requirements & Limitations', 'coinsub'); ?></h3>
+            <p style="margin-bottom:10px"><?php echo __('<strong>Important Refund Disclaimer:</strong>', 'coinsub'); ?></p>
+            <ul style="margin-top:8px;margin-bottom:15px;line-height:1.6">
+                <li><?php esc_html_e('Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.', 'coinsub'); ?></li>
+                <li><?php esc_html_e('Your merchant account must have refund capabilities enabled.', 'coinsub'); ?></li>
+                <li><?php esc_html_e('Refunds use the same network and token as the original payment. If the original payment information is not available, refunds default to USDC on Polygon.', 'coinsub'); ?></li>
+                <li><?php esc_html_e('Customers must have a compatible wallet to receive refunds.', 'coinsub'); ?></li>
+            </ul>
+            <p style="margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px"><?php echo __('<strong>⚠️ Before processing refunds:</strong>', 'coinsub'); ?> <?php esc_html_e('Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.', 'coinsub'); ?></p>
+        </div>
+        <div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7">
+            <h3 style="margin-top:0"><?php esc_html_e('Add Tokens for Refunds', 'coinsub'); ?></h3>
+            <p><?php esc_html_e('Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).', 'coinsub'); ?></p>
+            <p><?php esc_html_e('To process refunds, you\'ll need sufficient tokens in your merchant wallet on the same network as the original payment. If you don\'t have enough tokens, you can purchase them through Meld.', 'coinsub'); ?></p>
+            <p><?php echo __('To find your wallet address: in your dashboard, open the <strong>Wallet</strong> tab and copy your wallet address from there.', 'coinsub'); ?></p>
+            <p style="margin-bottom:10px"><a class="button button-primary" href="<?php echo esc_url($meld_url); ?>" style="background:#2271b1;border-color:#2271b1" target="_blank" rel="noopener"><?php esc_html_e('Buy Tokens via Meld', 'coinsub'); ?></a></p>
+            <p style="margin-bottom:0;font-size:12px;color:#666"><?php echo __('<strong>Tip:</strong>', 'coinsub'); ?> <?php esc_html_e('Keep a small reserve of tokens (especially USDC on Polygon as the default fallback) to cover refunds quickly. Click the button above to add funds via Meld.', 'coinsub'); ?></p>
+        </div>
+        <?php
+        return ob_get_clean();
     }
     
     /**
@@ -1801,7 +1788,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             if ($normalized_company === 'paymentservers') {
                 $icon_url = COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
                 if (is_checkout()) {
-                    error_log('CoinSub Whitelabel: 🖼️ 📌 Using LOCAL Payment Servers PNG logo (300x300): ' . $icon_url);
+                    error_log('PP Whitelabel: 🖼️ 📌 Using LOCAL Payment Servers PNG logo (300x300): ' . $icon_url);
                 }
             } else {
                 // On checkout (frontend), use whitelabel icon if available
@@ -1811,14 +1798,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only log on checkout, not in admin (reduces log noise)
         if (is_checkout()) {
-            error_log('CoinSub Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
+            error_log('PP Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
         }
         
         // Ensure we have a valid URL before creating HTML (only in checkout - admin should not show CoinSub logo)
         if (empty($icon_url) && !is_admin()) {
             // Fallback to CoinSub logo in checkout only (for non-whitelabel merchants)
             $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            error_log('CoinSub Whitelabel: ⚠️ Empty icon URL detected, using default');
+            error_log('PP Whitelabel: ⚠️ Empty icon URL detected, using default');
         }
         
         // In admin, return empty if no icon (don't show CoinSub logo in admin)
@@ -1830,7 +1817,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $icon_size = '30px';
         
         if (is_checkout()) {
-            error_log('CoinSub Whitelabel: 🖼️ Icon size: ' . $icon_size . ' for company: "' . $this->brand_company . '"');
+            error_log('PP Whitelabel: 🖼️ Icon size: ' . $icon_size . ' for company: "' . $this->brand_company . '"');
         }
         
         $icon_html = '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($this->get_title()) . '" style="max-width: ' . $icon_size . '; max-height: ' . $icon_size . '; height: auto; vertical-align: middle; margin-left: 8px;" />';
@@ -1862,7 +1849,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $this->button_logo_url = $logo_url;
         }
         
-        error_log('CoinSub Whitelabel: 🔘 Button text (CHECKOUT) - Company: "' . $company_name . '" | Logo URL: ' . $logo_url);
+        error_log('PP Whitelabel: 🔘 Button text (CHECKOUT) - Company: "' . $company_name . '" | Logo URL: ' . $logo_url);
         
         // Return text only - logo will be added via JavaScript
         return sprintf(__('Pay with %s', 'coinsub'), $company_name);
@@ -1997,7 +1984,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 
                 // Inject notice if not present
                 if ($section.find('.coinsub-manual-refund-disabled').length === 0) {
-                    $section.find('.refund-actions').prepend('<div class="notice notice-warning coinsub-manual-refund-disabled" style="margin-bottom:8px;">⚠️ Manual refund is disabled for Stablecoin Pay payments. Use the API refund button.</div>');
+                    $section.find('.refund-actions').prepend('<div class="notice notice-warning coinsub-manual-refund-disabled" style="margin-bottom:8px;">⚠️ Manual refund is disabled for this payment method. Use the API refund button.</div>');
                 }
             }
             
@@ -2234,7 +2221,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             <script>
             // Simple debugging - no complex workarounds needed since you're using traditional checkout
             jQuery(document).ready(function($) {
-                console.log('✅ Coinsub payment gateway loaded');
+                console.log('PP payment gateway loaded');
                 
                 // Get logo URL and company name from PHP
                 var coinsubLogoUrl = '<?php echo esc_js($this->button_logo_url); ?>';
@@ -2279,7 +2266,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                         buttonText = buttonText.replace(/<img[^>]*class="coinsub-button-logo"[^>]*>/gi, '');
                         $button.html($logo[0].outerHTML + buttonText);
                         
-                        console.log('✅ CoinSub logo injected into button:', coinsubLogoUrl);
+                        console.log('PP logo injected into button:', coinsubLogoUrl);
                     }
                 }
                 
@@ -2290,7 +2277,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $('input[name="payment_method"]').on('change', function() {
                     var selectedMethod = $(this).val();
                     if (selectedMethod === 'coinsub') {
-                        console.log('✅ Coinsub selected');
+                        console.log('PP selected');
                         $('body').addClass('payment_method_coinsub');
                         // Inject logo when CoinSub is selected
                         setTimeout(injectButtonLogo, 100);
@@ -2348,7 +2335,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function needs_setup() {
         $needs_setup = empty($this->get_option('merchant_id'));
-        error_log('🔧 CoinSub - needs_setup() called. Result: ' . ($needs_setup ? 'YES' : 'NO'));
+        error_log('PP Gateway: needs_setup() = ' . ($needs_setup ? 'YES' : 'NO'));
         return $needs_setup;
     }
     
@@ -2361,95 +2348,57 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         // Only log detailed debug info on checkout page, not admin
         if (is_checkout()) {
-        error_log('=== CoinSub Gateway - Availability Check [' . $context . '] ===');
-        error_log('CoinSub - Enabled setting: ' . $this->get_option('enabled'));
-        error_log('CoinSub - Merchant ID: ' . $this->get_option('merchant_id'));
-        error_log('CoinSub - API Key exists: ' . (!empty($this->get_option('api_key')) ? 'Yes' : 'No'));
+        error_log('PP Gateway: Availability check [' . $context . '] - Enabled: ' . $this->get_option('enabled') . ', Merchant ID: ' . ($this->get_option('merchant_id') ? 'set' : 'empty') . ', API Key: ' . (!empty($this->get_option('api_key')) ? 'set' : 'empty'));
         }
         
         // Check cart (only on frontend)
         if (!is_admin() && WC()->cart) {
-            error_log('CoinSub - Cart total: $' . WC()->cart->get_total('edit'));
-            error_log('CoinSub - Cart has items: ' . (WC()->cart->get_cart_contents_count() > 0 ? 'YES' : 'NO'));
-            error_log('CoinSub - Cart currency: ' . get_woocommerce_currency());
-            
+            error_log('PP Gateway: Cart total $' . WC()->cart->get_total('edit') . ', items: ' . WC()->cart->get_cart_contents_count() . ', currency: ' . get_woocommerce_currency());
             if (WC()->cart->needs_shipping()) {
-                error_log('CoinSub - Cart needs shipping: YES');
-                
-                // Check if shipping is chosen
                 $chosen_shipping = WC()->session ? WC()->session->get('chosen_shipping_methods') : array();
-                error_log('CoinSub - Chosen shipping methods: ' . json_encode($chosen_shipping));
-                
-                // Check if customer has entered shipping info
-                $customer = WC()->customer;
-                if ($customer) {
-                    error_log('CoinSub - Customer country: ' . $customer->get_shipping_country());
-                    error_log('CoinSub - Customer postcode: ' . $customer->get_shipping_postcode());
-                }
-            } else {
-                error_log('CoinSub - Cart needs shipping: NO');
+                error_log('PP Gateway: Cart needs shipping, chosen: ' . json_encode($chosen_shipping));
             }
         }
         
-        // Check if this is actually the checkout page context
-        if (is_checkout() && !is_wc_endpoint_url('order-pay')) {
-            error_log('CoinSub - Context: Regular checkout page ✅');
-        } elseif (is_wc_endpoint_url('order-pay')) {
-            error_log('CoinSub - Context: Order pay page');
-        }
-        
-        // Basic validation - always check these first
         if ($this->get_option('enabled') !== 'yes') {
-            // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-            error_log('CoinSub - UNAVAILABLE: Gateway is disabled in settings ❌');
+            error_log('PP Gateway: UNAVAILABLE - disabled in settings');
             }
             return false;
         }
         
         if (empty($this->get_option('merchant_id'))) {
-            // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-            error_log('CoinSub - UNAVAILABLE: No merchant ID configured ❌');
+            error_log('PP Gateway: UNAVAILABLE - no merchant ID');
             }
             return false;
         }
         
         if (empty($this->get_option('api_key'))) {
-            // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-            error_log('CoinSub - UNAVAILABLE: No API key configured ❌');
+            error_log('PP Gateway: UNAVAILABLE - no API key');
             }
             return false;
         }
         
-        // Call parent method to ensure WooCommerce core checks pass
         $parent_available = parent::is_available();
-        // Only log on checkout, not in admin
         if (is_checkout()) {
-        error_log('CoinSub - Parent is_available(): ' . ($parent_available ? 'TRUE' : 'FALSE'));
+        error_log('PP Gateway: Parent is_available: ' . ($parent_available ? 'true' : 'false'));
         }
         
         if (!$parent_available) {
-            // Only log on checkout, not in admin (reduces log noise)
             if (is_checkout()) {
-            error_log('CoinSub - UNAVAILABLE: Parent class returned false (WooCommerce core filtering) ❌');
-            error_log('CoinSub - Common reasons: cart empty, order total 0, shipping required but not selected, terms & conditions page not set');
-            
-            // Check specifically for terms & conditions issue
+            error_log('PP Gateway: UNAVAILABLE - parent returned false (cart/terms/shipping etc.)');
             $terms_page_id = wc_get_page_id('terms');
             if (empty($terms_page_id)) {
-                error_log('CoinSub - DIAGNOSIS: Terms & Conditions page is not set! This often blocks payment gateways.');
-                error_log('CoinSub - SOLUTION: Set a Terms & Conditions page in WooCommerce > Settings > Advanced');
+                error_log('PP Gateway: Terms & Conditions page not set - may block gateways.');
                 }
             }
-            
             return false;
         }
         
-        // Only log on checkout, not in admin
         if (is_checkout()) {
-        error_log('CoinSub - AVAILABLE: Gateway ready for checkout! ✅✅✅');
+        error_log('PP Gateway: AVAILABLE');
         }
         return true;
     }
@@ -2472,7 +2421,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $order = $orders[0];
             $redirect_url = $order->get_checkout_order_received_url();
             
-            error_log('🎯 CoinSub - Payment completed! Redirecting to: ' . $redirect_url);
+            error_log('PP Gateway: Payment completed, redirecting');
             
             // Return redirect URL for JavaScript to use
             return array(

@@ -1,8 +1,7 @@
 <?php
 /**
- * CoinSub Admin Payments Page
- * 
- * Merchant-facing payments management page in WooCommerce admin
+ * Payment Provider Admin Payments Page
+ * Merchant-facing payments management page (whitelabel-friendly: uses display company name).
  */
 
 if (!defined('ABSPATH')) {
@@ -63,20 +62,20 @@ class CoinSub_Admin_Payments {
     private function get_display_company_name() {
         // Only use whitelabel branding if settings are saved
         if (!$this->are_settings_saved()) {
-            return 'Stablecoin Pay';
+            return __('Payment Provider', 'coinsub');
         }
         
         // Settings are saved - try to get whitelabel branding
         $branding = $this->get_branding();
         $branding_data = $branding->get_branding(false);
-        return !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
+        return !empty($branding_data['company']) ? $branding_data['company'] : __('Payment Provider', 'coinsub');
     }
     
     /**
      * Add admin menu item
      */
     public function add_admin_menu() {
-        $menu_title = __('Stablecoin Payments', 'coinsub');
+        $menu_title = $this->get_display_company_name() . ' ' . __('Payments', 'coinsub');
         
         add_submenu_page(
             'woocommerce',
@@ -103,15 +102,14 @@ class CoinSub_Admin_Payments {
      * Render payments management page
      */
     public function render_payments_page() {
-        $page_title = __('Stablecoin Payments', 'coinsub');
+        $page_title = $this->get_display_company_name() . ' ' . __('Payments', 'coinsub');
         
         // Get payments from API
         $api_client = $this->get_api_client();
         $payments_response = $api_client ? $api_client->get_all_payments() : null;
         
-        // Log API response structure for debugging
         if ($payments_response && !is_wp_error($payments_response)) {
-            error_log('🔍 Payments API response structure: ' . json_encode($payments_response));
+            error_log('PP - Payments API response structure: ' . json_encode($payments_response));
         }
         
         $payments = array();
@@ -123,10 +121,10 @@ class CoinSub_Admin_Payments {
             $payments = $payments_response;
             } else {
                 // API returned something unexpected - log it
-                error_log('⚠️ CoinSub Payments: Unexpected API response format: ' . json_encode($payments_response));
+                error_log('PP - Payments: Unexpected API response format: ' . json_encode($payments_response));
             }
         } else {
-            error_log('❌ CoinSub Payments: API error - ' . $payments_response->get_error_message());
+            error_log('PP - Payments API error: ' . $payments_response->get_error_message());
         }
         
         // Match payments with WooCommerce orders
@@ -144,7 +142,7 @@ class CoinSub_Admin_Payments {
             <?php if (is_wp_error($payments_response)): ?>
                 <div class="notice notice-error" style="margin: 20px 0;">
                     <p><strong><?php _e('Error loading payments:', 'coinsub'); ?></strong> <?php echo esc_html($payments_response->get_error_message()); ?></p>
-                    <p><?php _e('Please check your API credentials in WooCommerce > Settings > Payments > Stablecoin Pay', 'coinsub'); ?></p>
+                    <p><?php printf(__('Please check your API credentials in WooCommerce > Settings > Payments > %s', 'coinsub'), esc_html($this->get_display_company_name())); ?></p>
                 </div>
             <?php elseif (empty($payments_with_orders)): ?>
                 <div class="notice notice-info" style="margin: 20px 0;">
@@ -275,14 +273,14 @@ class CoinSub_Admin_Payments {
         
         // Ensure $payments is an array
         if (!is_array($payments)) {
-            error_log('⚠️ CoinSub Payments: $payments is not an array, returning empty');
+            error_log('PP - Payments: $payments is not an array, returning empty');
             return array();
         }
         
         foreach ($payments as $payment) {
             // Skip if payment is not an array
             if (!is_array($payment)) {
-                error_log('⚠️ CoinSub Payments: Skipping invalid payment item (not an array)');
+                error_log('PP - Payments: Skipping invalid payment item (not an array)');
                 continue;
             }
             
@@ -377,10 +375,10 @@ class CoinSub_Admin_Payments {
             // Log for debugging if still empty
             if (empty($created_at)) {
                 if (is_array($payment)) {
-                error_log('🔍 Payment data keys: ' . json_encode(array_keys($payment)));
-                error_log('🔍 Full payment data: ' . json_encode($payment));
+                error_log('PP - Payment data keys: ' . json_encode(array_keys($payment)));
+                error_log('PP - Full payment data: ' . json_encode($payment));
                 } else {
-                    error_log('🔍 Payment data is not an array: ' . json_encode($payment));
+                    error_log('PP - Payment data is not an array: ' . json_encode($payment));
                 }
             }
             

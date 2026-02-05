@@ -1,19 +1,31 @@
 <?php
 /**
- * Whitelabel config: set only environment_id. The plugin uses this to fetch
- * full config from your API (env_config table). Match is done by environment_id.
+ * WHITELABEL / DOWNLOADABLE BUILD CONFIG
  *
- * - For Stablecoin Pay (no whitelabel): leave environment_id null.
- * - For whitelabel (e.g. Payment Servers): set environment_id to the partner's env.
+ * This file (together with create-plugin-package.sh) is the ONLY place to
+ * hardcode partner-specific values for a downloadable plugin build.
+ *
+ * - For Stablecoin Pay (default): leave environment_id null or omit this file.
+ * - For a partner build (e.g. Payment Servers): set the values below, then run
+ *   ./create-plugin-package.sh to produce the zip.
  */
 if (!defined('ABSPATH')) {
     exit;
 }
 
 return array(
-    // 'environment_id' => null,
-    // 'slug'          => null,
-    // ⬇️ MANUALLY PUT THE ENVIRONMENT_ID HERE (e.g. paymentservers.com, bxnk.com). Use null for Stablecoin Pay.
+    // Partner API environment (e.g. paymentservers.com). Null = Stablecoin Pay.
     'environment_id' => 'paymentservers.com',
-    'slug'          => 'payment-servers',
+
+    // Slug for URLs/assets (e.g. payment-servers).
+    'slug' => 'payment-servers',
+
+    // Display name used everywhere in the plugin (admin, gateway, Plugins list).
+    'plugin_name' => 'Payment Servers',
+
+    // Where merchants sign up and manage their account (used in setup instructions and field descriptions).
+    'dashboard_url' => 'https://app.paymentservers.com',
+
+    // Zip filename produced by create-plugin-package.sh when this config is present.
+    'zip_name' => 'payment-servers-plugin.zip',
 );
