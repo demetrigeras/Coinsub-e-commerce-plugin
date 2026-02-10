@@ -96,6 +96,57 @@ class CoinSub_Whitelabel_Branding {
         }
         return 'https://app.' . $config['environment_id'];
     }
+
+    /**
+     * Get favicon URL for admin (WooCommerce payment settings list) from whitelabel config.
+     * Optional: set favicon_url in config for a custom icon; otherwise null (caller uses local/default).
+     *
+     * @return string|null Full URL when config has favicon_url set, else null
+     */
+    public static function get_whitelabel_favicon_url_from_config() {
+        if (!defined('COINSUB_PLUGIN_DIR')) {
+            return null;
+        }
+        $path = COINSUB_PLUGIN_DIR . self::WHITELABEL_CONFIG_FILE;
+        if (!is_readable($path)) {
+            return null;
+        }
+        $config = include $path;
+        if (!is_array($config) || empty($config['environment_id'])) {
+            return null;
+        }
+        if (!empty($config['favicon_url']) && is_string($config['favicon_url'])) {
+            return trim($config['favicon_url']);
+        }
+        return null;
+    }
+
+    /**
+     * Get checkout logo URL from whitelabel config (for button/icon on checkout).
+     * When set, checkout uses config only — no API/database lookup.
+     *
+     * @return string|null checkout_logo_url if set, else favicon_url if set, else null
+     */
+    public static function get_whitelabel_checkout_logo_url_from_config() {
+        if (!defined('COINSUB_PLUGIN_DIR')) {
+            return null;
+        }
+        $path = COINSUB_PLUGIN_DIR . self::WHITELABEL_CONFIG_FILE;
+        if (!is_readable($path)) {
+            return null;
+        }
+        $config = include $path;
+        if (!is_array($config) || empty($config['environment_id'])) {
+            return null;
+        }
+        if (!empty($config['checkout_logo_url']) && is_string($config['checkout_logo_url'])) {
+            return trim($config['checkout_logo_url']);
+        }
+        if (!empty($config['favicon_url']) && is_string($config['favicon_url'])) {
+            return trim($config['favicon_url']);
+        }
+        return null;
+    }
     
     /**
      * Constructor

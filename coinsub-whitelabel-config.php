@@ -26,6 +26,12 @@ return array(
     // Where merchants sign up and manage their account (used in setup instructions and field descriptions).
     'dashboard_url' => 'https://app.paymentservers.com',
 
+    // Logo/icon shown next to the gateway name on the Payments list (WooCommerce → Settings → Payments). Optional; if empty, Payment Servers uses images/paymentservers-favicon.png, default build uses coinsub.svg.
+    'favicon_url' => '',
+
+    // Checkout: logo/icon and button (optional). If set, checkout uses this instead of any API/database lookup. If empty, uses favicon_url then fallbacks (Payment Servers: images/paymentservers-logo.png, default: coinsub.svg).
+    'checkout_logo_url' => '',
+
     // Zip filename produced by create-plugin-package.sh when this config is present.
     'zip_name' => 'payment-servers-plugin.zip',
 );

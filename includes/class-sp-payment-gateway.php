@@ -28,8 +28,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         
         $this->id = 'coinsub';
-        // Icon set dynamically in get_icon() - no default icon for whitelabel compatibility (CoinSub logo only in checkout as fallback)
-        $this->icon = '';
+        // Icon for Payments list (WooCommerce → Settings → Payments). Checkout uses get_icon().
+        $this->icon = $this->get_list_logo_url();
         $this->has_fields = true; // Enable custom payment box
         // Display name from whitelabel config only (no hardcoding elsewhere)
         $config_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
@@ -138,18 +138,15 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
          * - When we output HTML before calling parent::admin_options(), it breaks WooCommerce's form structure
          * - WooCommerce's parent method expects to output the <form> tag from scratch
          * - If we output HTML first, the form action attribute ends up empty
-         * - Without a form action, the form can't submit and settings can't be saved
          * 
          * THE SOLUTION:
          * - Call parent::admin_options() FIRST to generate the complete form structure
          * - Then inject instructions via JavaScript AFTER the form is rendered
-         * - This preserves the form structure and ensures the action attribute is set correctly
          */
         
-        // Call parent FIRST to generate the form with proper action attribute
         parent::admin_options();
         
-        // Now inject instructions at the top using JavaScript (after form is rendered)
+        // Inject instructions via JavaScript (after the form)
         $instructions_html = $this->get_setup_instructions_html();
         ?>
         <script type="text/javascript">
@@ -433,8 +430,37 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         error_log('PP Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
         
+        // Partner build (whitelabel config): use config for checkout name + logo only — no API/database lookup
+        $env_id = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config() : null;
+        if (!empty($env_id)) {
+            $plugin_name = CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config();
+            $this->brand_company = $plugin_name ?: 'Coinsub';
+            $this->checkout_title = 'Pay with ' . $this->brand_company;
+            $this->button_company_name = $this->brand_company;
+            $logo_url = CoinSub_Whitelabel_Branding::get_whitelabel_checkout_logo_url_from_config();
+            if (empty($logo_url)) {
+                if ($env_id === 'paymentservers.com') {
+                    $logo_url = COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
+                } else {
+                    $logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+                }
+            }
+            $this->checkout_icon = $logo_url;
+            $this->button_logo_url = $logo_url;
+            $branding_loaded = true;
+            $cached_branding = array(
+                'brand_company' => $this->brand_company,
+                'checkout_title' => $this->checkout_title,
+                'checkout_icon' => $this->checkout_icon,
+                'button_logo_url' => $this->button_logo_url,
+                'button_company_name' => $this->button_company_name,
+            );
+            error_log('PP Whitelabel: ✅ Checkout from config only (no lookup) - Title: "' . $this->checkout_title . '", Logo: ' . $logo_url);
+            return;
+        }
+        
+        // Stablecoin Pay (no whitelabel config): check credentials and use API/database for branding
         // CRITICAL FIX: Check if credentials exist before loading branding
-        // If no credentials, clear any old branding and use defaults
         // This prevents old branding (e.g., "Vantack") from showing when credentials are removed
         $merchant_id = $this->get_option('merchant_id');
         $api_key = $this->get_option('api_key');
@@ -1771,8 +1797,30 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get payment method icon
-     * CRITICAL: Returns default CoinSub logo in admin, whitelabel logo on checkout
+     * Logo URL for the Payments list only (WooCommerce → Settings → Payments, next to gateway name).
+     * Not used on the Manage settings page. From config favicon_url or fallback.
+     *
+     * @return string
+     */
+    public function get_list_logo_url() {
+        if (class_exists('CoinSub_Whitelabel_Branding')) {
+            $config_favicon = CoinSub_Whitelabel_Branding::get_whitelabel_favicon_url_from_config();
+            if (!empty($config_favicon)) {
+                return $config_favicon;
+            }
+            $env_id = CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config();
+            if ($env_id === 'paymentservers.com') {
+                return COINSUB_PLUGIN_URL . 'images/paymentservers-favicon.png';
+            }
+        }
+        return COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+    }
+
+    /**
+     * Get payment method icon.
+     * - On the Payments list (all gateways): show logo next to name (from config favicon_url or fallback).
+     * - On the Manage page (our gateway settings): no icon.
+     * - On checkout: whitelabel logo.
      */
     public function get_icon() {
         $icon_url = '';
@@ -1780,9 +1828,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Normalize company name once for all checks
         $normalized_company = !empty($this->brand_company) ? strtolower(str_replace(' ', '', $this->brand_company)) : '';
         
-        // In admin, don't show CoinSub logo (whitelabel compatibility - logo only in checkout as default fallback)
+        // In admin: show logo only on the Payments list (not on our Manage settings page)
         if (is_admin()) {
-            $icon_url = ''; // No icon in admin
+            $section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : '';
+            if ($section === 'coinsub') {
+                $icon_url = ''; // Manage page: no icon
+            } else {
+                $icon_url = $this->get_list_logo_url(); // Payments list: logo next to name
+            }
         } else {
             // SPECIAL CASE: Payment Servers - use local high-res PNG (300x300)
             if ($normalized_company === 'paymentservers') {
@@ -1801,21 +1854,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('PP Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
         }
         
-        // Ensure we have a valid URL before creating HTML (only in checkout - admin should not show CoinSub logo)
+        // Ensure we have a valid URL before creating HTML
         if (empty($icon_url) && !is_admin()) {
-            // Fallback to CoinSub logo in checkout only (for non-whitelabel merchants)
             $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             error_log('PP Whitelabel: ⚠️ Empty icon URL detected, using default');
         }
-        
-        // In admin, return empty if no icon (don't show CoinSub logo in admin)
         if (is_admin() && empty($icon_url)) {
             return '';
         }
         
-        // Standard size for all payment methods (30px)
-        $icon_size = '30px';
-        
+        $icon_size = is_admin() ? '24px' : '30px';
         if (is_checkout()) {
             error_log('PP Whitelabel: 🖼️ Icon size: ' . $icon_size . ' for company: "' . $this->brand_company . '"');
         }
