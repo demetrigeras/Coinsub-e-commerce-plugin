@@ -376,7 +376,23 @@ class CoinSub_Subscriptions {
         $start_date = $order->get_date_created() ? $order->get_date_created()->date_i18n(wc_date_format()) : '—';
         $next_payment = $order->get_meta('_coinsub_next_payment');
         if (empty($next_payment)) {
-            $next_payment = '—';
+            // Same source as merchant: fetch from agreement API (retrieve_agreement) and save to order meta
+            $api_client = $this->get_api_client();
+            if ($api_client) {
+                $agreement_response = $api_client->retrieve_agreement($agreement_id);
+                if (!is_wp_error($agreement_response)) {
+                    $agreement_data = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
+                    $next_payment_raw = $this->get_next_payment_from_agreement_data($agreement_data);
+                    if (!empty($next_payment_raw)) {
+                        $order->update_meta_data('_coinsub_next_payment', $next_payment_raw);
+                        $order->save();
+                        $next_payment = $this->format_date($next_payment_raw);
+                    }
+                }
+            }
+            if (empty($next_payment)) {
+                $next_payment = '—';
+            }
         } else {
             $next_payment = $this->format_date($next_payment);
         }
@@ -480,6 +496,25 @@ class CoinSub_Subscriptions {
                     return __('Until cancelled', 'coinsub');
                 }
                 return sprintf(_n('%s payment', '%s payments', (int) $duration, 'coinsub'), (int) $duration);
+            }
+        }
+        return '';
+    }
+    
+    /**
+     * Extract next payment date from agreement API data.
+     * API returns e.g. next_process_date (ISO string) or next_payment_date (timestamp).
+     *
+     * @param array $agreement_data Agreement data from retrieve_agreement (or nested under 'data').
+     * @return string Raw value (timestamp or date string) or empty string.
+     */
+    private function get_next_payment_from_agreement_data($agreement_data) {
+        if (!is_array($agreement_data) || empty($agreement_data)) {
+            return '';
+        }
+        foreach (array('next_process_date', 'next_payment_date') as $key) {
+            if (isset($agreement_data[$key]) && $agreement_data[$key] !== '' && $agreement_data[$key] !== null) {
+                return $agreement_data[$key];
             }
         }
         return '';

@@ -363,15 +363,11 @@ class CoinSub_Admin_Subscriptions {
                         $created_at = $this->format_date($agreement_data['agreement']['created_at']);
                     }
                     
-                    // Check for next_process_date with multiple variants
+                    // API returns next_process_date (ISO string) or next_payment_date (timestamp)
                     if (isset($agreement_data['next_process_date'])) {
                         $next_processing = $this->format_date($agreement_data['next_process_date']);
-                    } elseif (isset($agreement_data['next_processing'])) {
-                        $next_processing = $this->format_date($agreement_data['next_processing']);
-                    } elseif (isset($agreement_data['nextProcessDate'])) {
-                        $next_processing = $this->format_date($agreement_data['nextProcessDate']);
-                    } elseif (isset($agreement_data['nextProcess'])) {
-                        $next_processing = $this->format_date($agreement_data['nextProcess']);
+                    } elseif (isset($agreement_data['next_payment_date'])) {
+                        $next_processing = $this->format_date($agreement_data['next_payment_date']);
                     }
                     
                     // Cancelled variants (American/British spellings and cases)

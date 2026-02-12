@@ -1771,17 +1771,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             </ol>
             <p style="margin-bottom:0;font-size:13px;color:#2e7d32"><strong><?php esc_html_e('Note:', 'coinsub'); ?></strong> <?php esc_html_e('Each product must be configured individually. Customers can manage their subscriptions from their account page.', 'coinsub'); ?></p>
         </div>
-        <div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107">
-            <h3 style="margin-top:0">⚠️ <?php esc_html_e('Refund Requirements & Limitations', 'coinsub'); ?></h3>
-            <p style="margin-bottom:10px"><?php echo __('<strong>Important Refund Disclaimer:</strong>', 'coinsub'); ?></p>
-            <ul style="margin-top:8px;margin-bottom:15px;line-height:1.6">
-                <li><?php esc_html_e('Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.', 'coinsub'); ?></li>
-                <li><?php esc_html_e('Your merchant account must have refund capabilities enabled.', 'coinsub'); ?></li>
-                <li><?php esc_html_e('Refunds use the same network and token as the original payment. If the original payment information is not available, refunds default to USDC on Polygon.', 'coinsub'); ?></li>
-                <li><?php esc_html_e('Customers must have a compatible wallet to receive refunds.', 'coinsub'); ?></li>
-            </ul>
-            <p style="margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px"><?php echo __('<strong>⚠️ Before processing refunds:</strong>', 'coinsub'); ?> <?php esc_html_e('Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.', 'coinsub'); ?></p>
-        </div>
         <div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7">
             <h3 style="margin-top:0"><?php esc_html_e('Add Tokens for Refunds', 'coinsub'); ?></h3>
             <p><?php esc_html_e('Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).', 'coinsub'); ?></p>

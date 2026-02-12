@@ -482,6 +482,12 @@ class CoinSub_Webhook_Handler {
             $order->update_meta_data('_coinsub_agreement_id', $data['agreement_id']);
         }
         
+        // Store next payment date for subscription (customer view-order). Same field as merchant uses from agreement API.
+        $next_payment = $this->get_next_payment_from_webhook_data($data);
+        if ($next_payment !== '') {
+            $order->update_meta_data('_coinsub_next_payment', $next_payment);
+        }
+        
         if (isset($transaction_details['transaction_id'])) {
             $order->update_meta_data('_coinsub_transaction_id', $transaction_details['transaction_id']);
         }
@@ -927,6 +933,32 @@ class CoinSub_Webhook_Handler {
         );
         
         return isset($networks[$chain_id]) ? $networks[$chain_id] : 'Chain ID ' . $chain_id;
+    }
+    
+    /**
+     * Extract next payment date from webhook payload.
+     * API uses next_process_date (ISO string) or next_payment_date (timestamp).
+     *
+     * @param array $data Webhook payload (may have agreement with these fields)
+     * @return string Raw value or empty string
+     */
+    private function get_next_payment_from_webhook_data($data) {
+        if (!is_array($data)) {
+            return '';
+        }
+        foreach (array('next_process_date', 'next_payment_date') as $key) {
+            if (isset($data[$key]) && $data[$key] !== '' && $data[$key] !== null) {
+                return $data[$key];
+            }
+        }
+        if (isset($data['agreement']) && is_array($data['agreement'])) {
+            foreach (array('next_process_date', 'next_payment_date') as $key) {
+                if (isset($data['agreement'][$key]) && $data['agreement'][$key] !== '' && $data['agreement'][$key] !== null) {
+                    return $data['agreement'][$key];
+                }
+            }
+        }
+        return '';
     }
     
     /**
