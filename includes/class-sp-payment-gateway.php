@@ -437,7 +437,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $this->brand_company = $plugin_name ?: 'Coinsub';
             $this->checkout_title = 'Pay with ' . $this->brand_company;
             $this->button_company_name = $this->brand_company;
-            $logo_url = CoinSub_Whitelabel_Branding::get_whitelabel_checkout_logo_url_from_config();
+            $logo_url = CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config();
             if (empty($logo_url)) {
                 if ($env_id === 'paymentservers.com') {
                     $logo_url = COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
@@ -1719,7 +1719,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
 
         $subscription_checkbox = $plugin_name
             ? sprintf(__('"%s Subscription"', 'coinsub'), esc_html($plugin_name))
-            : __('"Stablecoin Pay Subscription"', 'coinsub');
+            : __('Subscription', 'coinsub');
 
         ob_start();
         ?>
@@ -1797,20 +1797,19 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Logo URL for the Payments list only (WooCommerce → Settings → Payments, next to gateway name).
-     * Not used on the Manage settings page. From config favicon_url or fallback.
+     * Logo URL for the Payments list (and config-based checkout). From config logo_url or fallback.
      *
      * @return string
      */
     public function get_list_logo_url() {
         if (class_exists('CoinSub_Whitelabel_Branding')) {
-            $config_favicon = CoinSub_Whitelabel_Branding::get_whitelabel_favicon_url_from_config();
-            if (!empty($config_favicon)) {
-                return $config_favicon;
+            $config_logo = CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config();
+            if (!empty($config_logo)) {
+                return $config_logo;
             }
             $env_id = CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config();
             if ($env_id === 'paymentservers.com') {
-                return COINSUB_PLUGIN_URL . 'images/paymentservers-favicon.png';
+                return COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
             }
         }
         return COINSUB_PLUGIN_URL . 'images/coinsub.svg';
@@ -1818,7 +1817,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
 
     /**
      * Get payment method icon.
-     * - On the Payments list (all gateways): show logo next to name (from config favicon_url or fallback).
+     * - On the Payments list (all gateways): show logo next to name (from config logo_url or fallback).
      * - On the Manage page (our gateway settings): no icon.
      * - On checkout: whitelabel logo.
      */

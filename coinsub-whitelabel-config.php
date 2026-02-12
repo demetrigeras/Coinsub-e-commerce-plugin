@@ -2,35 +2,30 @@
 /**
  * WHITELABEL / DOWNLOADABLE BUILD CONFIG
  *
- * This file (together with create-plugin-package.sh) is the ONLY place to
- * hardcode partner-specific values for a downloadable plugin build.
+ * Single source for partner identity. No switches: when this array is filled,
+ * the plugin uses only these values for name and logo (no API/database lookup).
  *
- * - For Stablecoin Pay (default): leave environment_id null or omit this file.
- * - For a partner build (e.g. Payment Servers): set the values below, then run
- *   ./create-plugin-package.sh to produce the zip.
+ * - Array filled (environment_id set + fields set): Partner build. Name = plugin_name, logo = logo_url (or default if logo_url empty).
+ * - Array empty / file missing / environment_id null: Fall back to Stablecoin Pay (default name and logo).
+ *
+ * Run ./create-plugin-package.sh to build the zip. Set logo_url to full URL (e.g. from app/API); leave empty for default logo.
  */
 if (!defined('ABSPATH')) {
     exit;
 }
 
 return array(
-    // Partner API environment (e.g. paymentservers.com). Null = Stablecoin Pay.
+    // Partner API environment (e.g. paymentservers.com, vantack.com). Null = Stablecoin Pay.
     'environment_id' => 'paymentservers.com',
 
-    // Slug for URLs/assets (e.g. payment-servers).
-    'slug' => 'payment-servers',
-
-    // Display name used everywhere in the plugin (admin, gateway, Plugins list).
+    // Display name used everywhere (admin, gateway, Plugins list, checkout).
     'plugin_name' => 'Payment Servers',
 
-    // Where merchants sign up and manage their account (used in setup instructions and field descriptions).
+    // Where merchants sign up and manage their account (setup instructions, field descriptions).
     'dashboard_url' => 'https://app.paymentservers.com',
 
-    // Logo/icon shown next to the gateway name on the Payments list (WooCommerce → Settings → Payments). Optional; if empty, Payment Servers uses images/paymentservers-favicon.png, default build uses coinsub.svg.
-    'favicon_url' => '',
-
-    // Checkout: logo/icon and button (optional). If set, checkout uses this instead of any API/database lookup. If empty, uses favicon_url then fallbacks (Payment Servers: images/paymentservers-logo.png, default: coinsub.svg).
-    'checkout_logo_url' => '',
+    // Logo: full URL. Copy from app/API. Empty = default (Stablecoin Pay) logo.
+    'logo_url' => 'https://app.paymentservers.com/img/domain/paymentservers/paymentservers.square.dark.png',
 
     // Zip filename produced by create-plugin-package.sh when this config is present.
     'zip_name' => 'payment-servers-plugin.zip',

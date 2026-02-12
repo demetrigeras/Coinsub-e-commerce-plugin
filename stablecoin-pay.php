@@ -1104,9 +1104,16 @@ function coinsub_ajax_process_payment() {
     $order->set_billing_postcode(sanitize_text_field($_POST['billing_postcode']));
     $order->set_billing_country(sanitize_text_field($_POST['billing_country']));
     
-    // Set payment method
+    // Set payment method (whitelabel name for display)
     $order->set_payment_method('coinsub');
-    $order->set_payment_method_title('CoinSub');
+    $pm_title = __('Stablecoin Pay', 'coinsub');
+    if (class_exists('CoinSub_Whitelabel_Branding')) {
+        $name = CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config();
+        if (!empty($name)) {
+            $pm_title = sprintf(__('Pay with %s', 'coinsub'), $name);
+        }
+    }
+    $order->set_payment_method_title($pm_title);
     
     // Set customer ID if user is logged in
     if (is_user_logged_in()) {
@@ -1165,11 +1172,11 @@ function coinsub_ajax_process_payment() {
 function coinsub_ajax_clear_cart_after_payment() {
     // Verify nonce
     if (!wp_verify_nonce($_POST['security'], 'coinsub_clear_cart')) {
-        error_log('CoinSub Clear Cart: Security check failed');
+        error_log('Clear Cart: Security check failed');
         wp_die('Security check failed');
     }
     
-    error_log('🆕 CoinSub Clear Cart: Clearing cart and session after successful payment - ready for new order!');
+    error_log('🆕 Clear Cart: Clearing cart and session after successful payment - ready for new order!');
     
     // Clear the WooCommerce cart completely
 
