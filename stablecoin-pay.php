@@ -1183,7 +1183,7 @@ function coinsub_ajax_clear_cart_after_payment() {
     
     // Clear all CoinSub session data - FRESH START!
     WC()->session->set('coinsub_order_id', null);
-    WC()->session->set('coinsub_purchase_session_id', null);
+    WC()->session->set('coinsub_purchase_session_id', null); 
     
     // Force cart recalculation
     WC()->cart->calculate_totals();

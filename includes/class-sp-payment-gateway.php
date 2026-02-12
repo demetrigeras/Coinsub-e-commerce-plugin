@@ -76,10 +76,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $this->load_whitelabel_branding(false);
             }
         } else {
-            // In admin: use config display name when set (no hardcoding elsewhere)
+            // In admin: use config display name when set (no hardcoding elsewhere). Logo from config only (no bundled coinsub image).
             $this->checkout_title = $config_name ? ('Pay with ' . $config_name) : 'Pay with Coinsub';
-            $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $admin_logo = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config() : null;
+            $this->checkout_icon = $admin_logo ? $admin_logo : '';
+            $this->button_logo_url = $admin_logo ? $admin_logo : '';
             $this->button_company_name = $config_name ? $config_name : 'Coinsub';
         }
         
@@ -439,11 +440,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $this->button_company_name = $this->brand_company;
             $logo_url = CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config();
             if (empty($logo_url)) {
-                if ($env_id === 'paymentservers.com') {
-                    $logo_url = COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
-                } else {
-                    $logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-                }
+                $logo_url = '';
             }
             $this->checkout_icon = $logo_url;
             $this->button_logo_url = $logo_url;
@@ -470,10 +467,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $branding = new CoinSub_Whitelabel_Branding();
             $branding->clear_cache(); // Clear any old branding from previous merchant
             $this->brand_company = 'Coinsub';
-            // Store checkout-specific data (NOT $this->title which is for admin)
+            // Store checkout-specific data (NOT $this->title which is for admin). No bundled logo; config logo_url only.
             $this->checkout_title = 'Pay with Coinsub';
-            $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $fallback_logo = CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config();
+            $this->checkout_icon = $fallback_logo ? $fallback_logo : '';
+            $this->button_logo_url = $fallback_logo ? $fallback_logo : '';
             $this->button_company_name = 'Coinsub';
             error_log('PP Whitelabel: ✅ Using default branding (no credentials, no payment provider) - Checkout Title: "Pay with Coinsub"');
             
@@ -532,27 +530,27 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                     $this->checkout_icon = $logo_url;
                     error_log('PP Whitelabel: 🖼️ ✅ Set checkout icon to logo: ' . $logo_url);
                 } else {
-                    error_log('PP Whitelabel: 🖼️ ⚠️ No logo URL returned, keeping default icon');
-                    $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+                    error_log('PP Whitelabel: 🖼️ ⚠️ No logo URL returned (config/API only, no bundled icon)');
+                    $this->checkout_icon = '';
                 }
             }
             
-            // For button logo (larger), use the default logo
+            // For button logo (larger), use the default logo; no bundled coinsub image fallback
             $logo_url = $branding->get_logo_url('default', 'light');
-            $this->button_logo_url = $logo_url ?: COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $this->button_logo_url = $logo_url ? $logo_url : '';
             $this->button_company_name = $company_name;
             error_log('PP Whitelabel: 🔘 Button logo URL set: ' . $this->button_logo_url);
         } else {
-            // No branding found - use default "Pay with Coinsub" and CoinSub logo
-            error_log('PP Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub" and CoinSub logo');
+            // No branding found - use default "Pay with Coinsub"; logo from config only (no bundled image)
+            error_log('PP Whitelabel: ⚠️ No branding data found - using default "Pay with Coinsub"');
             $this->brand_company = 'Coinsub';
             $this->checkout_title = 'Pay with Coinsub';
-            $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            // Set default button logo URL
-            $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+            $fallback_logo = CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config();
+            $this->checkout_icon = $fallback_logo ? $fallback_logo : '';
+            $this->button_logo_url = $fallback_logo ? $fallback_logo : '';
             $this->button_company_name = 'Coinsub';
-            error_log('PP Whitelabel: ✅ Set default checkout title: "' . $this->checkout_title . '" and default icon: ' . $this->checkout_icon);
-            error_log('PP Whitelabel: 🔘 Button logo URL set to default: ' . $this->button_logo_url);
+            error_log('PP Whitelabel: ✅ Set default checkout title: "' . $this->checkout_title . '"');
+            error_log('PP Whitelabel: 🔘 Button logo URL: ' . ($this->button_logo_url ? $this->button_logo_url : '(none)'));
         }
         
         // Cache the branding for subsequent gateway instances in the same request
@@ -1807,12 +1805,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             if (!empty($config_logo)) {
                 return $config_logo;
             }
-            $env_id = CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config();
-            if ($env_id === 'paymentservers.com') {
-                return COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
-            }
         }
-        return COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        return '';
     }
 
     /**
@@ -1836,16 +1830,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $icon_url = $this->get_list_logo_url(); // Payments list: logo next to name
             }
         } else {
-            // SPECIAL CASE: Payment Servers - use local high-res PNG (300x300)
-            if ($normalized_company === 'paymentservers') {
-                $icon_url = COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
-                if (is_checkout()) {
-                    error_log('PP Whitelabel: 🖼️ 📌 Using LOCAL Payment Servers PNG logo (300x300): ' . $icon_url);
-                }
-            } else {
-                // On checkout (frontend), use whitelabel icon if available
-                $icon_url = !empty($this->checkout_icon) ? $this->checkout_icon : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            }
+            // On checkout (frontend), use whitelabel icon from config only (no bundled image)
+            $icon_url = !empty($this->checkout_icon) ? $this->checkout_icon : '';
         }
         
         // Only log on checkout, not in admin (reduces log noise)
@@ -1853,12 +1839,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('PP Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
         }
         
-        // Ensure we have a valid URL before creating HTML
+        // No fallback to bundled image; empty is valid (text-only display)
         if (empty($icon_url) && !is_admin()) {
-            $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            error_log('PP Whitelabel: ⚠️ Empty icon URL detected, using default');
+            error_log('PP Whitelabel: 🖼️ No icon URL (config logo_url only)');
         }
-        if (is_admin() && empty($icon_url)) {
+        if (empty($icon_url)) {
             return '';
         }
         
@@ -1878,7 +1863,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
      */
     public function get_order_button_text() {
         // Get logo URL and company name from checkout-specific data
-        $logo_url = !empty($this->button_logo_url) ? $this->button_logo_url : COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+        $logo_url = !empty($this->button_logo_url) ? $this->button_logo_url : '';
         $company_name = !empty($this->button_company_name) ? $this->button_company_name : 'Coinsub';
         
         // If we have checkout title, extract company name from it

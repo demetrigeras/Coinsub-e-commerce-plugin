@@ -684,10 +684,14 @@ class CoinSub_Whitelabel_Branding {
             return $constructed_url;
         }
         
-        // No logo found - return default CoinSub logo
-        $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-        error_log('Stablecoin Pay Whitelabel: 🖼️ ⚠️ No logo found in branding, using default: ' . $default_logo);
-        return $default_logo;
+        // No logo found - use config logo_url only (no bundled coinsub image)
+        $config_logo = self::get_whitelabel_logo_url_from_config();
+        if (!empty($config_logo)) {
+            error_log('Stablecoin Pay Whitelabel: 🖼️ ⚠️ No logo in branding, using config logo_url');
+            return $config_logo;
+        }
+        error_log('Stablecoin Pay Whitelabel: 🖼️ ⚠️ No logo found (config logo_url only, no bundled image)');
+        return '';
     }
     
     /**
@@ -771,10 +775,14 @@ class CoinSub_Whitelabel_Branding {
             }
         }
         
-        // No favicon found - return default CoinSub logo
-        $default_logo = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-        error_log('Stablecoin Pay Whitelabel: 🖼️ ⚠️ No favicon found in branding, using default: ' . $default_logo);
-        return $default_logo;
+        // No favicon found - use config logo_url only (no bundled image)
+        $config_logo = self::get_whitelabel_logo_url_from_config();
+        if (!empty($config_logo)) {
+            error_log('Stablecoin Pay Whitelabel: 🖼️ ⚠️ No favicon in branding, using config logo_url');
+            return $config_logo;
+        }
+        error_log('Stablecoin Pay Whitelabel: 🖼️ ⚠️ No favicon found (config logo_url only)');
+        return '';
     }
     
     /**

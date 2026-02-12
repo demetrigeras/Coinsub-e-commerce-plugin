@@ -21,7 +21,7 @@ mkdir -p "$PACKAGE_DIR"
 echo "📦 Copying main plugin file..."
 cp stablecoin-pay.php "$PACKAGE_DIR/"
 
-# Whitelabel build: config file is the single source (zip name, etc.)
+# Whitelabel build: config file is the single source (zip name, plugin name in header, etc.)
 WHITELABEL_BUILD=0
 ZIP_NAME="stablecoin-pay.zip"
 
@@ -37,6 +37,17 @@ if [ -f "coinsub-whitelabel-config.php" ]; then
         ZIP_NAME="whitelabel-plugin.zip"
     fi
     echo "📦 Partner zip name from config: $ZIP_NAME"
+    # Rewrite Plugin Name in main file header so it shows whitelabel name when plugin is inactive/deactivated
+    PLUGIN_NAME=$(grep -E "'plugin_name'|\"plugin_name\"" coinsub-whitelabel-config.php | sed -n "s/.*=> *['\"]\\([^'\"]*\\)['\"].*/\1/p" | sed 's/^ *//;s/ *$//')
+    if [ -n "$PLUGIN_NAME" ]; then
+        # Use # delimiter so plugin names containing / are safe
+        if [[ "$(uname)" = "Darwin" ]]; then
+            sed -i '' "s#^ \* Plugin Name: .*# * Plugin Name: $PLUGIN_NAME#" "$PACKAGE_DIR/stablecoin-pay.php"
+        else
+            sed -i "s#^ \* Plugin Name: .*# * Plugin Name: $PLUGIN_NAME#" "$PACKAGE_DIR/stablecoin-pay.php"
+        fi
+        echo "📦 Plugin header set to: $PLUGIN_NAME (shows correctly when deactivated)"
+    fi
 else
     echo "📦 No whitelabel config - package will run as Stablecoin Pay (default)"
 fi
