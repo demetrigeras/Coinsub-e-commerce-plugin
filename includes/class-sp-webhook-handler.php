@@ -389,23 +389,15 @@ class CoinSub_Webhook_Handler {
             }
         }
         
-        // CRITICAL: Update WooCommerce order status based on shipping requirement
-        // Use wp_update_post directly as fallback if update_status fails
+        // Store status as Processing only (merchant sees Processing). Customer sees "Completed" via display filter in class-sp-subscriptions.
         $current_status = $order->get_status();
         error_log('CoinSub Webhook: Current order status BEFORE update: ' . $current_status);
-        error_log('CoinSub Webhook: Order needs shipping: ' . (method_exists($order, 'needs_shipping') && $order->needs_shipping() ? 'YES' : 'NO'));
-        
-        // Determine target status
         $target_status = 'processing';
-        if (method_exists($order, 'needs_shipping') && !$order->needs_shipping()) {
-            $target_status = 'completed';
-        }
-        
         error_log('CoinSub Webhook: Target status: ' . $target_status);
         
         // Update status with error handling
         try {
-            $status_updated = $order->update_status($target_status, __('Payment received via CoinSub', 'coinsub'));
+            $status_updated = $order->update_status($target_status, __('Payment received', 'coinsub'));
             error_log('CoinSub Webhook: update_status() returned: ' . ($status_updated ? 'TRUE' : 'FALSE'));
             
             // Verify status was actually updated
@@ -428,32 +420,29 @@ class CoinSub_Webhook_Handler {
                 error_log('CoinSub Webhook: Final status after fallback update: ' . $final_status);
                 
                 if ($final_status === $target_status) {
-                    error_log('✅ CoinSub Webhook: Status updated successfully via fallback method');
+                    error_log('✅ PP Webhook: Status updated successfully via fallback method');
                 } else {
-                    error_log('❌ CoinSub Webhook: CRITICAL - Status update failed even with fallback!');
-                    error_log('❌ CoinSub Webhook: This may be caused by another plugin blocking status updates');
+                    error_log('❌ PP Webhook: CRITICAL - Status update failed even with fallback!');
+                    error_log('❌ PP Webhook: This may be caused by another plugin blocking status updates');
                 }
             } else {
-                error_log('✅ CoinSub Webhook: Status updated successfully to: ' . $target_status);
+                error_log('✅  Webhook: Status updated successfully to: ' . $target_status);
             }
         } catch (Exception $e) {
-            error_log('❌ CoinSub Webhook: Exception during status update: ' . $e->getMessage());
-            error_log('❌ CoinSub Webhook: Stack trace: ' . $e->getTraceAsString());
+            error_log('❌  Webhook: Exception during status update: ' . $e->getMessage());
+            error_log('❌ Webhook: Stack trace: ' . $e->getTraceAsString());
         } catch (Error $e) {
-            error_log('❌ CoinSub Webhook: Fatal error during status update: ' . $e->getMessage());
-            error_log('❌ CoinSub Webhook: Stack trace: ' . $e->getTraceAsString());
+            error_log('❌  Webhook: Fatal error during status update: ' . $e->getMessage());
+            error_log('❌  Webhook: Stack trace: ' . $e->getTraceAsString());
         }
         
-        // Debug: Check payment method
+        // Ensure payment method and title are set (whitelabel title for customer-facing display)
         $payment_method = $order->get_payment_method();
-        error_log('CoinSub Webhook: Order payment method: ' . $payment_method);
-        
-        // Ensure payment method is set to coinsub
+        $order->set_payment_method('coinsub');
+        $order->set_payment_method_title($this->get_coinsub_payment_method_title());
         if ($payment_method !== 'coinsub') {
-            $order->set_payment_method('coinsub');
-            $order->set_payment_method_title('Pay with Coinsub');
             $order->save();
-            error_log('CoinSub Webhook: Set payment method to coinsub');
+            error_log(' Webhook: Set payment method to coinsub');
         }
         
         // Add order note with transaction details
@@ -481,7 +470,7 @@ class CoinSub_Webhook_Handler {
         }
         
         $order->add_order_note(
-            __('CoinSub Payment Complete', 'coinsub')
+            __('Payment complete', 'coinsub')
         );
         
         // Store transaction details in WooCommerce
@@ -941,6 +930,19 @@ class CoinSub_Webhook_Handler {
     }
     
     /**
+     * Payment method title for orders (whitelabel name for customer-facing display)
+     *
+     * @return string
+     */
+    private function get_coinsub_payment_method_title() {
+        $name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        if (!empty($name)) {
+            return sprintf(__('Pay with %s', 'coinsub'), $name);
+        }
+        return __('Pay with Stablecoin Pay', 'coinsub');
+    }
+    
+    /**
      * Create a renewal order for recurring subscription payments
      * 
      * @param WC_Order $parent_order The original subscription order
@@ -1047,9 +1049,9 @@ class CoinSub_Webhook_Handler {
                 $renewal_order->add_item($fee);
             }
             
-            // Set payment method
+            // Set payment method (whitelabel title for display)
             $renewal_order->set_payment_method('coinsub');
-            $renewal_order->set_payment_method_title('Pay with Coinsub');
+            $renewal_order->set_payment_method_title($this->get_coinsub_payment_method_title());
             
             // Set currency
             $renewal_order->set_currency($parent_order->get_currency());

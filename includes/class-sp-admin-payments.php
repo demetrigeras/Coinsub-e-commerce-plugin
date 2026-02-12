@@ -57,10 +57,17 @@ class CoinSub_Admin_Payments {
     }
     
     /**
-     * Get company name for display (whitelabel if settings saved, otherwise default)
+     * Get company name for display. When whitelabel config is filled, use config only (no API/DB). Empty config = Stablecoin Pay.
      */
     private function get_display_company_name() {
-        // Only use whitelabel branding if settings are saved
+        if (class_exists('CoinSub_Whitelabel_Branding')) {
+            $env_id = CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config();
+            if (!empty($env_id)) {
+                $name = CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config();
+                return $name ?: __('Stablecoin Pay', 'coinsub');
+            }
+        }
+        // Stablecoin Pay build: use API branding when settings saved, else default
         if (!$this->are_settings_saved()) {
             return __('Payment Provider', 'coinsub');
         }

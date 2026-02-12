@@ -28,11 +28,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         }
         
         $this->id = 'coinsub';
-        // Icon set dynamically in get_icon() - no default icon for whitelabel compatibility (CoinSub logo only in checkout as fallback)
-        $this->icon = '';
+        // Icon for Payments list (WooCommerce → Settings → Payments). Checkout uses get_icon().
+        $this->icon = $this->get_list_logo_url();
         $this->has_fields = true; // Enable custom payment box
-        $this->method_title = __('Stablecoin Pay', 'coinsub');
-        $this->method_description = __('Accept Crypto payments with Stablecoin Pay', 'coinsub');
+        // Display name from whitelabel config only (no hardcoding elsewhere)
+        $config_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        $gateway_label = $config_name ? $config_name : __('Stablecoin Pay', 'coinsub');
+        $this->method_title = $gateway_label;
+        $this->method_description = $config_name ? sprintf(__('Accept Crypto payments with %s', 'coinsub'), $config_name) : __('Accept Crypto payments with Stablecoin Pay', 'coinsub');
         
         // Declare supported features
         $this->supports = array(
@@ -49,9 +52,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $this->init_form_fields();
         $this->init_settings();
         
-        // Set default title for admin (always "Stablecoin Pay" in admin)
-        // Whitelabel branding will only be applied on checkout (frontend)
-        $this->title = 'Pay with Coinsub'; // Default for admin display
+        // Admin title: from whitelabel config when set, else default
+        $this->title = $config_name ? ('Pay with ' . $config_name) : 'Pay with Coinsub';
         $this->description = '';
         $this->enabled = $this->get_option('enabled', 'yes');
         
@@ -74,12 +76,11 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $this->load_whitelabel_branding(false);
             }
         } else {
-            // In admin, always use default branding (no whitelabel)
-            $this->checkout_title = 'Pay with Coinsub';
+            // In admin: use config display name when set (no hardcoding elsewhere)
+            $this->checkout_title = $config_name ? ('Pay with ' . $config_name) : 'Pay with Coinsub';
             $this->checkout_icon = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             $this->button_logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
-            $this->button_company_name = 'Coinsub';
-            // Don't log in admin (reduces log noise)
+            $this->button_company_name = $config_name ? $config_name : 'Coinsub';
         }
         
         // Only log constructor details on checkout, not in admin (reduces log noise)
@@ -137,30 +138,22 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
          * - When we output HTML before calling parent::admin_options(), it breaks WooCommerce's form structure
          * - WooCommerce's parent method expects to output the <form> tag from scratch
          * - If we output HTML first, the form action attribute ends up empty
-         * - Without a form action, the form can't submit and settings can't be saved
          * 
          * THE SOLUTION:
          * - Call parent::admin_options() FIRST to generate the complete form structure
          * - Then inject instructions via JavaScript AFTER the form is rendered
-         * - This preserves the form structure and ensures the action attribute is set correctly
          */
         
-        // Call parent FIRST to generate the form with proper action attribute
         parent::admin_options();
         
-        // Now inject instructions at the top using JavaScript (after form is rendered)
-        // Get Meld URL and webhook URL first (PHP) so we can properly escape them for JavaScript
-        $meld_url = esc_js($this->get_meld_onramp_url());
-        $secret = get_option('coinsub_webhook_secret');
-        $webhook_base = home_url('/wp-json/stablecoin/v1/webhook');
-        $webhook_url = $secret ? add_query_arg('secret', $secret, $webhook_base) : $webhook_base;
+        // Inject instructions via JavaScript (after the form)
+        $instructions_html = $this->get_setup_instructions_html();
         ?>
         <script type="text/javascript">
         jQuery(document).ready(function($) {
             // Inject instructions box at the top (after the h2 title, before the form table)
-            var meldUrl = <?php echo json_encode($this->get_meld_onramp_url()); ?>;
-            var webhookUrl = <?php echo json_encode($webhook_url); ?>;
-            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327"><h3 style=margin-top:0;font-size:1.3em>Setup Instructions</h3><h4 style="margin:1.5em 0 .5em">Step 1. Get Your Payment Provider Credentials</h4><ol style=line-height:1.6;margin-top:0><li>Log in to your account<li>Navigate to <strong>Settings</strong> in your dashboard<li>Copy your <strong>Merchant ID</strong><li>Create and copy your <strong>API Key</strong><li>Paste both into the fields below</ol><h4 style="margin:1.5em 0 .5em">Step 2: Configure Webhook (CRITICAL)</h4><ol style=line-height:1.6;margin-top:0><li>Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)<li>Go back to your dashboard <strong>Settings</strong><li>Find the <strong>Webhook URL</strong> field<li><strong>Paste your webhook URL</strong> into that field and save<li><em>This is essential</em> - without this, orders won\'t update when payments complete!</ol><h4 style="margin:1.5em 0 .5em">Step 3: Fix WordPress Checkout Page (If Needed)</h4><ol style=line-height:1.6;margin-top:0><li>Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong><li>In the page editor, click the <strong style=font-size:1.2em;line-height:1>⋮</strong> (three vertical dots) in the top right<li>Select <strong>Code Editor</strong><li>Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code><li>Click <strong>Update</strong> to save</ol><h4 style="margin:1.5em 0 .5em">Step 4: Enable payment provider</h4><ol style=line-height:1.6;margin-top:0><li>Check the <strong>"Enable Payment Provider crypto payments"</strong> box below<li>Click <strong>Save changes</strong><li>Done! Customers will now see the payment option at checkout!</ol><p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><strong>⚠️ Important:</strong> The payment provider works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!<div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50"><h3 style=margin-top:0>💳 Setting Up Subscription Products</h3><p><strong>To enable recurring payments for a product:</strong><ol style=line-height:1.6;margin-top:10px><li>Go to <strong>Products</strong> → Select the product you want to make a subscription<li>Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section<li>Check the <strong>"Stablecoin Pay Subscription"</strong> checkbox<li>Configure the subscription settings:<ul style=margin-top:8px><li><strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)<li><strong>Interval:</strong> Time period (Day, Week, Month, Year)<li><strong>Duration:</strong> Number of payments (0 = Until Cancelled)</ul><li>Click <strong>Update</strong> to save the product</ol><p style=margin-bottom:0;font-size:13px;color:#2e7d32><strong>Note:</strong> Each product must be configured individually. Customers can manage their subscriptions from their account page.</div><div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107"><h3 style=margin-top:0>⚠️ Refund Requirements & Limitations</h3><p style=margin-bottom:10px><strong>Important Refund Disclaimer:</strong></p><ul style=margin-top:8px;margin-bottom:15px;line-height:1.6><li><strong>Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.</strong><li><strong>Your merchant account must have refund capabilities enabled.</strong><li><strong>Refunds use the same network and token as the original payment.</strong> If the original payment information is not available, refunds default to <strong>USDC on Polygon</strong>.<li>Customers must have a compatible wallet to receive refunds.</ul><p style=margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px><strong>⚠️ Before processing refunds:</strong> Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.</p></div><div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7"><h3 style=margin-top:0>Add Tokens for Refunds</h3><p><strong>Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).</strong><p>To process refunds, you\'ll need sufficient tokens in your merchant wallet on the same network as the original payment. If you don\'t have enough tokens, you can purchase them through Meld.<p style=margin-bottom:10px><a class="button button-primary"href="' + meldUrl + '"style=background:#2271b1;border-color:#2271b1 target=_blank>Buy Tokens via Meld</a><p style=margin-bottom:0;font-size:12px;color:#666><strong>Tip:</strong> Keep a small reserve of tokens (especially USDC on Polygon as the default fallback) to cover refunds quickly. Click the button above to add funds via Meld.</div></div>');
+            var instructionsHtml = <?php echo json_encode($instructions_html); ?>;
+            var instructions = $('<div style="background:#fff;border-left:4px solid #3b82f6;padding:20px;margin:20px 0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#1d2327">').html(instructionsHtml);
             
             // Insert after the h2 title (which is the first h2 in the form)
             $('h2').first().after(instructions);
@@ -349,26 +342,26 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             'enabled' => array(
                 'title' => __('Enable/Disable', 'coinsub'),
                 'type' => 'checkbox',
-                'label' => __('Enable Payment Provider crypto payments', 'coinsub'),
+                'label' => $this->get_enable_label(),
                 'default' => 'no'
             ),
             'merchant_id' => array(
                 'title' => __('Merchant ID', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Get this from your merchant dashboard', 'coinsub'),
+                'description' => $this->get_credentials_source_description(),
                 'default' => '',
                 'placeholder' => 'e.g., 12345678-abcd-1234-abcd-123456789abc',
             ),
             'api_key' => array(
                 'title' => __('API Key', 'coinsub'),
                 'type' => 'password',
-                'description' => __('Get this from your merchant dashboard', 'coinsub'),
+                'description' => $this->get_credentials_source_description(),
                 'default' => '',
             ),
             'webhook_url' => array(
                 'title' => __('Webhook URL', 'coinsub'),
                 'type' => 'text',
-                'description' => __('Copy this URL and add it to your merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'),
+                'description' => $this->get_webhook_destination_description(),
                 'default' => (function() {
                     $secret = get_option('coinsub_webhook_secret');
                     $base = home_url('/wp-json/stablecoin/v1/webhook');
@@ -437,8 +430,37 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         
         error_log('PP Whitelabel: Loading branding for CHECKOUT ONLY (force_refresh: ' . ($force_refresh ? 'yes' : 'no') . ')...');
         
+        // Partner build (whitelabel config): use config for checkout name + logo only — no API/database lookup
+        $env_id = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config() : null;
+        if (!empty($env_id)) {
+            $plugin_name = CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config();
+            $this->brand_company = $plugin_name ?: 'Coinsub';
+            $this->checkout_title = 'Pay with ' . $this->brand_company;
+            $this->button_company_name = $this->brand_company;
+            $logo_url = CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config();
+            if (empty($logo_url)) {
+                if ($env_id === 'paymentservers.com') {
+                    $logo_url = COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
+                } else {
+                    $logo_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+                }
+            }
+            $this->checkout_icon = $logo_url;
+            $this->button_logo_url = $logo_url;
+            $branding_loaded = true;
+            $cached_branding = array(
+                'brand_company' => $this->brand_company,
+                'checkout_title' => $this->checkout_title,
+                'checkout_icon' => $this->checkout_icon,
+                'button_logo_url' => $this->button_logo_url,
+                'button_company_name' => $this->button_company_name,
+            );
+            error_log('PP Whitelabel: ✅ Checkout from config only (no lookup) - Title: "' . $this->checkout_title . '", Logo: ' . $logo_url);
+            return;
+        }
+        
+        // Stablecoin Pay (no whitelabel config): check credentials and use API/database for branding
         // CRITICAL FIX: Check if credentials exist before loading branding
-        // If no credentials, clear any old branding and use defaults
         // This prevents old branding (e.g., "Vantack") from showing when credentials are removed
         $merchant_id = $this->get_option('merchant_id');
         $api_key = $this->get_option('api_key');
@@ -1357,13 +1379,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 $insufficient_funds_note .= 'You need ' . $amount . ' USDC on Polygon to process this refund.<br><br>';
                 
                 $insufficient_funds_note .= '<strong>To add funds:</strong><br>';
-                $insufficient_funds_note .= '1. Go to <strong>WooCommerce → Settings → Payments</strong> (payment provider)<br>';
+                $settings_label = $this->get_title();
+                $insufficient_funds_note .= '1. Go to <strong>WooCommerce → Settings → Payments</strong> (' . esc_html($settings_label) . ')<br>';
                 $insufficient_funds_note .= '2. Click <strong>"Manage"</strong> or scroll down<br>';
                 $insufficient_funds_note .= '3. Click the <strong>"Onramp USDC Polygon via Meld"</strong> button<br>';
                 $insufficient_funds_note .= '4. Complete the onramp process<br>';
                 $insufficient_funds_note .= '5. Retry the refund once funds are available<br><br>';
                 
-                $insufficient_funds_note .= '<a href="' . esc_url($coinsub_settings_url) . '" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">Go to Payment Provider Settings</a>';
+                $insufficient_funds_note .= '<a href="' . esc_url($coinsub_settings_url) . '" class="button button-primary" style="background: #0284c7; border-color: #0284c7;">Go to ' . esc_html($settings_label) . ' Settings</a>';
                 
                 $order->add_order_note($insufficient_funds_note);
                 $order->update_status('refund-pending', __('Refund pending - insufficient funds. Please add USDC to Polygon wallet.', 'coinsub'));
@@ -1596,13 +1619,12 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get payment method title
-     * CRITICAL: Returns "Stablecoin Pay" in admin, whitelabel name on checkout
+     * Get payment method title (from config when whitelabel; no hardcoding elsewhere)
      */
     public function get_title() {
-        // In admin, always return "Stablecoin Pay" (no whitelabel)
+        $config_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
         if (is_admin()) {
-            return __('Stablecoin Pay', 'coinsub');
+            return $config_name ? $config_name : __('Stablecoin Pay', 'coinsub');
         }
         
         // On checkout (frontend), use whitelabel title if available
@@ -1615,8 +1637,189 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get payment method icon
-     * CRITICAL: Returns default CoinSub logo in admin, whitelabel logo on checkout
+     * Label for the Enable checkbox in gateway settings (from config when whitelabel).
+     */
+    public function get_enable_label() {
+        $config_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        if ($config_name) {
+            return sprintf(__('Enable %s crypto payments', 'coinsub'), $config_name);
+        }
+        return __('Enable Stablecoin Pay crypto payments', 'coinsub');
+    }
+
+    /**
+     * Dashboard URL from whitelabel config (where merchants log in). Null when not whitelabel.
+     *
+     * @return string|null
+     */
+    public function get_dashboard_url_from_config() {
+        return class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_dashboard_url_from_config() : null;
+    }
+
+    /**
+     * HTML for "where to get credentials" - dashboard link when whitelabel, else generic.
+     * Used in form field descriptions.
+     *
+     * @return string
+     */
+    public function get_credentials_source_description() {
+        $dashboard_url = $this->get_dashboard_url_from_config();
+        $plugin_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        if ($dashboard_url && $plugin_name) {
+            $host = parse_url($dashboard_url, PHP_URL_HOST);
+            $link = '<a href="' . esc_url($dashboard_url) . '" target="_blank" rel="noopener">' . esc_html($host ?: $dashboard_url) . '</a>';
+            return sprintf(__('Get this from your %1$s dashboard at %2$s', 'coinsub'), esc_html($plugin_name), $link);
+        }
+        return __('Get this from your merchant dashboard', 'coinsub');
+    }
+
+    /**
+     * HTML for "add webhook to dashboard" - dashboard link when whitelabel.
+     *
+     * @return string
+     */
+    public function get_webhook_destination_description() {
+        $dashboard_url = $this->get_dashboard_url_from_config();
+        $plugin_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        if ($dashboard_url && $plugin_name) {
+            $host = parse_url($dashboard_url, PHP_URL_HOST);
+            $link = '<a href="' . esc_url($dashboard_url) . '" target="_blank" rel="noopener">' . esc_html($host ?: $dashboard_url) . '</a>';
+            return sprintf(__('Copy this URL and add it to your %1$s dashboard at %2$s. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub'), esc_html($plugin_name), $link);
+        }
+        return __('Copy this URL and add it to your merchant dashboard. This URL receives payment confirmations and automatically updates order status to "Processing" when payment is complete.', 'coinsub');
+    }
+
+    /**
+     * Inner HTML for the setup instructions box (whitelabel-aware: dashboard URL and plugin name).
+     *
+     * @return string
+     */
+    public function get_setup_instructions_html() {
+        $dashboard_url = $this->get_dashboard_url_from_config();
+        $plugin_name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
+        $meld_url = $this->get_meld_onramp_url();
+
+        $step1_title = $plugin_name
+            ? sprintf(__('Step 1. Get Your %s Credentials', 'coinsub'), esc_html($plugin_name))
+            : __('Step 1. Get Your Payment Provider Credentials', 'coinsub');
+        $dashboard_link = '';
+        if ($dashboard_url) {
+            $host = parse_url($dashboard_url, PHP_URL_HOST);
+            $dashboard_link = '<a href="' . esc_url($dashboard_url) . '" target="_blank" rel="noopener">' . esc_html($host ?: $dashboard_url) . '</a>';
+        }
+        $login_phrase = $dashboard_link ? sprintf(__('Log in to your account at %s', 'coinsub'), $dashboard_link) : __('Log in to your account', 'coinsub');
+        // Dashboard URL shown only once (in login line); no need to repeat in next steps
+        $nav_dashboard_phrase = __('Navigate to <strong>Settings</strong> in your dashboard', 'coinsub');
+        $go_back_phrase = __('Go back to your dashboard <strong>Settings</strong>', 'coinsub');
+
+        $step4_title = $plugin_name ? sprintf(__('Step 4: Enable %s', 'coinsub'), esc_html($plugin_name)) : __('Step 4: Enable payment provider', 'coinsub');
+        $important_phrase = $plugin_name
+            ? sprintf(__('<strong>⚠️ Important:</strong> %s works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!', 'coinsub'), esc_html($plugin_name))
+            : __('<strong>⚠️ Important:</strong> The payment provider works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!', 'coinsub');
+
+        $subscription_checkbox = $plugin_name
+            ? sprintf(__('"%s Subscription"', 'coinsub'), esc_html($plugin_name))
+            : __('Subscription', 'coinsub');
+
+        ob_start();
+        ?>
+        <h3 style="margin-top:0;font-size:1.3em"><?php echo esc_html(__('Setup Instructions', 'coinsub')); ?></h3>
+        <h4 style="margin:1.5em 0 .5em"><?php echo $step1_title; ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo $login_phrase; ?></li>
+            <li><?php echo $nav_dashboard_phrase; ?></li>
+            <li><?php echo __('Copy your <strong>Merchant ID</strong>', 'coinsub'); ?></li>
+            <li><?php echo __('Create and copy your <strong>API Key</strong>', 'coinsub'); ?></li>
+            <li><?php esc_html_e('Paste both into the fields below', 'coinsub'); ?></li>
+        </ol>
+        <h4 style="margin:1.5em 0 .5em"><?php esc_html_e('Step 2: Configure Webhook (CRITICAL)', 'coinsub'); ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo __('Copy the <strong>Webhook URL</strong> shown below (it will look like: <code>https://yoursite.com/wp-json/stablecoin/v1/webhook</code>)', 'coinsub'); ?></li>
+            <li><?php echo $go_back_phrase; ?></li>
+            <li><?php echo __('Find the <strong>Webhook URL</strong> field', 'coinsub'); ?></li>
+            <li><?php echo __('<strong>Paste your webhook URL</strong> into that field and save', 'coinsub'); ?></li>
+            <li><em><?php esc_html_e('This is essential', 'coinsub'); ?></em> — <?php esc_html_e('without this, orders won\'t update when payments complete!', 'coinsub'); ?></li>
+        </ol>
+        <h4 style="margin:1.5em 0 .5em"><?php esc_html_e('Step 3: Fix WordPress Checkout Page (If Needed)', 'coinsub'); ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo __('Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong>', 'coinsub'); ?></li>
+            <li><?php echo __('In the page editor, click the <strong style="font-size:1.2em;line-height:1">⋮</strong> (three vertical dots) in the top right', 'coinsub'); ?></li>
+            <li><?php echo __('Select <strong>Code Editor</strong>', 'coinsub'); ?></li>
+            <li><?php echo __('Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code>', 'coinsub'); ?></li>
+            <li><?php echo __('Click <strong>Update</strong> to save', 'coinsub'); ?></li>
+        </ol>
+        <h4 style="margin:1.5em 0 .5em"><?php echo $step4_title; ?></h4>
+        <ol style="line-height:1.6;margin-top:0">
+            <li><?php echo sprintf(__('Check the <strong>%s</strong> box below', 'coinsub'), esc_html($this->get_enable_label())); ?></li>
+            <li><?php echo __('Click <strong>Save changes</strong>', 'coinsub'); ?></li>
+            <li><?php esc_html_e('Done! Customers will now see the payment option at checkout!', 'coinsub'); ?></li>
+        </ol>
+        <p style="margin-bottom:0;padding:10px;background:#fef3c7;border-radius:4px;border:1px solid #998843"><?php echo $important_phrase; ?></p>
+        <div style="margin-top:20px;padding:15px;background:#e8f5e9;border-radius:4px;border:1px solid #4caf50">
+            <h3 style="margin-top:0">💳 <?php esc_html_e('Setting Up Subscription Products', 'coinsub'); ?></h3>
+            <p><strong><?php esc_html_e('To enable recurring payments for a product:', 'coinsub'); ?></strong></p>
+            <ol style="line-height:1.6;margin-top:10px">
+                <li><?php echo __('Go to <strong>Products</strong> → Select the product you want to make a subscription', 'coinsub'); ?></li>
+                <li><?php echo __('Click <strong>Edit</strong> and scroll to the <strong>Product Data</strong> section', 'coinsub'); ?></li>
+                <li><?php echo sprintf(__('Check the <strong>%s</strong> checkbox', 'coinsub'), $subscription_checkbox); ?></li>
+                <li><?php esc_html_e('Configure the subscription settings:', 'coinsub'); ?>
+                    <ul style="margin-top:8px">
+                        <li><?php echo __('<strong>Frequency:</strong> How often it repeats (Every, Every Other, Every Third, etc.)', 'coinsub'); ?></li>
+                        <li><?php echo __('<strong>Interval:</strong> Time period (Day, Week, Month, Year)', 'coinsub'); ?></li>
+                        <li><?php echo __('<strong>Duration:</strong> Number of payments (0 = Until Cancelled)', 'coinsub'); ?></li>
+                    </ul>
+                </li>
+                <li><?php echo __('Click <strong>Update</strong> to save the product', 'coinsub'); ?></li>
+            </ol>
+            <p style="margin-bottom:0;font-size:13px;color:#2e7d32"><strong><?php esc_html_e('Note:', 'coinsub'); ?></strong> <?php esc_html_e('Each product must be configured individually. Customers can manage their subscriptions from their account page.', 'coinsub'); ?></p>
+        </div>
+        <div style="margin-top:20px;padding:15px;background:#fff3cd;border-radius:4px;border:1px solid #ffc107">
+            <h3 style="margin-top:0">⚠️ <?php esc_html_e('Refund Requirements & Limitations', 'coinsub'); ?></h3>
+            <p style="margin-bottom:10px"><?php echo __('<strong>Important Refund Disclaimer:</strong>', 'coinsub'); ?></p>
+            <ul style="margin-top:8px;margin-bottom:15px;line-height:1.6">
+                <li><?php esc_html_e('Refunds are only available for customers who paid using stablecoin wallets or supported payment providers.', 'coinsub'); ?></li>
+                <li><?php esc_html_e('Your merchant account must have refund capabilities enabled.', 'coinsub'); ?></li>
+                <li><?php esc_html_e('Refunds use the same network and token as the original payment. If the original payment information is not available, refunds default to USDC on Polygon.', 'coinsub'); ?></li>
+                <li><?php esc_html_e('Customers must have a compatible wallet to receive refunds.', 'coinsub'); ?></li>
+            </ul>
+            <p style="margin-bottom:10px;padding:10px;background:#fff;border-left:3px solid #ff9800;font-size:13px"><?php echo __('<strong>⚠️ Before processing refunds:</strong>', 'coinsub'); ?> <?php esc_html_e('Verify that the customer\'s payment method supports refunds and that your merchant account has refund functionality enabled. Contact support if you\'re unsure.', 'coinsub'); ?></p>
+        </div>
+        <div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7">
+            <h3 style="margin-top:0"><?php esc_html_e('Add Tokens for Refunds', 'coinsub'); ?></h3>
+            <p><?php esc_html_e('Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).', 'coinsub'); ?></p>
+            <p><?php esc_html_e('To process refunds, you\'ll need sufficient tokens in your merchant wallet on the same network as the original payment. If you don\'t have enough tokens, you can purchase them through Meld.', 'coinsub'); ?></p>
+            <p><?php echo __('To find your wallet address: in your dashboard, open the <strong>Wallet</strong> tab and copy your wallet address from there.', 'coinsub'); ?></p>
+            <p style="margin-bottom:10px"><a class="button button-primary" href="<?php echo esc_url($meld_url); ?>" style="background:#2271b1;border-color:#2271b1" target="_blank" rel="noopener"><?php esc_html_e('Buy Tokens via Meld', 'coinsub'); ?></a></p>
+            <p style="margin-bottom:0;font-size:12px;color:#666"><?php echo __('<strong>Tip:</strong>', 'coinsub'); ?> <?php esc_html_e('Keep a small reserve of tokens (especially USDC on Polygon as the default fallback) to cover refunds quickly. Click the button above to add funds via Meld.', 'coinsub'); ?></p>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+    
+    /**
+     * Logo URL for the Payments list (and config-based checkout). From config logo_url or fallback.
+     *
+     * @return string
+     */
+    public function get_list_logo_url() {
+        if (class_exists('CoinSub_Whitelabel_Branding')) {
+            $config_logo = CoinSub_Whitelabel_Branding::get_whitelabel_logo_url_from_config();
+            if (!empty($config_logo)) {
+                return $config_logo;
+            }
+            $env_id = CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config();
+            if ($env_id === 'paymentservers.com') {
+                return COINSUB_PLUGIN_URL . 'images/paymentservers-logo.png';
+            }
+        }
+        return COINSUB_PLUGIN_URL . 'images/coinsub.svg';
+    }
+
+    /**
+     * Get payment method icon.
+     * - On the Payments list (all gateways): show logo next to name (from config logo_url or fallback).
+     * - On the Manage page (our gateway settings): no icon.
+     * - On checkout: whitelabel logo.
      */
     public function get_icon() {
         $icon_url = '';
@@ -1624,9 +1827,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         // Normalize company name once for all checks
         $normalized_company = !empty($this->brand_company) ? strtolower(str_replace(' ', '', $this->brand_company)) : '';
         
-        // In admin, don't show CoinSub logo (whitelabel compatibility - logo only in checkout as default fallback)
+        // In admin: show logo only on the Payments list (not on our Manage settings page)
         if (is_admin()) {
-            $icon_url = ''; // No icon in admin
+            $section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : '';
+            if ($section === 'coinsub') {
+                $icon_url = ''; // Manage page: no icon
+            } else {
+                $icon_url = $this->get_list_logo_url(); // Payments list: logo next to name
+            }
         } else {
             // SPECIAL CASE: Payment Servers - use local high-res PNG (300x300)
             if ($normalized_company === 'paymentservers') {
@@ -1645,21 +1853,16 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             error_log('PP Whitelabel: 🖼️ get_icon() called - Context: CHECKOUT - Using icon URL: ' . $icon_url);
         }
         
-        // Ensure we have a valid URL before creating HTML (only in checkout - admin should not show CoinSub logo)
+        // Ensure we have a valid URL before creating HTML
         if (empty($icon_url) && !is_admin()) {
-            // Fallback to CoinSub logo in checkout only (for non-whitelabel merchants)
             $icon_url = COINSUB_PLUGIN_URL . 'images/coinsub.svg';
             error_log('PP Whitelabel: ⚠️ Empty icon URL detected, using default');
         }
-        
-        // In admin, return empty if no icon (don't show CoinSub logo in admin)
         if (is_admin() && empty($icon_url)) {
             return '';
         }
         
-        // Standard size for all payment methods (30px)
-        $icon_size = '30px';
-        
+        $icon_size = is_admin() ? '24px' : '30px';
         if (is_checkout()) {
             error_log('PP Whitelabel: 🖼️ Icon size: ' . $icon_size . ' for company: "' . $this->brand_company . '"');
         }

@@ -26,6 +26,22 @@ define('COINSUB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('COINSUB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('COINSUB_VERSION', '1.0.0');
 
+/**
+ * Display name from whitelabel config (e.g. "Payment Servers"). Only config file is hardcoded.
+ * Use when branding class may not be loaded (e.g. WooCommerce missing notice).
+ */
+function coinsub_get_whitelabel_plugin_name() {
+    $path = COINSUB_PLUGIN_DIR . 'coinsub-whitelabel-config.php';
+    if (!is_readable($path)) {
+        return null;
+    }
+    $config = include $path;
+    if (!is_array($config) || empty($config['environment_id'])) {
+        return null;
+    }
+    return isset($config['plugin_name']) && $config['plugin_name'] !== '' ? $config['plugin_name'] : null;
+}
+
 // Check if WooCommerce is active
 if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
     add_action('admin_notices', 'coinsub_woocommerce_missing_notice');
@@ -36,7 +52,8 @@ if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get
  * WooCommerce missing notice
  */
 function coinsub_woocommerce_missing_notice() {
-    echo '<div class="error"><p><strong>Stablecoin Pay</strong> requires WooCommerce to be installed and active.</p></div>';
+    $label = coinsub_get_whitelabel_plugin_name() ?: 'Stablecoin Pay';
+    echo '<div class="error"><p><strong>' . esc_html($label) . '</strong> requires WooCommerce to be installed and active.</p></div>';
 }
 
 /**
@@ -75,6 +92,15 @@ function coinsub_commerce_init() {
         new WC_CoinSub_Cart_Sync();
     }
     
+    // Plugin list: show whitelabel name from config (config + build script are the only hardcoded places)
+    add_filter('all_plugins', function ($plugins) {
+        $name = coinsub_get_whitelabel_plugin_name();
+        if ($name && isset($plugins[plugin_basename(COINSUB_PLUGIN_FILE)])) {
+            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['Name'] = $name;
+        }
+        return $plugins;
+    });
+
     // Initialize admin tools (only in admin)
     if (is_admin()) {
         new CoinSub_Admin_Logs();
@@ -1078,9 +1104,16 @@ function coinsub_ajax_process_payment() {
     $order->set_billing_postcode(sanitize_text_field($_POST['billing_postcode']));
     $order->set_billing_country(sanitize_text_field($_POST['billing_country']));
     
-    // Set payment method
+    // Set payment method (whitelabel name for display)
     $order->set_payment_method('coinsub');
-    $order->set_payment_method_title('CoinSub');
+    $pm_title = __('Stablecoin Pay', 'coinsub');
+    if (class_exists('CoinSub_Whitelabel_Branding')) {
+        $name = CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config();
+        if (!empty($name)) {
+            $pm_title = sprintf(__('Pay with %s', 'coinsub'), $name);
+        }
+    }
+    $order->set_payment_method_title($pm_title);
     
     // Set customer ID if user is logged in
     if (is_user_logged_in()) {
@@ -1139,11 +1172,11 @@ function coinsub_ajax_process_payment() {
 function coinsub_ajax_clear_cart_after_payment() {
     // Verify nonce
     if (!wp_verify_nonce($_POST['security'], 'coinsub_clear_cart')) {
-        error_log('CoinSub Clear Cart: Security check failed');
+        error_log('Clear Cart: Security check failed');
         wp_die('Security check failed');
     }
     
-    error_log('🆕 CoinSub Clear Cart: Clearing cart and session after successful payment - ready for new order!');
+    error_log('🆕 Clear Cart: Clearing cart and session after successful payment - ready for new order!');
     
     // Clear the WooCommerce cart completely
 
