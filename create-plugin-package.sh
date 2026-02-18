@@ -2,7 +2,7 @@
 
 # Plugin Package Creator
 #
-# Partner-specific values: ONLY in coinsub-whitelabel-config.php (and this script
+# Partner-specific values: ONLY in sp-whitelabel-config.php (and this script
 # reading that file). To build a partner zip, set environment_id + plugin_name + zip_name
 # in the config, then run this script. For Stablecoin Pay (default), omit the config
 # or set environment_id null.
@@ -13,8 +13,19 @@ cd "$(dirname "$0")"
 echo "🚀 Creating Plugin Package..."
 echo "📂 Working directory: $(pwd)"
 
-# Create package directory
+# Resolve zip name early so we can remove old build artifacts
+ZIP_NAME="stablecoin-pay.zip"
+if [ -f "sp-whitelabel-config.php" ]; then
+    EXTRACTED=$(grep -E "'zip_name'|\"zip_name\"" sp-whitelabel-config.php | sed -n "s/.*['\"]zip_name['\"][^'\"]*['\"]\\([^'\"]*\\)['\"].*/\1/p" | tr -d ' ')
+    [ -n "$EXTRACTED" ] && ZIP_NAME="$EXTRACTED"
+fi
+
+# Clean previous build so we always ship latest (avoids stale/cached zip)
 PACKAGE_DIR="stablecoin-pay-plugin"
+rm -rf "$PACKAGE_DIR"
+rm -f "$ZIP_NAME"
+echo "🧹 Cleaned previous build (fresh package)"
+
 mkdir -p "$PACKAGE_DIR"
 
 # Copy main plugin file
@@ -23,22 +34,14 @@ cp stablecoin-pay.php "$PACKAGE_DIR/"
 
 # Whitelabel build: config file is the single source (zip name, plugin name in header, etc.)
 WHITELABEL_BUILD=0
-ZIP_NAME="stablecoin-pay.zip"
 
-if [ -f "coinsub-whitelabel-config.php" ]; then
+if [ -f "sp-whitelabel-config.php" ]; then
     echo "📦 Copying whitelabel config (partner build)..."
-    cp coinsub-whitelabel-config.php "$PACKAGE_DIR/"
+    cp sp-whitelabel-config.php "$PACKAGE_DIR/"
     WHITELABEL_BUILD=1
-    # Zip name from config (only place it's hardcoded)
-    EXTRACTED=$(grep -E "'zip_name'|\"zip_name\"" coinsub-whitelabel-config.php | sed -n "s/.*['\"]zip_name['\"][^'\"]*['\"]\\([^'\"]*\\)['\"].*/\1/p" | tr -d ' ')
-    if [ -n "$EXTRACTED" ]; then
-        ZIP_NAME="$EXTRACTED"
-    else
-        ZIP_NAME="whitelabel-plugin.zip"
-    fi
-    echo "📦 Partner zip name from config: $ZIP_NAME"
+    echo "📦 Partner zip name: $ZIP_NAME"
     # Rewrite Plugin Name in main file header so it shows whitelabel name when plugin is inactive/deactivated
-    PLUGIN_NAME=$(grep -E "'plugin_name'|\"plugin_name\"" coinsub-whitelabel-config.php | sed -n "s/.*=> *['\"]\\([^'\"]*\\)['\"].*/\1/p" | sed 's/^ *//;s/ *$//')
+    PLUGIN_NAME=$(grep -E "'plugin_name'|\"plugin_name\"" sp-whitelabel-config.php | sed -n "s/.*=> *['\"]\\([^'\"]*\\)['\"].*/\1/p" | sed 's/^ *//;s/ *$//')
     if [ -n "$PLUGIN_NAME" ]; then
         # Use # delimiter so plugin names containing / are safe
         if [[ "$(uname)" = "Darwin" ]]; then
@@ -99,6 +102,13 @@ EOF
 echo "📦 Creating languages directory..."
 mkdir -p "$PACKAGE_DIR/languages"
 
+# Build info (so you can verify you have the latest when extracting)
+echo "📦 Adding build info..."
+BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+GIT_REV=$(git rev-parse --short HEAD 2>/dev/null || echo "n/a")
+echo "Build date: $BUILD_DATE" > "$PACKAGE_DIR/build-info.txt"
+echo "Git commit: $GIT_REV" >> "$PACKAGE_DIR/build-info.txt"
+
 # Create .gitignore
 echo "📦 Creating .gitignore..."
 cat > "$PACKAGE_DIR/.gitignore" << 'EOF'
@@ -149,19 +159,29 @@ echo "✅ Plugin package created successfully!"
 echo "📁 Package: $ZIP_NAME"
 echo "📋 Size: $(du -h "$ZIP_NAME" | cut -f1)"
 
-# Copy to Downloads folder
+# Timestamped copy so downloads always get latest (avoids browser/server cache)
+ZIP_BASE="${ZIP_NAME%.zip}"
+ZIP_TIMESTAMPED="${ZIP_BASE}-$(date +%Y%m%d-%H%M%S).zip"
+cp "$ZIP_NAME" "$ZIP_TIMESTAMPED"
+echo "📁 Latest copy (use this to send/download): $ZIP_TIMESTAMPED"
+
+# Copy both to Downloads folder
 DOWNLOADS_DIR="$HOME/Downloads"
 if [ -d "$DOWNLOADS_DIR" ]; then
     echo "📥 Copying to Downloads folder..."
     cp "$ZIP_NAME" "$DOWNLOADS_DIR/"
-    echo "✅ Also saved to: $DOWNLOADS_DIR/$ZIP_NAME"
+    cp "$ZIP_TIMESTAMPED" "$DOWNLOADS_DIR/"
+    echo "✅ Saved: $DOWNLOADS_DIR/$ZIP_NAME"
+    echo "✅ Saved (latest): $DOWNLOADS_DIR/$ZIP_TIMESTAMPED"
 else
     echo "⚠️  Downloads folder not found, skipping copy"
 fi
 
 echo ""
 echo "🚀 Ready for deployment!"
-echo "1. Upload $ZIP_NAME to WordPress (Plugins → Add New → Upload)"
+echo "   Send the TIMESTAMPED file ($ZIP_TIMESTAMPED) so the recipient always gets the latest (no cache)."
+echo "   Inside the zip, build-info.txt shows build date and git commit."
+echo "1. Upload the zip to WordPress (Plugins → Add New → Upload)"
 echo "2. Activate the plugin"
 echo "3. Configure settings in WooCommerce"
 echo "4. Set up webhook in your dashboard"

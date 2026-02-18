@@ -104,14 +104,17 @@ class CoinSub_API_Client {
             $headers['Authorization'] = 'Bearer ' . $this->api_key;
         }
         
-        // Log timing for API call
+        // Timeout is required so the request cannot hang forever if the server never responds.
+        // This call only creates a session (returns checkout URL). Blocktime/confirmation is out of
+        // our control and happens later on the payment server; this request does not wait for it.
+        $timeout = apply_filters('coinsub_purchase_session_timeout', 60);
         $start_time = microtime(true);
-        error_log('PP API - Purchase session call at ' . date('H:i:s'));
+        error_log('PP API - Purchase session call at ' . date('H:i:s') . ' (timeout ' . $timeout . 's)');
         
         $response = wp_remote_post($endpoint, array(
             'headers' => $headers,
             'body' => json_encode($payload),
-            'timeout' => 60 // Increased to 60 seconds for slow networks
+            'timeout' => $timeout
         ));
         
         $end_time = microtime(true);
@@ -191,33 +194,7 @@ class CoinSub_API_Client {
     // REMOVED: get_product_by_woocommerce_id - using WooCommerce-only approach
     
     /**
-     * Test API connection
-     */
-    public function test_connection() {
-        $endpoint = $this->api_base_url . '/purchase/status/test';
-        
-        $headers = array(
-            'Content-Type' => 'application/json',
-            'Merchant-ID' => $this->merchant_id,
-            'API-Key' => $this->api_key,
-            
-        );
-        
-        $response = wp_remote_get($endpoint, array(
-            'headers' => $headers,
-            'timeout' => 10
-        ));
-        
-        if (is_wp_error($response)) {
-            return false;
-        }
-        
-        return wp_remote_retrieve_response_code($response) === 200;
-    }
-    
-    // REMOVED: update_order_status - using WooCommerce-only approach
-    
-    /**
+   
      * Cancel a subscription agreement
      */
     public function cancel_agreement($agreement_id) {
@@ -628,114 +605,6 @@ class CoinSub_API_Client {
             error_log('PP API: 📊 Found ' . count($data['environment_configs']) . ' environment configs');
         }
         error_log('═══════════════════════════════════════════════════════════');
-        
-        return $data;
-    }
-    
-    /**
-     * Create a webhook for the merchant
-     * 
-     * @param string $webhook_url The webhook URL to register
-     * @param string $submerchant_id Optional: Submerchant ID to use in URL path (if merchant is submerchant)
-     * @param string $parent_merchant_id Optional: Parent merchant ID to use in Merchant-ID header (if merchant is submerchant)
-     * @return array|WP_Error Webhook data or error
-     */
-    public function create_webhook($webhook_url, $submerchant_id = null, $parent_merchant_id = null) {
-        if (empty($this->merchant_id) || empty($this->api_key)) {
-            return new WP_Error('missing_credentials', 'Merchant ID and API key are required to create webhook');
-        }
-        
-        // For submerchants: URL uses submerchant_id, header uses parent_merchant_id
-        // For regular merchants: URL and header both use merchant_id
-        $merchant_id_for_url = $submerchant_id ? $submerchant_id : $this->merchant_id;
-        $merchant_id_for_header = $parent_merchant_id ? $parent_merchant_id : $this->merchant_id;
-        
-        // Webhook endpoint: POST /v1/merchants/:merchant_id/webhooks
-        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $merchant_id_for_url . '/webhooks';
-        
-        $headers = array(
-            'Content-Type' => 'application/json',
-            'Merchant-ID' => $merchant_id_for_header,
-            'API-Key' => $this->api_key
-        );
-        
-        $payload = array(
-            'url' => $webhook_url
-        );
-        
-        $response = wp_remote_post($endpoint, array(
-            'headers' => $headers,
-            'body' => json_encode($payload),
-            'timeout' => 30
-        ));
-        
-        if (is_wp_error($response)) {
-            error_log('PP API - Webhook creation failed: ' . $response->get_error_message());
-            return $response;
-        }
-        
-        $response_code = wp_remote_retrieve_response_code($response);
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
-        
-        if ($response_code !== 200) {
-            $error_msg = isset($data['error']) ? $data['error'] : 'Webhook creation failed';
-            error_log('PP API - Webhook creation error: ' . $error_msg);
-            return new WP_Error('api_error', $error_msg);
-        }
-        
-        return $data;
-    }
-    
-    /**
-     * List webhooks for the merchant
-     * 
-     * @param string $status Optional: 'active', 'disabled', or 'all'
-     * @param string $submerchant_id Optional: Submerchant ID to use in URL path (if merchant is submerchant)
-     * @param string $parent_merchant_id Optional: Parent merchant ID to use in Merchant-ID header (if merchant is submerchant)
-     * @return array|WP_Error Webhooks list or error
-     */
-    public function list_webhooks($status = 'all', $submerchant_id = null, $parent_merchant_id = null) {
-        if (empty($this->merchant_id) || empty($this->api_key)) {
-            return new WP_Error('missing_credentials', 'Merchant ID and API key are required to list webhooks');
-        }
-        
-        // For submerchants: URL uses submerchant_id, header uses parent_merchant_id
-        // For regular merchants: URL and header both use merchant_id
-        $merchant_id_for_url = $submerchant_id ? $submerchant_id : $this->merchant_id;
-        $merchant_id_for_header = $parent_merchant_id ? $parent_merchant_id : $this->merchant_id;
-        
-        // Webhook endpoint: GET /v1/merchants/:merchant_id/webhooks?status=active|disabled|all
-        $endpoint = rtrim($this->api_base_url, '/') . '/merchants/' . $merchant_id_for_url . '/webhooks';
-        if ($status !== 'all') {
-            $endpoint .= '?status=' . urlencode($status);
-        }
-        
-        $headers = array(
-            'Content-Type' => 'application/json',
-            'Merchant-ID' => $merchant_id_for_header,
-            'API-Key' => $this->api_key
-        );
-        
-        $response = wp_remote_get($endpoint, array(
-            'headers' => $headers,
-            'timeout' => 30
-        ));
-        
-        if (is_wp_error($response)) {
-            error_log('PP API - List webhooks failed: ' . $response->get_error_message());
-            return $response;
-        }
-        
-        $response_code = wp_remote_retrieve_response_code($response);
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
-        
-        if ($response_code !== 200) {
-            $error_msg = isset($data['error']) ? $data['error'] : 'Failed to list webhooks';
-            error_log('PP API - List webhooks error: ' . $error_msg);
-            return new WP_Error('api_error', $error_msg);
-        }
         
         return $data;
     }

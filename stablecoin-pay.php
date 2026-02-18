@@ -31,7 +31,7 @@ define('COINSUB_VERSION', '1.0.0');
  * Use when branding class may not be loaded (e.g. WooCommerce missing notice).
  */
 function coinsub_get_whitelabel_plugin_name() {
-    $path = COINSUB_PLUGIN_DIR . 'coinsub-whitelabel-config.php';
+    $path = COINSUB_PLUGIN_DIR . 'sp-whitelabel-config.php';
     if (!is_readable($path)) {
         return null;
     }

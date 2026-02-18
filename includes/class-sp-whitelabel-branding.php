@@ -14,7 +14,7 @@ class CoinSub_Whitelabel_Branding {
     /**
      * Relative path to whitelabel config file (plugin root). When set, we fetch branding by environment_id instead of merchant_id.
      */
-    const WHITELABEL_CONFIG_FILE = 'coinsub-whitelabel-config.php';
+    const WHITELABEL_CONFIG_FILE = 'sp-whitelabel-config.php';
 
     /**
      * Database option key for branding data (persists in database, not transient)
@@ -54,7 +54,7 @@ class CoinSub_Whitelabel_Branding {
 
     /**
      * Get plugin display name from whitelabel config (e.g. "Payment Servers").
-     * Used so the only hardcoded partner name is in coinsub-whitelabel-config.php.
+     * Used so the only hardcoded partner name is in sp-whitelabel-config.php.
      *
      * @return string|null plugin_name when config has environment_id, else null
      */
