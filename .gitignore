@@ -1,0 +1,5 @@
+# Build artifacts - create-plugin-package.sh writes zips then removes them
+*.zip
+
+# Build temp dir (script creates and deletes, but ignore in case of interruption)
+stablecoin-pay-plugin/

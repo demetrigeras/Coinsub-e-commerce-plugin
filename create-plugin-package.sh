@@ -159,28 +159,19 @@ echo "✅ Plugin package created successfully!"
 echo "📁 Package: $ZIP_NAME"
 echo "📋 Size: $(du -h "$ZIP_NAME" | cut -f1)"
 
-# Timestamped copy so downloads always get latest (avoids browser/server cache)
-ZIP_BASE="${ZIP_NAME%.zip}"
-ZIP_TIMESTAMPED="${ZIP_BASE}-$(date +%Y%m%d-%H%M%S).zip"
-cp "$ZIP_NAME" "$ZIP_TIMESTAMPED"
-echo "📁 Latest copy (use this to send/download): $ZIP_TIMESTAMPED"
-
-# Copy both to Downloads folder
+# Copy fixed-name zip to Downloads (overwrites previous - saves storage; no zips left in repo)
 DOWNLOADS_DIR="$HOME/Downloads"
 if [ -d "$DOWNLOADS_DIR" ]; then
-    echo "📥 Copying to Downloads folder..."
+    echo "📥 Copying to Downloads folder (overwrites previous)..."
     cp "$ZIP_NAME" "$DOWNLOADS_DIR/"
-    cp "$ZIP_TIMESTAMPED" "$DOWNLOADS_DIR/"
     echo "✅ Saved: $DOWNLOADS_DIR/$ZIP_NAME"
-    echo "✅ Saved (latest): $DOWNLOADS_DIR/$ZIP_TIMESTAMPED"
+    rm -f "$ZIP_NAME"
 else
-    echo "⚠️  Downloads folder not found, skipping copy"
+    echo "⚠️  Downloads folder not found - zip left in project"
 fi
 
 echo ""
 echo "🚀 Ready for deployment!"
-echo "   Send the TIMESTAMPED file ($ZIP_TIMESTAMPED) so the recipient always gets the latest (no cache)."
-echo "   Inside the zip, build-info.txt shows build date and git commit."
 echo "1. Upload the zip to WordPress (Plugins → Add New → Upload)"
 echo "2. Activate the plugin"
 echo "3. Configure settings in WooCommerce"
