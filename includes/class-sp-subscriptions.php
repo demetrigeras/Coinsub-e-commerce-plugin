@@ -261,13 +261,17 @@ class CoinSub_Subscriptions {
     }
 
     /**
-     * Append hidden marker in orders list for CoinSub orders (so JS can show "Completed" instead of "Processing").
+     * Output order total and append hidden marker for CoinSub orders (so JS can show "Completed" instead of "Processing").
+     * Ensures the Total column always shows the amount (some themes/block templates don't output it by default).
      */
     public function orders_list_mark_coinsub($order) {
-        if (!$order || $order->get_payment_method() !== 'coinsub') {
+        if (!$order || !$order instanceof WC_Order) {
             return;
         }
-        echo '<span class="coinsub-order" style="display:none;"></span>';
+        echo wp_kses_post($order->get_formatted_order_total());
+        if ($order->get_payment_method() === 'coinsub') {
+            echo ' <span class="coinsub-order" style="display:none;"></span>';
+        }
     }
 
     /**
