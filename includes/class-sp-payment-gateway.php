@@ -900,9 +900,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 error_log('PP Gateway: Checkout URL stored in session');
             }
             
-            // Empty cart (cart will NOT be restored on return - fresh checkout required)
-            // This ensures new purchase session is created if user adds items and returns
-            WC()->cart->empty_cart();
+            // Keep cart so if user returns without paying they still have their items and can restart payment (new order).
+            // We do NOT empty the cart; the pending order is kept for tracking but payment always restarts with a fresh order.
             
             error_log('PP Gateway: Payment process complete');
             
@@ -2767,22 +2766,53 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Cart restoration DISABLED
-     * 
-     * Previously attempted to restore cart from pending order when user returns to checkout.
-     * DISABLED because:
-     * 1. Checkout URLs are one-time use only
-     * 2. We clear session when user leaves checkout page
-     * 3. User should get fresh order and purchase session on return
-     * 4. Prevents reuse of expired purchase sessions
-     * 
-     * If cart restoration is needed in future, it would require:
-     * - NOT clearing coinsub_pending_order_id when user leaves checkout page
-     * - Keeping checkout URL valid for reuse (which defeats one-time use requirement)
+     * When user returns to checkout with an empty cart but we have a pending CoinSub order in session,
+     * restore the cart from that order so they can place a new order and restart payment.
+     * We do NOT reuse the old checkout URL or order for payment – next "Pay" creates a fresh order and purchase session.
+     * The previous pending order stays in the system for tracking.
      */
     public function maybe_restore_cart_from_pending_order() {
-        // Cart restoration disabled - user gets fresh checkout each time
-        // This prevents reuse of one-time purchase session URLs
-        return;
+        if (!function_exists('WC') || !WC()->session || !WC()->cart) {
+            return;
+        }
+        $pending_order_id = WC()->session->get('coinsub_pending_order_id');
+        if (empty($pending_order_id) || !WC()->cart->is_empty()) {
+            return;
+        }
+        $order = wc_get_order($pending_order_id);
+        if (!$order || $order->get_payment_method() !== 'coinsub' || !in_array($order->get_status(), array('pending', 'on-hold'), true)) {
+            return;
+        }
+        $restored = 0;
+        foreach ($order->get_items() as $item) {
+            if (!$item->is_type('line_item')) {
+                continue;
+            }
+            $product = $item->get_product();
+            if (!$product || !$product->is_purchasable()) {
+                continue;
+            }
+            $qty = (int) $item->get_quantity();
+            if ($qty < 1) {
+                continue;
+            }
+            $variation_id = $item->get_variation_id();
+            $variation = array();
+            if ($variation_id) {
+                foreach ($item->get_meta_data() as $meta) {
+                    if (strpos($meta->key, 'attribute_') === 0) {
+                        $variation[$meta->key] = $meta->value;
+                    }
+                }
+            }
+            $added = WC()->cart->add_to_cart($product->get_id(), $qty, $variation_id, $variation);
+            if ($added) {
+                $restored++;
+            }
+        }
+        if ($restored > 0) {
+            WC()->session->set('coinsub_pending_order_id', null);
+            wc_add_notice(__('Your cart has been restored. Please place your order again to continue to payment.', 'coinsub'), 'notice');
+        }
     }
 }
