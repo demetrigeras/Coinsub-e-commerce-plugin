@@ -1,8 +1,8 @@
 <?php
 /**
- * Stablecoin Pay - Required Plugin Auto-Installer
+ * CoinSub Commerce - Required Plugin Auto-Installer
  * 
- * Automatically installs and activates required plugins that are bundled with Stablecoin Pay.
+ * Automatically installs and activates required plugins that are bundled with the plugin.
  * This ensures all security dependencies (like email verification) are present.
  */
 
@@ -40,7 +40,7 @@ class SP_Plugin_Installer {
      * Install all required plugins on activation
      */
     public static function install_required_plugins() {
-        error_log('🔧 Stablecoin Pay: Checking required plugins...');
+        error_log('🔧 CoinSub: Checking required plugins...');
         
         foreach (self::$required_plugins as $plugin) {
             self::install_plugin($plugin);
@@ -157,7 +157,7 @@ class SP_Plugin_Installer {
         if (!empty($missing_plugins)) {
             ?>
             <div class="notice notice-error">
-                <p><strong>⚠️ Stablecoin Pay - Required Plugin Missing</strong></p>
+                <p><strong>⚠️ CoinSub Commerce - Required Plugin Missing</strong></p>
                 <p>The following required plugin could not be automatically installed:</p>
                 <ul>
                     <?php foreach ($missing_plugins as $plugin): ?>
@@ -171,7 +171,7 @@ class SP_Plugin_Installer {
                     <strong>Please install manually:</strong><br>
                     Go to <strong>Plugins → Add New</strong>, search for "<?php echo esc_html($missing_plugins[0]['name']); ?>", and click Install & Activate.
                 </p>
-                <p><em>Stablecoin Pay requires this plugin for security - it ensures users verify their email addresses.</em></p>
+                <p><em>CoinSub Commerce requires this plugin for security - it ensures users verify their email addresses.</em></p>
             </div>
             <?php
         }

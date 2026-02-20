@@ -1001,11 +1001,9 @@ class CoinSub_Webhook_Handler {
      * @return string
      */
     private function get_coinsub_payment_method_title() {
-        $name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
-        if (!empty($name)) {
-            return sprintf(__('Pay with %s', 'coinsub'), $name);
-        }
-        return __('Pay with Stablecoin Pay', 'coinsub');
+        $branding = function_exists('coinsub_get_branding_config') ? coinsub_get_branding_config() : array();
+        $name = !empty($branding['plugin_name']) ? $branding['plugin_name'] : __('CoinSub', 'coinsub');
+        return sprintf(__('Pay with %s', 'coinsub'), $name);
     }
     
     /**

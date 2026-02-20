@@ -1,7 +1,7 @@
 <?php
 /**
  * Payment Provider Admin Payments Page
- * Merchant-facing payments management page (whitelabel-friendly: uses display company name).
+ * Merchant-facing payments management page.
  */
 
 if (!defined('ABSPATH')) {
@@ -37,16 +37,6 @@ class CoinSub_Admin_Payments {
     }
     
     /**
-     * Get whitelabel branding class
-     */
-    private function get_branding() {
-        if (!class_exists('CoinSub_Whitelabel_Branding')) {
-            require_once plugin_dir_path(__FILE__) . 'class-sp-whitelabel-branding.php';
-        }
-        return new CoinSub_Whitelabel_Branding();
-    }
-    
-    /**
      * Check if settings are saved (merchant ID and API key exist)
      */
     private function are_settings_saved() {
@@ -57,25 +47,11 @@ class CoinSub_Admin_Payments {
     }
     
     /**
-     * Get company name for display. When whitelabel config is filled, use config only (no API/DB). Empty config = Stablecoin Pay.
+     * Get company name for display.
      */
     private function get_display_company_name() {
-        if (class_exists('CoinSub_Whitelabel_Branding')) {
-            $env_id = CoinSub_Whitelabel_Branding::get_whitelabel_env_id_from_config();
-            if (!empty($env_id)) {
-                $name = CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config();
-                return $name ?: __('Stablecoin Pay', 'coinsub');
-            }
-        }
-        // Stablecoin Pay build: use API branding when settings saved, else default
-        if (!$this->are_settings_saved()) {
-            return __('Payment Provider', 'coinsub');
-        }
-        
-        // Settings are saved - try to get whitelabel branding
-        $branding = $this->get_branding();
-        $branding_data = $branding->get_branding(false);
-        return !empty($branding_data['company']) ? $branding_data['company'] : __('Payment Provider', 'coinsub');
+        $branding = function_exists('coinsub_get_branding_config') ? coinsub_get_branding_config() : array();
+        return !empty($branding['plugin_name']) ? $branding['plugin_name'] : __('CoinSub', 'coinsub');
     }
     
     /**
@@ -140,7 +116,7 @@ class CoinSub_Admin_Payments {
         ?>
         <div class="wrap">
             <h1 class="wp-heading-inline">
-                <?php /* CoinSub logo removed for whitelabel - only used in checkout as default fallback */ ?>
+                <?php /* Page title */ ?>
                 <?php echo esc_html($page_title); ?>
             </h1>
             

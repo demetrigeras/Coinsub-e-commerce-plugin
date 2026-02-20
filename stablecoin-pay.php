@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: Stablecoin Pay
- * Description: Accept cryptocurrency payments with Stablecoin Pay. Simple crypto payments for WooCommerce.
+ * Plugin Name: CoinSub Commerce
+ * Description: Accept cryptocurrency payments with CoinSub. Simple crypto payments for WooCommerce.
  * Version: 1.0.0
- * Author: Stablecoin Pay
+ * Author: CoinSub
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: coinsub
@@ -27,19 +27,24 @@ define('COINSUB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('COINSUB_VERSION', '1.0.0');
 
 /**
- * Display name from whitelabel config (e.g. "Payment Servers"). Only config file is hardcoded.
- * Use when branding class may not be loaded (e.g. WooCommerce missing notice).
+ * Return partner/build branding from sp-whitelabel-config.php when present.
+ * Used for gateway title, button name, logo, dashboard URL. Default build returns empty array (plugin uses CoinSub).
+ *
+ * @return array Keys: plugin_name, logo_url, dashboard_url, environment_id, zip_name. Empty when no config.
  */
-function coinsub_get_whitelabel_plugin_name() {
-    $path = COINSUB_PLUGIN_DIR . 'sp-whitelabel-config.php';
-    if (!is_readable($path)) {
-        return null;
+function coinsub_get_branding_config() {
+    static $config = null;
+    if ($config !== null) {
+        return $config;
     }
-    $config = include $path;
-    if (!is_array($config) || empty($config['environment_id'])) {
-        return null;
+    $file = COINSUB_PLUGIN_DIR . 'sp-whitelabel-config.php';
+    if (!is_readable($file)) {
+        $config = array();
+        return $config;
     }
-    return isset($config['plugin_name']) && $config['plugin_name'] !== '' ? $config['plugin_name'] : null;
+    $config = include $file;
+    $config = is_array($config) ? $config : array();
+    return $config;
 }
 
 // Check if WooCommerce is active
@@ -52,8 +57,7 @@ if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get
  * WooCommerce missing notice
  */
 function coinsub_woocommerce_missing_notice() {
-    $label = coinsub_get_whitelabel_plugin_name() ?: 'Stablecoin Pay';
-    echo '<div class="error"><p><strong>' . esc_html($label) . '</strong> requires WooCommerce to be installed and active.</p></div>';
+    echo '<div class="error"><p><strong>' . esc_html__('CoinSub Commerce', 'coinsub') . '</strong> requires WooCommerce to be installed and active.</p></div>';
 }
 
 /**
@@ -68,7 +72,6 @@ function coinsub_commerce_init() {
     
     // Include required files
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-api-client.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-whitelabel-branding.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-payment-gateway.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-webhook-handler.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-order-manager.php';
@@ -92,15 +95,6 @@ function coinsub_commerce_init() {
         new WC_CoinSub_Cart_Sync();
     }
     
-    // Plugin list: show whitelabel name from config (config + build script are the only hardcoded places)
-    add_filter('all_plugins', function ($plugins) {
-        $name = coinsub_get_whitelabel_plugin_name();
-        if ($name && isset($plugins[plugin_basename(COINSUB_PLUGIN_FILE)])) {
-            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['Name'] = $name;
-        }
-        return $plugins;
-    });
-
     // Initialize admin tools (only in admin)
     if (is_admin()) {
         new CoinSub_Admin_Logs();
@@ -226,7 +220,7 @@ function coinsub_ensure_checkout_shortcode() {
     $checkout_page_id = wc_get_page_id('checkout');
     
     if (!$checkout_page_id || $checkout_page_id === 0) {
-        error_log('⚠️ Stablecoin Pay: WooCommerce checkout page not found - skipping shortcode check');
+        error_log('⚠️ CoinSub: WooCommerce checkout page not found - skipping shortcode check');
         return false;
     }
     
@@ -234,7 +228,7 @@ function coinsub_ensure_checkout_shortcode() {
     $checkout_page = get_post($checkout_page_id);
     
     if (!$checkout_page) {
-        error_log('⚠️ Stablecoin Pay: Could not retrieve checkout page');
+        error_log('⚠️ CoinSub: Could not retrieve checkout page');
         return false;
     }
     
@@ -253,7 +247,7 @@ function coinsub_ensure_checkout_shortcode() {
     );
     
     if ($has_checkout) {
-        error_log('✅ Stablecoin Pay: Checkout page already has checkout shortcode/block - no changes needed');
+        error_log('✅ CoinSub: Checkout page already has checkout shortcode/block - no changes needed');
         return true;
     }
     
@@ -265,11 +259,11 @@ function coinsub_ensure_checkout_shortcode() {
     if (empty($trimmed_content)) {
         // Empty page - just add shortcode
         $new_content = '[woocommerce_checkout]';
-        error_log('🔄 Stablecoin Pay: Checkout page is empty - adding [woocommerce_checkout] shortcode');
+        error_log('🔄 CoinSub: Checkout page is empty - adding [woocommerce_checkout] shortcode');
     } else {
         // Has content - prepend shortcode (checkout should come first)
         $new_content = '[woocommerce_checkout]' . "\n\n" . $page_content;
-        error_log('🔄 Stablecoin Pay: Checkout page has content - prepending [woocommerce_checkout] shortcode');
+        error_log('🔄 CoinSub: Checkout page has content - prepending [woocommerce_checkout] shortcode');
     }
     
     // Update the page
@@ -279,17 +273,17 @@ function coinsub_ensure_checkout_shortcode() {
     ));
     
     if ($updated && !is_wp_error($updated)) {
-        error_log('✅ Stablecoin Pay: Successfully updated checkout page with [woocommerce_checkout] shortcode');
+        error_log('✅ CoinSub: Successfully updated checkout page with [woocommerce_checkout] shortcode');
         return true;
     } else {
         $error_msg = is_wp_error($updated) ? $updated->get_error_message() : 'Unknown error';
-        error_log('❌ Stablecoin Pay: Failed to update checkout page - ' . $error_msg);
+        error_log('❌ CoinSub: Failed to update checkout page - ' . $error_msg);
         return false;
     }
 }
 
 /**
- * Create dedicated checkout page for Stablecoin Pay
+ * Create dedicated checkout page for CoinSub
  * This page will display the payment iframe full-page
  */
 function coinsub_create_checkout_page() {
@@ -326,7 +320,7 @@ function coinsub_create_checkout_page() {
     if ($page_id && !is_wp_error($page_id)) {
         // Store page ID in options for easy reference
         update_option('coinsub_checkout_page_id', $page_id);
-        error_log('✅ Stablecoin Pay: Created dedicated checkout page (ID: ' . $page_id . ')');
+        error_log('✅ CoinSub: Created dedicated checkout page (ID: ' . $page_id . ')');
         return $page_id;
     }
     
@@ -516,9 +510,8 @@ function coinsub_checkout_page_shortcode($atts) {
     // REMOVED: Domain blocking check - these domains work fine in iframes
     // The JavaScript fallback will handle redirect if iframe is actually blocked by X-Frame-Options
     
-    // Get whitelabel branding for page title (use cached data only, no API calls)
-    $branding_data = get_option('coinsub_whitelabel_branding', array());
-    $company_name = !empty($branding_data['company']) ? $branding_data['company'] : 'Stablecoin Pay';
+    $branding = function_exists('coinsub_get_branding_config') ? coinsub_get_branding_config() : array();
+    $company_name = !empty($branding['plugin_name']) ? $branding['plugin_name'] : __('CoinSub', 'coinsub');
     
     error_log('📝 CoinSub Checkout Page: Starting output buffer, company: ' . $company_name);
     
@@ -1104,16 +1097,11 @@ function coinsub_ajax_process_payment() {
     $order->set_billing_postcode(sanitize_text_field($_POST['billing_postcode']));
     $order->set_billing_country(sanitize_text_field($_POST['billing_country']));
     
-    // Set payment method (whitelabel name for display)
+    // Set payment method title (from branding config when set)
     $order->set_payment_method('coinsub');
-    $pm_title = __('Stablecoin Pay', 'coinsub');
-    if (class_exists('CoinSub_Whitelabel_Branding')) {
-        $name = CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config();
-        if (!empty($name)) {
-            $pm_title = sprintf(__('Pay with %s', 'coinsub'), $name);
-        }
-    }
-    $order->set_payment_method_title($pm_title);
+    $branding = function_exists('coinsub_get_branding_config') ? coinsub_get_branding_config() : array();
+    $name = !empty($branding['plugin_name']) ? $branding['plugin_name'] : __('CoinSub', 'coinsub');
+    $order->set_payment_method_title(sprintf(__('Pay with %s', 'coinsub'), $name));
     
     // Set customer ID if user is logged in
     if (is_user_logged_in()) {

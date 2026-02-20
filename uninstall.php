@@ -1,6 +1,6 @@
 <?php
 /**
- * Uninstall Stablecoin Pay Plugin
+ * Uninstall CoinSub Commerce Plugin
  * 
  * This file is executed when the plugin is deleted from WordPress.
  * It cleans up all plugin data including options, pages, and transients.
@@ -31,7 +31,6 @@ function coinsub_uninstall_plugin() {
     
     // Delete plugin options
     delete_option('woocommerce_coinsub_settings');
-    delete_option('coinsub_whitelabel_branding');
     delete_option('coinsub_webhook_secret');
     delete_option('coinsub_checkout_page_id');
     

@@ -1,6 +1,6 @@
 <?php
 /**
- * Public-facing review/explainer page for Stablecoin Pay
+ * Public-facing review/explainer page for CoinSub
  *
  * @package CoinSub
  */

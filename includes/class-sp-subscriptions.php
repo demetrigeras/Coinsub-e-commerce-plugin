@@ -152,8 +152,7 @@ class CoinSub_Subscriptions {
         
         echo '<div class="options_group show_if_simple">';
         
-        $name = class_exists('CoinSub_Whitelabel_Branding') ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config() : null;
-        $sub_label = $name ? sprintf(__('%s Subscription', 'coinsub'), $name) : __('Subscription', 'coinsub');
+        $sub_label = sprintf(__('%s Subscription', 'coinsub'), __('CoinSub', 'coinsub'));
         woocommerce_wp_checkbox(array(
             'id' => '_coinsub_subscription',
             'label' => $sub_label,
