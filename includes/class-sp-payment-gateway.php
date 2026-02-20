@@ -900,8 +900,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 error_log('PP Gateway: Checkout URL stored in session');
             }
             
-            // Keep cart so if user returns without paying they still have their items and can restart payment (new order).
-            // We do NOT empty the cart; the pending order is kept for tracking but payment always restarts with a fresh order.
+            // Empty cart (cart will NOT be restored on return - fresh checkout required)
+            // This ensures new purchase session is created if user adds items and returns
+            WC()->cart->empty_cart();
             
             error_log('PP Gateway: Payment process complete');
             
