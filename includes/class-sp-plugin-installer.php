@@ -9,7 +9,7 @@
 if (!defined('ABSPATH')) {
     exit;
 }
-
+// Plugin Installer Class
 class SP_Plugin_Installer {
     
     /**
