@@ -135,6 +135,10 @@ jQuery(document).ready(function($) {
             return true;
         }
 
+        // Reset previous custom CoinSub validation UI.
+        $form.find('.coinsub-inline-error').remove();
+        $('#coinsub-checkout-error-box').remove();
+
         // Run native browser validation first (required/email/etc.).
         var formEl = $form.get(0);
         if (formEl && typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) {
@@ -150,7 +154,87 @@ jQuery(document).ready(function($) {
             return false;
         }
 
+        // Hard guard: validate Woo required field wrappers directly.
+        var missingMessages = [];
+        $form.find('.form-row.validate-required:visible').each(function() {
+            var $row = $(this);
+            var $input = $row.find('input, select, textarea').filter(':enabled').first();
+            if ($input.length === 0) {
+                return;
+            }
+
+            var isCheckbox = $input.is(':checkbox');
+            var value = isCheckbox ? ($input.is(':checked') ? '1' : '') : String($input.val() || '').trim();
+            if (value === '') {
+                $row.removeClass('woocommerce-validated').addClass('woocommerce-invalid woocommerce-invalid-required-field');
+                var label = $row.find('label').first().text().replace('*', '').trim() || 'Required field';
+                missingMessages.push(label + ' is a required field.');
+
+                // Always show an inline message under each missing field.
+                if ($row.find('.coinsub-inline-error').length === 0) {
+                    $row.append('<span class="coinsub-inline-error" style="display:block;color:#b81c23;font-size:0.875em;margin-top:6px;">' + $('<div>').text(label + ' is a required field.').html() + '</span>');
+                }
+            } else {
+                $row.removeClass('woocommerce-invalid woocommerce-invalid-required-field').addClass('woocommerce-validated');
+            }
+        });
+
+        if (missingMessages.length > 0) {
+            showCoinsubCheckoutErrors(missingMessages);
+            return false;
+        }
+
         return true;
+    }
+
+    function showCoinsubCheckoutErrors(messages) {
+        var $form = $('form.checkout');
+        if ($form.length === 0 || !messages || messages.length === 0) {
+            return;
+        }
+
+        var list = '';
+        $.each(messages, function(_, msg) {
+            list += '<li>' + $('<div>').text(msg).html() + '</li>';
+        });
+        var errorHtml = '<ul class="woocommerce-error" role="alert">' + list + '</ul>';
+
+        // Dedicated visible box inside checkout form (theme-independent).
+        var $errorBox = $('<div id="coinsub-checkout-error-box" class="woocommerce-NoticeGroup woocommerce-NoticeGroup-checkout" style="margin-bottom:16px;"></div>').html(errorHtml);
+        $form.prepend($errorBox);
+
+        // Prefer WooCommerce's native renderer when available.
+        if (typeof wc_checkout_form !== 'undefined' && wc_checkout_form && typeof wc_checkout_form.submit_error === 'function') {
+            wc_checkout_form.submit_error(errorHtml);
+            return;
+        }
+
+        // Inject WooCommerce notice HTML directly for maximum compatibility across themes/templates.
+        $('.woocommerce-NoticeGroup-checkout, .woocommerce-error, .woocommerce-message').remove();
+
+        var $noticeGroup = $('<div class="woocommerce-NoticeGroup woocommerce-NoticeGroup-checkout"></div>').html(errorHtml);
+
+        // Preferred location used by many themes.
+        var $noticesWrapper = $('.woocommerce-notices-wrapper').first();
+        if ($noticesWrapper.length) {
+            $noticesWrapper.prepend($noticeGroup);
+        } else {
+            // Fallback: insert before checkout form.
+            $form.before($noticeGroup);
+        }
+
+        $form.removeClass('processing');
+        if (typeof $form.unblock === 'function') {
+            $form.unblock();
+        }
+
+        // Also trigger WooCommerce checkout_error event for any native listeners.
+        $(document.body).trigger('checkout_error', [errorHtml]);
+
+        // Match WooCommerce UX: focus on notices.
+        if ($noticeGroup.length && $noticeGroup.offset()) {
+            $('html, body').animate({ scrollTop: $noticeGroup.offset().top - 120 }, 200);
+        }
     }
     
     // Use WooCommerce's native validated checkout flow.
@@ -163,7 +247,8 @@ jQuery(document).ready(function($) {
         // Extra guard for edge cases.
         if (!validateCoinsubCheckoutForm()) {
             console.warn('⚠️ CoinSub: Checkout validation failed, payment not started.');
-            return false;
+            // Let WooCommerce continue its native submit path so standard frontend notices render.
+            return true;
         }
 
         window.coinsubSubmitting = true;
