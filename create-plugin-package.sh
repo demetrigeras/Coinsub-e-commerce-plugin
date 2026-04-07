@@ -145,11 +145,46 @@ vendor/
 composer.lock
 EOF
 
+# Create plugin .zip: prefer `zip` (Unix/macOS). Git for Windows Bash often has no `zip` — use PowerShell.
+create_plugin_zip() {
+    local pkg_dir="$1"
+    local zip_name="$2"
+    local root_dir
+    root_dir="$(pwd)"
+
+    if command -v zip >/dev/null 2>&1; then
+        (cd "$pkg_dir" && zip -r "../$zip_name" . -x "*.DS_Store" "*.git*") || return 1
+        [ -f "$zip_name" ] || return 1
+        return 0
+    fi
+
+    if command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local src_win dst_win ps1_win
+        src_win=$(cygpath -w "$root_dir/$pkg_dir")
+        dst_win=$(cygpath -w "$root_dir/$zip_name")
+        ps1_win=$(cygpath -w "$root_dir/zip-package.ps1")
+        if [ ! -f "$root_dir/zip-package.ps1" ]; then
+            echo "❌ Missing zip-package.ps1 next to create-plugin-package.sh" >&2
+            return 1
+        fi
+        # Do not use Compress-Archive: it stores \ in entry names; Linux hosts then lack includes/foo.php
+        MSYS2_ARG_CONV_EXCL='*' powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps1_win" \
+            -SourceDir "$src_win" -DestinationZip "$dst_win" \
+            || return 1
+        [ -f "$zip_name" ] || return 1
+        return 0
+    fi
+
+    echo "❌ No zip tool: install zip in Git Bash (e.g. pacman -S zip) or run on Windows with PowerShell." >&2
+    return 1
+}
+
 # Create zip package
 echo "📦 Creating ZIP package: $ZIP_NAME"
-cd "$PACKAGE_DIR"
-zip -r "../$ZIP_NAME" . -x "*.DS_Store" "*.git*"
-cd ..
+if ! create_plugin_zip "$PACKAGE_DIR" "$ZIP_NAME"; then
+    echo "❌ ZIP creation failed." >&2
+    exit 1
+fi
 
 # Clean up
 echo "🧹 Cleaning up..."

@@ -101,7 +101,8 @@ class CoinSub_Whitelabel_Branding {
      * Get logo URL from whitelabel config (Payments list + checkout icon/button).
      * Manual: set logo_url in config to the full URL (e.g. copy from your app/API response
      * like app.logo.square.dark → https://app.vantack.com/img/domain/vantack/vantack.square.dark.png).
-     * No lookup; Payment Servers can leave empty to use local image.
+     * No lookup; use a path under the plugin (e.g. images/foo.png) to avoid CORP blocking
+     * when app.* serves logos with Cross-Origin-Resource-Policy: same-site.
      *
      * @return string|null Full URL when config has logo_url set, else null
      */
@@ -118,9 +119,34 @@ class CoinSub_Whitelabel_Branding {
             return null;
         }
         if (!empty($config['logo_url']) && is_string($config['logo_url'])) {
-            return trim($config['logo_url']);
+            return self::resolve_whitelabel_logo_url(trim($config['logo_url']));
         }
         return null;
+    }
+
+    /**
+     * Turn config logo_url into a full URL safe for checkout (same-origin avoids CORP on merchant sites).
+     *
+     * @param string $raw From config: https URL, // URL, site path starting with /, or path relative to plugin root.
+     * @return string|null
+     */
+    private static function resolve_whitelabel_logo_url($raw) {
+        if ($raw === '') {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $raw)) {
+            return $raw;
+        }
+        if (preg_match('#^//#', $raw)) {
+            return (is_ssl() ? 'https:' : 'http:') . $raw;
+        }
+        if ($raw[0] === '/') {
+            return home_url($raw);
+        }
+        if (defined('COINSUB_PLUGIN_URL')) {
+            return rtrim(COINSUB_PLUGIN_URL, '/') . '/' . ltrim($raw, '/');
+        }
+        return $raw;
     }
 
     /**

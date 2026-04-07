@@ -128,26 +128,51 @@ jQuery(document).ready(function($) {
     setTimeout(function() {
         ensurePlaceOrderButtonVisibility();
     }, 100);
-    
-    // Override the place order button ONLY for CoinSub
-    // This ensures we don't interfere with other payment gateways like Coinbase, Stripe, etc.
-    $('body').on('click', '#place_order', function(e) {
-        var paymentMethod = $('input[name="payment_method"]:checked').val();
-        
-        // Only intercept if CoinSub is selected - let other gateways work normally
-        if (paymentMethod === 'coinsub') {
-            e.preventDefault();
-            e.stopPropagation();
-            if (window.coinsubSubmitting) {
-                return false;
+
+    function validateCoinsubCheckoutForm() {
+        var $form = $('form.checkout');
+        if ($form.length === 0) {
+            return true;
+        }
+
+        // Run native browser validation first (required/email/etc.).
+        var formEl = $form.get(0);
+        if (formEl && typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) {
+            if (typeof formEl.reportValidity === 'function') {
+                formEl.reportValidity();
             }
-            window.coinsubSubmitting = true;
-            
-            // Show loading state
-            $(this).prop('disabled', true).text('Processing...');
-            
-            // Process the payment via AJAX
-            $.ajax({
+            return false;
+        }
+
+        // Ask WooCommerce to run its field validation classes.
+        $form.find('input.input-text, select, input:checkbox').trigger('validate');
+        if ($form.find('.woocommerce-invalid').length > 0) {
+            return false;
+        }
+
+        return true;
+    }
+    
+    // Use WooCommerce's native validated checkout flow.
+    // This fires only AFTER WooCommerce validates required fields and terms.
+    $('form.checkout').on('checkout_place_order_coinsub', function() {
+        if (window.coinsubSubmitting) {
+            return false;
+        }
+
+        // Extra guard for edge cases.
+        if (!validateCoinsubCheckoutForm()) {
+            console.warn('⚠️ CoinSub: Checkout validation failed, payment not started.');
+            return false;
+        }
+
+        window.coinsubSubmitting = true;
+
+        var $placeOrder = $('#place_order');
+        $placeOrder.prop('disabled', true).text('Processing...');
+
+        // Process the payment via AJAX
+        $.ajax({
                 url: wc_checkout_params.ajax_url,
                 type: 'POST',
                 data: {
@@ -172,7 +197,7 @@ jQuery(document).ready(function($) {
                     shipping_postcode: $('input[name="shipping_postcode"]').val(),
                     shipping_country: $('select[name="shipping_country"]').val()
                 },
-                success: function(response) {
+            success: function(response) {
                     // Get the checkout URL from the response
                     // The response should include coinsub_checkout_url (the API checkout URL)
                     // NOTE: Do not log checkout URL in console for security (one-time use URL)
@@ -230,7 +255,7 @@ jQuery(document).ready(function($) {
                             errorMsg += 'Unknown error - no data received';
                         }
                         alert(errorMsg);
-                        $('#place_order').prop('disabled', false);
+                        $placeOrder.prop('disabled', false);
                         // Let WooCommerce handle button text (will be "Place order")
                         window.coinsubSubmitting = false;
                     }
@@ -254,14 +279,14 @@ jQuery(document).ready(function($) {
                     }
                     
                     alert(errorMsg);
-                    $('#place_order').prop('disabled', false);
+                    $placeOrder.prop('disabled', false);
                     // Let WooCommerce handle button text (will be "Place order")
                     window.coinsubSubmitting = false;
                 }
-            });
-            
-            return false;
-        }
+        });
+
+        // Stop WooCommerce's default submit (we handle CoinSub checkout ourselves).
+        return false;
     });
     
     // Set up iframe redirect detection

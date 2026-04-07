@@ -1022,6 +1022,33 @@ function coinsub_ajax_process_payment() {
     if (WC()->cart->is_empty()) {
         wp_send_json_error('Cart is empty');
     }
+
+    // Server-side guard: enforce required checkout fields for CoinSub custom AJAX flow.
+    $checkout = WC_Checkout::instance();
+    $posted_data = wp_unslash($_POST);
+    $required_field_labels = array();
+    $all_fields = $checkout->get_checkout_fields();
+    foreach ($all_fields as $fieldset_key => $fieldset_fields) {
+        if (!is_array($fieldset_fields)) {
+            continue;
+        }
+        foreach ($fieldset_fields as $field_key => $field) {
+            if (empty($field['required'])) {
+                continue;
+            }
+            // Only validate fields that are expected in this custom flow.
+            if (strpos($field_key, 'billing_') !== 0 && strpos($field_key, 'shipping_') !== 0) {
+                continue;
+            }
+            $value = isset($posted_data[$field_key]) ? trim((string) $posted_data[$field_key]) : '';
+            if ($value === '') {
+                $required_field_labels[] = isset($field['label']) && $field['label'] !== '' ? $field['label'] : $field_key;
+            }
+        }
+    }
+    if (!empty($required_field_labels)) {
+        wp_send_json_error('Please fill in required fields: ' . implode(', ', $required_field_labels));
+    }
     
     // IMPORTANT: Don't reuse orders with checkout URLs - they're one-time use only!
     // Always create a fresh order and purchase session for each checkout attempt
