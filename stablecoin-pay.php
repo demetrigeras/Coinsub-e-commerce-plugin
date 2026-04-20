@@ -92,11 +92,14 @@ function coinsub_commerce_init() {
         new WC_CoinSub_Cart_Sync();
     }
     
-    // Plugin list: show whitelabel name from config (config + build script are the only hardcoded places)
+    // Plugin list: show whitelabel name, description and author from config
     add_filter('all_plugins', function ($plugins) {
         $name = coinsub_get_whitelabel_plugin_name();
         if ($name && isset($plugins[plugin_basename(COINSUB_PLUGIN_FILE)])) {
-            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['Name'] = $name;
+            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['Name']        = $name;
+            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['Description'] = sprintf(__('Accept cryptocurrency payments with %s. Simple crypto payments for WooCommerce.', 'coinsub'), $name);
+            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['Author']      = $name;
+            $plugins[plugin_basename(COINSUB_PLUGIN_FILE)]['AuthorName']  = $name;
         }
         return $plugins;
     });

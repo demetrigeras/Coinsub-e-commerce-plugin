@@ -1770,14 +1770,6 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             </ol>
             <p style="margin-bottom:0;font-size:13px;color:#2e7d32"><strong><?php esc_html_e('Note:', 'coinsub'); ?></strong> <?php esc_html_e('Each product must be configured individually. Customers can manage their subscriptions from their account page.', 'coinsub'); ?></p>
         </div>
-        <div style="margin-top:20px;padding:15px;background:#eef7fe;border-radius:4px;border:1px solid #0284c7">
-            <h3 style="margin-top:0"><?php esc_html_e('Add Tokens for Refunds', 'coinsub'); ?></h3>
-            <p><?php esc_html_e('Refunds use the same network and token as the original payment (defaults to USDC on Polygon if unavailable).', 'coinsub'); ?></p>
-            <p><?php esc_html_e('To process refunds, you\'ll need sufficient tokens in your merchant wallet on the same network as the original payment. If you don\'t have enough tokens, you can purchase them through Meld.', 'coinsub'); ?></p>
-            <p><?php echo __('To find your wallet address: in your dashboard, open the <strong>Wallet</strong> tab and copy your wallet address from there.', 'coinsub'); ?></p>
-            <p style="margin-bottom:10px"><a class="button button-primary" href="<?php echo esc_url($meld_url); ?>" style="background:#2271b1;border-color:#2271b1" target="_blank" rel="noopener"><?php esc_html_e('Buy Tokens via Meld', 'coinsub'); ?></a></p>
-            <p style="margin-bottom:0;font-size:12px;color:#666"><?php echo __('<strong>Tip:</strong>', 'coinsub'); ?> <?php esc_html_e('Keep a small reserve of tokens (especially USDC on Polygon as the default fallback) to cover refunds quickly. Click the button above to add funds via Meld.', 'coinsub'); ?></p>
-        </div>
         <?php
         return ob_get_clean();
     }
