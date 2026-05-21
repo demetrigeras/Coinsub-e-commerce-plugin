@@ -904,29 +904,17 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             // We do NOT empty the cart; the pending order is kept for tracking but payment always restarts with a fresh order.
             
             error_log('PP Gateway: Payment process complete');
-            
-            // Get dedicated checkout page URL
-            $checkout_page_id = get_option('coinsub_checkout_page_id');
-            if ($checkout_page_id) {
-                $checkout_page_url = get_permalink($checkout_page_id);
-                // Use order ID instead of full URL to keep URL short
-                $redirect_url = add_query_arg('order_id', $order->get_id(), $checkout_page_url);
-                error_log('PP Gateway: Redirecting to dedicated checkout page');
-                
-                return array(
-                    'result' => 'success',
-                    'redirect' => $redirect_url,
-                    'coinsub_checkout_url' => $checkout_url
-                );
-            } else {
-                // Fallback: redirect directly to checkout URL (external)
-                error_log('PP Gateway: Checkout page not found, redirecting to checkout URL');
-                return array(
-                    'result' => 'success',
-                    'redirect' => $checkout_url,
-                    'coinsub_checkout_url' => $checkout_url
-                );
-            }
+
+            // Redirect browser directly to the payment provider's hosted checkout.
+            // The payment provider handles the success_url redirect natively at the top-level
+            // window, so the customer is returned to /checkout/order-received/ after paying.
+            // (Avoids cross-origin iframe limitations that prevented the parent from navigating.)
+            error_log('PP Gateway: Redirecting directly to hosted checkout URL');
+            return array(
+                'result' => 'success',
+                'redirect' => $checkout_url,
+                'coinsub_checkout_url' => $checkout_url
+            );
             
         } catch (Exception $e) {
             error_log('PP Gateway: Payment error: ' . $e->getMessage());
@@ -2607,8 +2595,39 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $order->save();
         
         // Prepare purchase session data
+        $item_names = array_map(function($item) { return $item['name']; }, $cart_data['items']);
+        $session_name = 'Order #' . $order->get_id() . (!empty($item_names) ? ' - ' . implode(' + ', $item_names) : '');
+
+        // Build ABSOLUTE redirect URLs for the payment provider.
+        // We intentionally bypass $this->get_return_url() here because the
+        // `woocommerce_get_return_url` filter (themes/plugins) can mutate the
+        // URL into something the payment provider can't redirect to
+        // (relative path, wrong host, missing order key, etc.).
+        $success_url = $order->get_checkout_order_received_url();
+        $cancel_url  = wc_get_checkout_url();
+        $failure_url = wc_get_checkout_url();
+
+        // Guarantee each URL is absolute (has scheme + host) so the provider
+        // can perform a top-level redirect cross-origin.
+        $ensure_absolute = function($url) {
+            if (empty($url)) {
+                return home_url('/');
+            }
+            if (strpos($url, 'http://') !== 0 && strpos($url, 'https://') !== 0) {
+                $url = home_url($url);
+            }
+            return $url;
+        };
+        $success_url = $ensure_absolute($success_url);
+        $cancel_url  = $ensure_absolute($cancel_url);
+        $failure_url = $ensure_absolute($failure_url);
+
+        error_log('PP Gateway: success_url sent to provider: ' . $success_url);
+        error_log('PP Gateway: cancel_url sent to provider: ' . $cancel_url);
+        error_log('PP Gateway: failure_url sent to provider: ' . $failure_url);
+
         $session_data = array(
-            'name' => 'Order #' . $order->get_id(),
+            'name' => $session_name,
             'details' => $this->get_order_details_text($order, $cart_data),
             'currency' => $cart_data['currency'],
             'amount' => $cart_data['total'],
@@ -2649,9 +2668,9 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                     'country' => $order->get_shipping_country()
                 )
             ),
-            'success_url' => $this->get_return_url($order),
-            'cancel_url' => wc_get_checkout_url(),
-            'failure_url' => wc_get_checkout_url()
+            'success_url' => $success_url,
+            'cancel_url' => $cancel_url,
+            'failure_url' => $failure_url
         );
         
         // Add subscription fields if recurring

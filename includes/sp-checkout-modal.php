@@ -155,16 +155,68 @@ jQuery(document).ready(function($) {
         }
 
         // Hard guard: validate Woo required field wrappers directly.
+        //
+        // Important: WooCommerce stores allow merchants to expose only billing
+        // OR only shipping (e.g., shipping-only stores that hide billing).
+        // In those cases the hidden section's `billing_*` / `shipping_*` inputs
+        // remain empty, but the populated section's mirror field is sufficient
+        // because WooCommerce copies it server-side. We therefore treat
+        // billing_X and shipping_X as interchangeable for validation purposes.
+        //
+        // We also look up the input by `name` (more reliable than walking the
+        // row's children, which can pick up select2 / hidden helper inputs).
+        var addressMirrorMap = {
+            billing_first_name: 'shipping_first_name',
+            billing_last_name: 'shipping_last_name',
+            billing_address_1: 'shipping_address_1',
+            billing_address_2: 'shipping_address_2',
+            billing_city: 'shipping_city',
+            billing_state: 'shipping_state',
+            billing_postcode: 'shipping_postcode',
+            billing_country: 'shipping_country'
+        };
+        // Build reverse map as well (shipping -> billing).
+        var addressMirrorReverse = {};
+        Object.keys(addressMirrorMap).forEach(function(k) {
+            addressMirrorReverse[addressMirrorMap[k]] = k;
+        });
+
+        function readFieldValue(name) {
+            if (!name) { return ''; }
+            var $field = $form.find('[name="' + name + '"]').filter(':enabled').first();
+            if ($field.length === 0) { return ''; }
+            if ($field.is(':checkbox')) {
+                return $field.is(':checked') ? '1' : '';
+            }
+            return String($field.val() || '').trim();
+        }
+
+        function hasMirrorValue(name) {
+            var mirror = addressMirrorMap[name] || addressMirrorReverse[name];
+            if (!mirror) { return false; }
+            return readFieldValue(mirror) !== '';
+        }
+
         var missingMessages = [];
         $form.find('.form-row.validate-required:visible').each(function() {
             var $row = $(this);
-            var $input = $row.find('input, select, textarea').filter(':enabled').first();
+            // Prefer the canonical named input (skips select2 helper inputs).
+            var $named = $row.find('input[name], select[name], textarea[name]').filter(':enabled').first();
+            var $input = $named.length ? $named : $row.find('input, select, textarea').filter(':enabled').first();
             if ($input.length === 0) {
                 return;
             }
 
+            var fieldName = $input.attr('name') || '';
             var isCheckbox = $input.is(':checkbox');
             var value = isCheckbox ? ($input.is(':checked') ? '1' : '') : String($input.val() || '').trim();
+
+            // Treat billing_X / shipping_X as interchangeable: if this row's
+            // field is empty but its mirror counterpart is filled, accept it.
+            if (value === '' && !isCheckbox && hasMirrorValue(fieldName)) {
+                value = '__mirrored__';
+            }
+
             if (value === '') {
                 $row.removeClass('woocommerce-validated').addClass('woocommerce-invalid woocommerce-invalid-required-field');
                 var label = $row.find('label').first().text().replace('*', '').trim() || 'Required field';
@@ -256,6 +308,32 @@ jQuery(document).ready(function($) {
         var $placeOrder = $('#place_order');
         $placeOrder.prop('disabled', true).text('Processing...');
 
+        // Read a value by name from the checkout form, regardless of input type.
+        // Falls back to the billing/shipping mirror if the requested field is empty —
+        // many stores expose only one address section and rely on Woo to copy the
+        // other server-side, but we want both populated in the API payload.
+        function readCheckoutValue(name) {
+            var $form = $('form.checkout');
+            var $field = $form.find('[name="' + name + '"]').first();
+            var value = $field.length ? String($field.val() || '').trim() : '';
+            if (value !== '') {
+                return value;
+            }
+            var mirror = null;
+            if (name.indexOf('billing_') === 0) {
+                mirror = 'shipping_' + name.substring('billing_'.length);
+            } else if (name.indexOf('shipping_') === 0) {
+                mirror = 'billing_' + name.substring('shipping_'.length);
+            }
+            if (mirror) {
+                var $mirrorField = $form.find('[name="' + mirror + '"]').first();
+                if ($mirrorField.length) {
+                    return String($mirrorField.val() || '').trim();
+                }
+            }
+            return '';
+        }
+
         // Process the payment via AJAX
         $.ajax({
                 url: wc_checkout_params.ajax_url,
@@ -264,23 +342,23 @@ jQuery(document).ready(function($) {
                     action: 'coinsub_process_payment',
                     security: wc_checkout_params.checkout_nonce,
                     payment_method: 'coinsub',
-                    billing_first_name: $('input[name="billing_first_name"]').val(),
-                    billing_last_name: $('input[name="billing_last_name"]').val(),
-                    billing_email: $('input[name="billing_email"]').val(),
-                    billing_phone: $('input[name="billing_phone"]').val(),
-                    billing_address_1: $('input[name="billing_address_1"]').val(),
-                    billing_city: $('input[name="billing_city"]').val(),
-                    billing_state: $('select[name="billing_state"]').val(),
-                    billing_postcode: $('input[name="billing_postcode"]').val(),
-                    billing_country: $('select[name="billing_country"]').val(),
+                    billing_first_name: readCheckoutValue('billing_first_name'),
+                    billing_last_name: readCheckoutValue('billing_last_name'),
+                    billing_email: readCheckoutValue('billing_email'),
+                    billing_phone: readCheckoutValue('billing_phone'),
+                    billing_address_1: readCheckoutValue('billing_address_1'),
+                    billing_city: readCheckoutValue('billing_city'),
+                    billing_state: readCheckoutValue('billing_state'),
+                    billing_postcode: readCheckoutValue('billing_postcode'),
+                    billing_country: readCheckoutValue('billing_country'),
                     // Shipping address fields
-                    shipping_first_name: $('input[name="shipping_first_name"]').val(),
-                    shipping_last_name: $('input[name="shipping_last_name"]').val(),
-                    shipping_address_1: $('input[name="shipping_address_1"]').val(),
-                    shipping_city: $('input[name="shipping_city"]').val(),
-                    shipping_state: $('select[name="shipping_state"]').val(),
-                    shipping_postcode: $('input[name="shipping_postcode"]').val(),
-                    shipping_country: $('select[name="shipping_country"]').val()
+                    shipping_first_name: readCheckoutValue('shipping_first_name'),
+                    shipping_last_name: readCheckoutValue('shipping_last_name'),
+                    shipping_address_1: readCheckoutValue('shipping_address_1'),
+                    shipping_city: readCheckoutValue('shipping_city'),
+                    shipping_state: readCheckoutValue('shipping_state'),
+                    shipping_postcode: readCheckoutValue('shipping_postcode'),
+                    shipping_country: readCheckoutValue('shipping_country')
                 },
             success: function(response) {
                     // Get the checkout URL from the response
