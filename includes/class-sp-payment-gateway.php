@@ -2594,9 +2594,13 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $order->update_meta_data('_coinsub_cart_items', $cart_data['items']);
         $order->save();
         
-        // Prepare purchase session data
-        $item_names = array_map(function($item) { return $item['name']; }, $cart_data['items']);
-        $session_name = 'Order #' . $order->get_id() . (!empty($item_names) ? ' - ' . implode(' + ', $item_names) : '');
+        // Prepare purchase session data. The session name is shown as the
+        // title in the hosted checkout, so we keep it short — just the order
+        // number. Itemized product names live in the `details` field below
+        // (rendered as a line-item list on the hosted checkout).
+        // `get_order_number()` respects plugins like Sequential Order Numbers
+        // that rewrite the displayed order number.
+        $session_name = 'Order #' . $order->get_order_number();
 
         // Build ABSOLUTE redirect URLs for the payment provider.
         // We intentionally bypass $this->get_return_url() here because the
