@@ -2,13 +2,15 @@
 /**
  * Stablecoin Pay - Checkout Page Checker
  *
- * Detects whether the merchant's WooCommerce Checkout page actually contains
- * the classic checkout form (`[woocommerce_checkout]` shortcode). Shows an
- * admin notice with a one-click fix if it's missing or if the page is using
- * the block-based checkout (which the plugin doesn't yet support).
+ * Detects whether the merchant's WooCommerce Checkout page is configured at
+ * all. Both supported entry points (the `[woocommerce_checkout]` shortcode
+ * and the `wp:woocommerce/checkout` block) are accepted — the only failure
+ * modes we warn about are:
+ *   - No Checkout page is configured in WooCommerce → Settings → Advanced
+ *   - The configured Checkout page exists but has no checkout form on it
  *
- * Removes the manual "remember to add the shortcode" onboarding step that
- * has tripped up multiple partners.
+ * A one-click fix inserts the modern Checkout block (what a fresh WC install
+ * ships with) so the merchant never has to hand-edit page content.
  */
 
 if (!defined('ABSPATH')) {
@@ -55,7 +57,7 @@ class SP_Checkout_Page_Checker {
                 break;
             case 'error':
                 echo '<div class="notice notice-error is-dismissible"><p>';
-                echo esc_html__('Could not update the Checkout page automatically. Please edit it manually and ensure it contains [woocommerce_checkout].', 'coinsub');
+                echo esc_html__('Could not update the Checkout page automatically. Please edit it manually and make sure the WooCommerce Checkout block is on the page.', 'coinsub');
                 echo '</p></div>';
                 break;
             case 'no_page':
@@ -69,8 +71,12 @@ class SP_Checkout_Page_Checker {
     /**
      * Inspect the configured WooCommerce Checkout page.
      *
+     * Both the legacy shortcode (`[woocommerce_checkout]`) and the modern
+     * `wp:woocommerce/checkout` block are accepted as a valid checkout
+     * form — the gateway works with either.
+     *
      * @return array{state:string,page_id:int,page:?WP_Post,reason:string}
-     *   state is one of: 'ok', 'missing', 'block', 'no_page'
+     *   state is one of: 'ok', 'missing', 'no_page'
      */
     public static function inspect_checkout_page() {
         if (!function_exists('wc_get_page_id')) {
@@ -105,34 +111,19 @@ class SP_Checkout_Page_Checker {
         $content = (string) $page->post_content;
 
         $has_shortcode = has_shortcode($content, 'woocommerce_checkout');
-        // `has_block` only exists in WP 5.0+; we require 5.0+ already.
         $has_block = function_exists('has_block')
             ? has_block('woocommerce/checkout', $content)
             : (strpos($content, '<!-- wp:woocommerce/checkout') !== false);
 
-        if ($has_shortcode) {
+        if ($has_shortcode || $has_block) {
             return array('state' => 'ok', 'page_id' => $page_id, 'page' => $page, 'reason' => '');
-        }
-
-        if ($has_block) {
-            // Once the WooCommerce Blocks integration is enabled and built,
-            // a block-based Checkout page is fully supported — no warning.
-            if (defined('COINSUB_BLOCKS_CHECKOUT_ENABLED') && COINSUB_BLOCKS_CHECKOUT_ENABLED) {
-                return array('state' => 'ok', 'page_id' => $page_id, 'page' => $page, 'reason' => '');
-            }
-            return array(
-                'state'   => 'block',
-                'page_id' => $page_id,
-                'page'    => $page,
-                'reason'  => 'The Checkout page uses the block-based checkout, which this gateway does not yet support.',
-            );
         }
 
         return array(
             'state'   => 'missing',
             'page_id' => $page_id,
             'page'    => $page,
-            'reason'  => 'The Checkout page does not contain the WooCommerce checkout form.',
+            'reason'  => 'The Checkout page does not contain the WooCommerce Checkout block or shortcode.',
         );
     }
 
@@ -176,28 +167,15 @@ class SP_Checkout_Page_Checker {
             self::NONCE_NAME
         );
 
-        if ($result['state'] === 'block') {
-            $notice_class = 'notice-warning';
-            $headline = sprintf(
-                /* translators: %s: brand name */
-                __('%s: your Checkout page uses the block checkout', 'coinsub'),
-                $brand
-            );
-            $body = sprintf(
-                /* translators: 1: brand name */
-                __('The %1$s payment gateway currently only supports the classic WooCommerce checkout shortcode. Your Checkout page is using the new block-based checkout, which is why the payment iframe never opens. Click the button below to swap the block for the classic checkout shortcode — your customers will not see any visible difference.', 'coinsub'),
-                $brand
-            );
-            $button_label = __('Switch to classic checkout', 'coinsub');
-        } elseif ($result['state'] === 'missing') {
+        if ($result['state'] === 'missing') {
             $notice_class = 'notice-error';
             $headline = sprintf(
                 /* translators: %s: brand name */
                 __('%s: your Checkout page is missing the WooCommerce checkout form', 'coinsub'),
                 $brand
             );
-            $body = __('Your WooCommerce Checkout page does not contain the checkout form, so the payment iframe has nothing to attach to. Click below to add the standard [woocommerce_checkout] shortcode automatically.', 'coinsub');
-            $button_label = __('Add the checkout shortcode for me', 'coinsub');
+            $body = __('Your WooCommerce Checkout page does not contain a checkout form, so customers have nothing to fill out when they go to pay. Click below to add the standard WooCommerce Checkout block to the page automatically.', 'coinsub');
+            $button_label = __('Add the WooCommerce Checkout block for me', 'coinsub');
         } else {
             $notice_class = 'notice-error';
             $headline = sprintf(
@@ -249,12 +227,12 @@ class SP_Checkout_Page_Checker {
         }
 
         $page = $result['page'];
-        $new_content = '<!-- wp:shortcode -->[woocommerce_checkout]<!-- /wp:shortcode -->';
 
-        // For the 'block' state we replace the entire content. We could be
-        // surgical and only replace the woocommerce/checkout block, but a
-        // full replace is the safe default — anything else on a Checkout
-        // page is usually decorative and not customer-action-critical.
+        // Insert the modern WooCommerce Checkout block — same markup a
+        // fresh WC install ships with. Works with both classic and block
+        // checkout customer experiences.
+        $new_content = '<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout is-loading"></div><!-- /wp:woocommerce/checkout -->';
+
         $update = wp_update_post(array(
             'ID'           => $page->ID,
             'post_content' => $new_content,

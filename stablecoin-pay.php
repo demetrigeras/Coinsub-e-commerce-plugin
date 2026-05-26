@@ -122,32 +122,6 @@ function coinsub_commerce_init() {
     
     // Disable unnecessary WordPress/WooCommerce assets on checkout iframe page for faster loading
     add_action('wp_enqueue_scripts', 'coinsub_disable_unnecessary_assets_on_checkout_page', 999);
-    
-    // Force traditional checkout template (not block-based)
-    add_action('template_redirect', 'coinsub_force_traditional_checkout');
-}
-
-/**
- * Force traditional checkout template for CoinSub compatibility
- * Only applies when CoinSub gateway is enabled
- */
-function coinsub_force_traditional_checkout() {
-    if (is_checkout() && !is_wc_endpoint_url('order-pay')) {
-        // Check if CoinSub gateway is enabled
-        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-        $coinsub_enabled = isset($gateway_settings['enabled']) && $gateway_settings['enabled'] === 'yes';
-        
-        if ($coinsub_enabled) {
-            // Remove block-based checkout and use shortcode
-            remove_action('woocommerce_before_checkout_form', 'woocommerce_checkout_form_wrapper_start');
-            remove_action('woocommerce_after_checkout_form', 'woocommerce_checkout_form_wrapper_end');
-            
-            // Force shortcode checkout
-            add_filter('woocommerce_checkout_shortcode_tag', function() {
-                return 'woocommerce_checkout';
-            });
-        }
-    }
 }
 
 /**
@@ -214,83 +188,86 @@ function coinsub_commerce_activate() {
     // Create dedicated checkout page
     coinsub_create_checkout_page();
     
-    // Automatically ensure WooCommerce checkout page has shortcode
-    coinsub_ensure_checkout_shortcode();
-    
+    // Make sure the WooCommerce Checkout page has SOME checkout form in it.
+    // Both the modern block and the legacy shortcode are supported by the
+    // plugin, so we only auto-insert content when neither is present.
+    coinsub_ensure_checkout_form_present();
+
     // Flush rewrite rules
     flush_rewrite_rules();
 }
 
 /**
- * Automatically ensure WooCommerce checkout page has [woocommerce_checkout] shortcode
- * This eliminates the need for manual Step 3 in setup instructions
- * Safe: Only adds if missing, preserves existing content
+ * Ensure the WooCommerce Checkout page has a checkout form on it.
+ *
+ * Both supported entry points work out of the box:
+ *   - The `[woocommerce_checkout]` shortcode (classic / legacy themes)
+ *   - The `wp:woocommerce/checkout` block (modern WC default)
+ *
+ * If the page already has either one, we leave it alone — merchants who
+ * deliberately chose classic should stay on classic. We only auto-insert
+ * content if the Checkout page is empty (or has no checkout form at all),
+ * in which case we drop in the modern Checkout block, matching what a
+ * fresh WooCommerce install ships with.
+ *
+ * Safe: never overwrites existing checkout content.
  */
-function coinsub_ensure_checkout_shortcode() {
-    // Get WooCommerce checkout page ID
+function coinsub_ensure_checkout_form_present() {
     $checkout_page_id = wc_get_page_id('checkout');
-    
+
     if (!$checkout_page_id || $checkout_page_id === 0) {
-        error_log('⚠️ Stablecoin Pay: WooCommerce checkout page not found - skipping shortcode check');
+        error_log('⚠️ Stablecoin Pay: WooCommerce checkout page not configured - skipping checkout-form check');
         return false;
     }
-    
-    // Get the page
+
     $checkout_page = get_post($checkout_page_id);
-    
     if (!$checkout_page) {
         error_log('⚠️ Stablecoin Pay: Could not retrieve checkout page');
         return false;
     }
-    
-    // Check if page content already has the shortcode or checkout functionality
-    $page_content = $checkout_page->post_content;
-    
-    // Check for various formats that indicate checkout is working:
-    // 1. [woocommerce_checkout] shortcode
-    // 2. WooCommerce checkout block (Gutenberg)
-    // 3. Any WooCommerce checkout-related content
+
+    $page_content = (string) $checkout_page->post_content;
+
+    // A checkout form is already present if either the shortcode or the
+    // block (in any of its serialization forms) is on the page.
     $has_checkout = (
         strpos($page_content, '[woocommerce_checkout]') !== false ||
         strpos($page_content, '<!-- wp:woocommerce/checkout') !== false ||
-        strpos($page_content, 'wp-block-woocommerce-checkout') !== false ||
-        strpos($page_content, 'woocommerce-checkout') !== false
+        strpos($page_content, 'wp-block-woocommerce-checkout') !== false
     );
-    
+
     if ($has_checkout) {
-        error_log('✅ Stablecoin Pay: Checkout page already has checkout shortcode/block - no changes needed');
+        error_log('✅ Stablecoin Pay: Checkout page already has a checkout form - no changes needed');
         return true;
     }
-    
-    // Page doesn't have checkout functionality - add shortcode safely
-    // If page is empty or only has whitespace, replace with shortcode
-    // Otherwise, prepend shortcode (so it appears first)
+
+    // No checkout form found. Insert the modern Checkout block — it's what
+    // a fresh WC install ships with and works seamlessly with our block
+    // checkout integration.
+    $block_markup = '<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout is-loading"></div><!-- /wp:woocommerce/checkout -->';
+
     $trimmed_content = trim($page_content);
-    
     if (empty($trimmed_content)) {
-        // Empty page - just add shortcode
-        $new_content = '[woocommerce_checkout]';
-        error_log('🔄 Stablecoin Pay: Checkout page is empty - adding [woocommerce_checkout] shortcode');
+        $new_content = $block_markup;
+        error_log('🔄 Stablecoin Pay: Checkout page is empty - inserting WooCommerce Checkout block');
     } else {
-        // Has content - prepend shortcode (checkout should come first)
-        $new_content = '[woocommerce_checkout]' . "\n\n" . $page_content;
-        error_log('🔄 Stablecoin Pay: Checkout page has content - prepending [woocommerce_checkout] shortcode');
+        $new_content = $block_markup . "\n\n" . $page_content;
+        error_log('🔄 Stablecoin Pay: Checkout page has content but no checkout form - prepending WooCommerce Checkout block');
     }
-    
-    // Update the page
+
     $updated = wp_update_post(array(
         'ID' => $checkout_page_id,
-        'post_content' => $new_content
+        'post_content' => $new_content,
     ));
-    
+
     if ($updated && !is_wp_error($updated)) {
-        error_log('✅ Stablecoin Pay: Successfully updated checkout page with [woocommerce_checkout] shortcode');
+        error_log('✅ Stablecoin Pay: Successfully added the WooCommerce Checkout block to the checkout page');
         return true;
-    } else {
-        $error_msg = is_wp_error($updated) ? $updated->get_error_message() : 'Unknown error';
-        error_log('❌ Stablecoin Pay: Failed to update checkout page - ' . $error_msg);
-        return false;
     }
+
+    $error_msg = is_wp_error($updated) ? $updated->get_error_message() : 'Unknown error';
+    error_log('❌ Stablecoin Pay: Failed to update checkout page - ' . $error_msg);
+    return false;
 }
 
 /**
@@ -877,22 +854,17 @@ register_activation_hook(__FILE__, 'coinsub_plugin_activate_secret');
 /**
  * Block checkout integration toggle.
  *
- * Flip this to `true` once:
- *   1. `assets/js/blocks/` is fully implemented (registerPaymentMethod call
- *      with a working content component that handles onPaymentSetup), and
- *   2. `npm install && npm run build` has been run so `build/index.js` exists.
+ * When `true` the gateway is registered with WooCommerce Blocks and the
+ * "Pay with Crypto" option appears on the modern block-based checkout
+ * (see includes/class-sp-blocks-payment-method.php + src/blocks/*.js).
+ * When `false` only the legacy classic-checkout shortcode flow is wired up.
  *
- * Until then, the SP_Blocks_Payment_Method class returns is_active()=false,
- * so the gateway only shows on the classic shortcode checkout and merchants
- * on block checkout see the admin notice prompting them to switch.
+ * Both flows share `WC_Gateway_CoinSub::process_payment()` and the same
+ * hosted-checkout iframe UX, so flipping this on does not regress
+ * classic-checkout merchants — it just adds block-checkout support
+ * alongside it.
  */
 if (!defined('COINSUB_BLOCKS_CHECKOUT_ENABLED')) {
-    // Flipped to TRUE so the "Pay with Crypto" option appears on block
-    // checkout while we develop the React/onPaymentSetup flow. While this
-    // is true and the React side isn't finished, clicking Place Order
-    // will resolve immediately without actually opening the hosted
-    // checkout iframe (see TODOs in src/blocks/content.js). Set to false
-    // for production until the iframe + completion-detection work is done.
     define('COINSUB_BLOCKS_CHECKOUT_ENABLED', true);
 }
 
@@ -917,21 +889,13 @@ add_action('woocommerce_blocks_loaded', function () {
     );
 });
 
-// NOTE: We intentionally do NOT force classic checkout store-wide anymore.
-// Previously this plugin filtered `woocommerce_feature_enabled` (for the
-// `checkout_block` feature) and `woocommerce_is_checkout_block` to flip
-// every store onto the classic shortcode checkout whenever CoinSub was
-// active. That worked around the fact that our gateway's JS (form.checkout
-// + checkout_place_order_<gateway>) only binds to the classic checkout —
-// but it also stripped block-checkout features away from every OTHER
-// payment method the merchant had installed (Stripe, PayPal, Apple Pay,
-// Square, etc.), which is invasive and surprising.
-//
-// Instead, `SP_Checkout_Page_Checker` (includes/class-sp-checkout-page-checker.php)
-// now detects merchants on block checkout and surfaces an admin notice with
-// a one-click "Switch to classic checkout" fix. Once the gateway gains a
-// proper WooCommerce Blocks integration (AbstractPaymentMethodType), this
-// notice's `block` branch can also be removed.
+// NOTE: We do NOT force classic checkout store-wide. The gateway works on
+// both classic (shortcode) and block-based WooCommerce checkout pages, so
+// merchants can pick whichever they prefer without affecting any other
+// payment methods they have installed (Stripe, PayPal, Apple Pay, etc.).
+// The block-checkout integration lives in:
+//   - includes/class-sp-blocks-payment-method.php  (server-side)
+//   - src/blocks/*.js → build/index.js              (React content component)
 
 // Force gateway availability for debugging (lower priority to avoid conflicts)
 // Only log on checkout page to reduce log noise

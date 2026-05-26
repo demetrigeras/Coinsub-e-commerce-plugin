@@ -47,6 +47,12 @@ const Content = ( { settings, ...props } ) => {
 
 	const [ checkoutUrl, setCheckoutUrl ] = useState( null );
 
+	// Holds the resolver of the in-flight onPaymentSetup Promise so the
+	// "X / ESC / backdrop-click" close handler can cancel the payment by
+	// resolving with an ERROR. That unlocks the Place Order button and
+	// lets the customer try again (creating a fresh order each time).
+	const pendingResolveRef = useRef( null );
+
 	// Keep latest billing/shipping in refs so the onPaymentSetup callback
 	// (registered once) can read fresh values when the customer eventually
 	// clicks Place Order.
@@ -64,6 +70,38 @@ const Content = ( { settings, ...props } ) => {
 			window.location.href = url;
 		}
 	}, [] );
+
+	// Close the modal AND cancel the in-flight onPaymentSetup Promise so
+	// block checkout unlocks the Place Order button. The on-hold order
+	// created server-side is intentionally left in WC admin — the next
+	// Place Order click starts a brand-new order (we don't try to resume
+	// abandoned sessions; merchants can clean up on-hold orders manually
+	// or via a future automated cleanup task).
+	const handleClose = useCallback( () => {
+		setCheckoutUrl( null );
+		if ( typeof pendingResolveRef.current === 'function' ) {
+			pendingResolveRef.current( {
+				type: emitResponse.responseTypes.ERROR,
+				message:
+					'Crypto payment canceled. Click Place Order to try again.',
+			} );
+			pendingResolveRef.current = null;
+		}
+	}, [ emitResponse ] );
+
+	// ESC key closes the modal while it's open.
+	useEffect( () => {
+		if ( ! checkoutUrl ) {
+			return undefined;
+		}
+		const onKey = ( event ) => {
+			if ( event.key === 'Escape' ) {
+				handleClose();
+			}
+		};
+		window.addEventListener( 'keydown', onKey );
+		return () => window.removeEventListener( 'keydown', onKey );
+	}, [ checkoutUrl, handleClose ] );
 
 	// Wire up redirect-detection whenever the iframe is mounted.
 	useEffect( () => {
@@ -205,20 +243,26 @@ const Content = ( { settings, ...props } ) => {
 				}
 
 				// Mount the iframe — this triggers the JSX below to render
-				// it inline on the checkout page (no top-level redirect).
+				// the centered modal.
 				setCheckoutUrl( url );
 
-				// Intentionally never resolve. Block checkout keeps the
-				// "Processing…" spinner on the Place Order button (good
-				// — payment IS in progress) and the iframe takes over
-				// the conversation. When the customer finishes paying,
-				// the redirect-detection effect navigates the top-level
-				// browser to /checkout/order-received/, unmounting this
-				// component entirely.
-				await new Promise( () => {} );
-
-				// Unreachable, but keeps the type contract honest.
-				return { type: emitResponse.responseTypes.SUCCESS };
+				// Wait for one of two outcomes:
+				//   (a) Payment completes: the redirect-detection effect
+				//       navigates the top-level browser to
+				//       /checkout/order-received/ and this component is
+				//       unmounted — the Promise never resolves and that's
+				//       fine.
+				//   (b) Customer dismisses the modal: `handleClose` below
+				//       calls the resolver with an ERROR, which unlocks
+				//       the Place Order button and surfaces a friendly
+				//       cancel message in the block checkout UI.
+				const cancellationResult = await new Promise(
+					( resolve ) => {
+						pendingResolveRef.current = resolve;
+					}
+				);
+				pendingResolveRef.current = null;
+				return cancellationResult;
 			} catch ( err ) {
 				return {
 					type: emitResponse.responseTypes.ERROR,
@@ -253,6 +297,13 @@ const Content = ( { settings, ...props } ) => {
 						role="dialog"
 						aria-modal="true"
 						aria-label="Crypto checkout"
+						onClick={ ( event ) => {
+							// Only close on backdrop click (not on clicks
+							// that bubble up from inside the iframe container).
+							if ( event.target === event.currentTarget ) {
+								handleClose();
+							}
+						} }
 						style={ {
 							position: 'fixed',
 							inset: 0,
@@ -268,6 +319,7 @@ const Content = ( { settings, ...props } ) => {
 						<div
 							className="coinsub-blocks-iframe-container"
 							style={ {
+								position: 'relative',
 								width: 'min(520px, calc(100vw - 24px))',
 								height: 'min(820px, calc(100vh - 24px))',
 								background: '#fff',
@@ -279,6 +331,32 @@ const Content = ( { settings, ...props } ) => {
 								flexDirection: 'column',
 							} }
 						>
+							<button
+								type="button"
+								onClick={ handleClose }
+								aria-label="Close crypto checkout"
+								style={ {
+									position: 'absolute',
+									top: '10px',
+									right: '10px',
+									width: '32px',
+									height: '32px',
+									padding: 0,
+									border: 0,
+									borderRadius: '50%',
+									background: 'rgba(15, 23, 42, 0.75)',
+									color: '#fff',
+									fontSize: '18px',
+									lineHeight: '32px',
+									textAlign: 'center',
+									cursor: 'pointer',
+									zIndex: 2,
+									boxShadow:
+										'0 2px 6px rgba(0, 0, 0, 0.18)',
+								} }
+							>
+								×
+							</button>
 							<iframe
 								id={ IFRAME_DOM_ID }
 								title="Crypto checkout"
