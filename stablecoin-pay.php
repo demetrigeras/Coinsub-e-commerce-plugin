@@ -887,7 +887,13 @@ register_activation_hook(__FILE__, 'coinsub_plugin_activate_secret');
  * on block checkout see the admin notice prompting them to switch.
  */
 if (!defined('COINSUB_BLOCKS_CHECKOUT_ENABLED')) {
-    define('COINSUB_BLOCKS_CHECKOUT_ENABLED', false);
+    // Flipped to TRUE so the "Pay with Crypto" option appears on block
+    // checkout while we develop the React/onPaymentSetup flow. While this
+    // is true and the React side isn't finished, clicking Place Order
+    // will resolve immediately without actually opening the hosted
+    // checkout iframe (see TODOs in src/blocks/content.js). Set to false
+    // for production until the iframe + completion-detection work is done.
+    define('COINSUB_BLOCKS_CHECKOUT_ENABLED', true);
 }
 
 /**

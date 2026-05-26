@@ -1,42 +1,55 @@
 /**
  * Stablecoin Pay — block-checkout payment-method content component.
  *
- * Rendered inside the customer-facing block checkout when the customer
- * selects "Pay with Crypto". Responsible for:
+ * Mirrors the classic-checkout iframe flow from
+ * `includes/sp-checkout-modal.php` but for the React-based block checkout.
  *
- *   1. Showing a short description / branding.
- *   2. Registering an `onPaymentSetup` callback with the block checkout
- *      runtime. Block checkout calls this callback when the customer
- *      clicks Place Order. The callback returns a Promise that resolves
- *      with `{ type: 'success', meta: { paymentMethodData: {…} } }` to
- *      let the order go through, or `{ type: 'error', message: '…' }` to
- *      block it with a visible error.
- *   3. Hitting `admin-ajax.php?action=coinsub_process_payment` to get a
- *      hosted-checkout URL, opening that in an iframe inside the payment
- *      area, and only resolving the Promise once the customer completes
- *      payment (signaled via redirect-detection or a postMessage from the
- *      hosted checkout, same as the classic flow).
+ * Flow when the customer selects "Pay with Crypto" and clicks Place Order:
  *
- * Most of step 3 is intentionally left as TODOs because it mirrors the
- * existing classic-checkout flow in `includes/sp-checkout-modal.php` and
- * you'll want to port that iframe lifecycle / redirect-detection here
- * once the rest is wired up. The Promise pattern below is the correct
- * skeleton — fill in the iframe mount + completion detection inside the
- * marked sections.
+ *   1. Block checkout fires our `onPaymentSetup` callback.
+ *   2. We POST billing/shipping to `admin-ajax.php?action=coinsub_process_payment`,
+ *      which creates a WooCommerce order and a Coinsub purchase session
+ *      server-side and returns a one-time hosted-checkout URL.
+ *   3. We mount that URL in an inline iframe inside this component (same
+ *      "above the Place Order button" placement as the classic flow).
+ *   4. We deliberately return a Promise that NEVER resolves. Block
+ *      checkout's spinner stays on while the customer pays inside the
+ *      iframe — that's the correct in-flight state and matches the
+ *      classic flow where the Place Order button is hidden.
+ *   5. A postMessage listener (and a polling fallback) watches for the
+ *      iframe to signal that payment is complete. When that happens we
+ *      navigate the TOP-LEVEL browser to `/checkout/order-received/`,
+ *      which closes out this React tree entirely. No top-level redirect
+ *      to a separate payment page — the customer never leaves /checkout/
+ *      until they're done.
+ *
+ * The classic and block flows share the same server-side handlers
+ * (`coinsub_ajax_process_payment` + `WC_Gateway_CoinSub::process_payment`),
+ * so the order lifecycle, webhook handling, and refund path are
+ * identical.
  */
 
-import { useEffect, useRef, useState } from '@wordpress/element';
+import {
+	createPortal,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from '@wordpress/element';
+
+const IFRAME_DOM_ID = 'coinsub-blocks-iframe';
+const REDIRECT_CHECK_INTERVAL_MS = 1000;
+const REDIRECT_CHECK_MAX_MS = 5 * 60 * 1000; // give up after 5 minutes
 
 const Content = ( { settings, ...props } ) => {
 	const { eventRegistration, emitResponse, billing, shippingData } = props;
 	const { onPaymentSetup } = eventRegistration || {};
 
 	const [ checkoutUrl, setCheckoutUrl ] = useState( null );
-	const [ error, setError ] = useState( null );
-	const iframeRef = useRef( null );
 
-	// Register the payment-setup callback ONCE per mount. The callback closes
-	// over the latest billing/shipping props via the ref pattern below.
+	// Keep latest billing/shipping in refs so the onPaymentSetup callback
+	// (registered once) can read fresh values when the customer eventually
+	// clicks Place Order.
 	const billingRef = useRef( billing );
 	const shippingRef = useRef( shippingData );
 	useEffect( () => {
@@ -44,34 +57,132 @@ const Content = ( { settings, ...props } ) => {
 		shippingRef.current = shippingData;
 	}, [ billing, shippingData ] );
 
+	// Top-level navigation to the order-received page. Same effect as
+	// `window.location.href = ...` in the classic flow.
+	const navigateTopLevel = useCallback( ( url ) => {
+		if ( typeof url === 'string' && url ) {
+			window.location.href = url;
+		}
+	}, [] );
+
+	// Wire up redirect-detection whenever the iframe is mounted.
+	useEffect( () => {
+		if ( ! checkoutUrl ) {
+			return undefined;
+		}
+
+		// 1) postMessage from the hosted checkout (cross-origin friendly).
+		const onMessage = ( event ) => {
+			const data = event?.data;
+			if (
+				data &&
+				typeof data === 'object' &&
+				data.type === 'redirect' &&
+				data.url
+			) {
+				navigateTopLevel( data.url );
+				return;
+			}
+			if (
+				typeof data === 'string' &&
+				data.includes( 'order-received' )
+			) {
+				navigateTopLevel( data );
+			}
+		};
+		window.addEventListener( 'message', onMessage );
+
+		// 2) Polling fallback that watches the iframe's same-origin URL.
+		//    Cross-origin reads throw, which we silently swallow — that's
+		//    expected while the customer is still on the Coinsub host.
+		//    The check succeeds once the hosted checkout itself navigates
+		//    back to the merchant's /checkout/order-received/ page.
+		const interval = setInterval( () => {
+			try {
+				const iframe = document.getElementById( IFRAME_DOM_ID );
+				if ( iframe && iframe.contentWindow ) {
+					const url = iframe.contentWindow.location.href;
+					if ( url && url.includes( 'order-received' ) ) {
+						clearInterval( interval );
+						navigateTopLevel( url );
+					}
+				}
+			} catch ( _ ) {
+				/* cross-origin, expected — wait for postMessage */
+			}
+		}, REDIRECT_CHECK_INTERVAL_MS );
+
+		const stopper = setTimeout(
+			() => clearInterval( interval ),
+			REDIRECT_CHECK_MAX_MS
+		);
+
+		return () => {
+			window.removeEventListener( 'message', onMessage );
+			clearInterval( interval );
+			clearTimeout( stopper );
+		};
+	}, [ checkoutUrl, navigateTopLevel ] );
+
+	// Register the onPaymentSetup callback once per mount.
 	useEffect( () => {
 		if ( typeof onPaymentSetup !== 'function' ) {
-			return;
+			return undefined;
 		}
 
 		const unsubscribe = onPaymentSetup( async () => {
 			try {
-				// ----------------------------------------------------------------
-				// TODO (1/3): kick off the same `coinsub_process_payment` AJAX as
-				// the classic checkout. Use the values from billingRef.current
-				// and shippingRef.current to populate billing_* / shipping_*
-				// payload fields. See includes/sp-checkout-modal.php for the
-				// canonical list of fields.
-				// ----------------------------------------------------------------
+				// Build the same snake_case payload the classic flow uses
+				// (see includes/sp-checkout-modal.php around L340).
+				const billingAddr =
+					billingRef.current?.billingAddress || {};
+				const shippingAddr =
+					shippingRef.current?.shippingAddress || {};
+
+				const addressFields = [
+					'first_name',
+					'last_name',
+					'company',
+					'address_1',
+					'address_2',
+					'city',
+					'state',
+					'postcode',
+					'country',
+				];
+
+				const payload = {
+					action: settings.processAction,
+					security: settings.nonce,
+					payment_method: 'coinsub',
+					billing_email:
+						billingAddr.email ||
+						billingRef.current?.email ||
+						'',
+					billing_phone:
+						billingAddr.phone ||
+						billingRef.current?.phone ||
+						'',
+				};
+
+				addressFields.forEach( ( key ) => {
+					payload[ `billing_${ key }` ] =
+						billingAddr[ key ] || '';
+					// If shipping is empty (e.g. ship-to-same-address on),
+					// mirror the billing value so server-side validation
+					// passes regardless of which set of fields was visible.
+					payload[ `shipping_${ key }` ] =
+						shippingAddr[ key ] || billingAddr[ key ] || '';
+				} );
+
 				const response = await fetch( settings.ajaxUrl, {
 					method: 'POST',
 					credentials: 'same-origin',
 					headers: {
-						'Content-Type': 'application/x-www-form-urlencoded',
+						'Content-Type':
+							'application/x-www-form-urlencoded',
 					},
-					body: new URLSearchParams( {
-						action: settings.processAction,
-						security: settings.nonce,
-						payment_method: 'coinsub',
-						// TODO: fill in billing_* / shipping_* fields here from
-						// billingRef.current.billingAddress and
-						// shippingRef.current.shippingAddress
-					} ).toString(),
+					body: new URLSearchParams( payload ).toString(),
 				} );
 
 				const data = await response.json();
@@ -81,48 +192,33 @@ const Content = ( { settings, ...props } ) => {
 					null;
 
 				if ( ! data?.success || ! url ) {
+					const serverMsg =
+						typeof data?.data === 'string'
+							? data.data
+							: data?.data?.message;
 					return {
 						type: emitResponse.responseTypes.ERROR,
 						message:
-							data?.data?.message ||
+							serverMsg ||
 							'Could not start the crypto payment session. Please try again.',
 					};
 				}
 
-				// ----------------------------------------------------------------
-				// TODO (2/3): mount the hosted-checkout iframe inside this
-				// component (or as a portal/overlay), then await its completion.
-				// The cleanest pattern is:
-				//   1. setCheckoutUrl(url)  // triggers iframe render below
-				//   2. await a promise that resolves when the iframe redirects
-				//      to /checkout/order-received/ — mirror the
-				//      setupCoinSubIframeRedirectDetection() logic from
-				//      includes/sp-checkout-modal.php.
-				//   3. resolve here once payment is confirmed.
-				// ----------------------------------------------------------------
+				// Mount the iframe — this triggers the JSX below to render
+				// it inline on the checkout page (no top-level redirect).
 				setCheckoutUrl( url );
-				await new Promise( ( resolve ) => {
-					// TEMP: bail immediately. Replace this with real iframe
-					// completion detection (postMessage from buy.* host, or
-					// poll the order status via REST, or watch iframe.src for
-					// the order-received URL).
-					resolve();
-				} );
 
-				// ----------------------------------------------------------------
-				// TODO (3/3): on real success, resolve with paymentMethodData
-				// that the server-side gateway can read. The webhook is what
-				// actually confirms payment, but Woo still needs us to return
-				// a non-error here so the order is created.
-				// ----------------------------------------------------------------
-				return {
-					type: emitResponse.responseTypes.SUCCESS,
-					meta: {
-						paymentMethodData: {
-							coinsub_checkout_url: url,
-						},
-					},
-				};
+				// Intentionally never resolve. Block checkout keeps the
+				// "Processing…" spinner on the Place Order button (good
+				// — payment IS in progress) and the iframe takes over
+				// the conversation. When the customer finishes paying,
+				// the redirect-detection effect navigates the top-level
+				// browser to /checkout/order-received/, unmounting this
+				// component entirely.
+				await new Promise( () => {} );
+
+				// Unreachable, but keeps the type contract honest.
+				return { type: emitResponse.responseTypes.SUCCESS };
 			} catch ( err ) {
 				return {
 					type: emitResponse.responseTypes.ERROR,
@@ -140,43 +236,83 @@ const Content = ( { settings, ...props } ) => {
 		};
 	}, [ onPaymentSetup, emitResponse, settings ] );
 
+	// --- Render -------------------------------------------------------
+
+	const description =
+		settings?.description || 'Pay securely with cryptocurrency.';
+
+	// While the iframe is open we render it via a portal to <body> as a
+	// centered modal so it escapes block-checkout's narrow payment-method
+	// slot. The iframe gets its intended ~600px width on any layout, and
+	// we don't touch any styling outside our own modal.
+	const iframePanel =
+		checkoutUrl && typeof document !== 'undefined'
+			? createPortal(
+					<div
+						className="coinsub-blocks-iframe-portal"
+						role="dialog"
+						aria-modal="true"
+						aria-label="Crypto checkout"
+						style={ {
+							position: 'fixed',
+							inset: 0,
+							zIndex: 999999,
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							padding: '16px',
+							background: 'rgba(15, 23, 42, 0.55)',
+							boxSizing: 'border-box',
+						} }
+					>
+						<div
+							className="coinsub-blocks-iframe-container"
+							style={ {
+								width: 'min(520px, calc(100vw - 24px))',
+								height: 'min(820px, calc(100vh - 24px))',
+								background: '#fff',
+								borderRadius: '16px',
+								boxShadow:
+									'0 20px 48px rgba(0, 0, 0, 0.28)',
+								overflow: 'hidden',
+								display: 'flex',
+								flexDirection: 'column',
+							} }
+						>
+							<iframe
+								id={ IFRAME_DOM_ID }
+								title="Crypto checkout"
+								src={ checkoutUrl }
+								style={ {
+									width: '100%',
+									flex: 1,
+									border: 0,
+									display: 'block',
+								} }
+								allow="clipboard-read *; clipboard-write *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"
+							/>
+						</div>
+					</div>,
+					document.body
+			  )
+			: null;
+
 	return (
 		<div className="coinsub-block-payment">
-			<p>{ settings?.description || 'Pay securely with cryptocurrency.' }</p>
-
-			{ error && (
-				<div
-					className="coinsub-block-error"
-					style={ { color: '#b81c23', marginTop: '8px' } }
-				>
-					{ error }
-				</div>
-			) }
-
-			{ checkoutUrl && (
-				<div
-					className="coinsub-block-iframe-container"
-					style={ {
-						marginTop: '16px',
-						background: '#fff',
-						borderRadius: '12px',
-						boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-						overflow: 'hidden',
-					} }
-				>
-					<iframe
-						ref={ iframeRef }
-						title="Crypto checkout"
-						src={ checkoutUrl }
-						style={ {
-							width: '100%',
-							height: '550px',
-							border: 0,
-						} }
-						allow="clipboard-read *; clipboard-write *; publickey-credentials-create *; publickey-credentials-get *; autoplay *; camera *; microphone *; payment *; fullscreen *"
-					/>
-				</div>
-			) }
+			<p style={ { margin: 0 } }>{ description }</p>
+			<p
+				style={ {
+					marginTop: '6px',
+					marginBottom: 0,
+					fontSize: '12px',
+					color: '#555',
+				} }
+			>
+				{ checkoutUrl
+					? 'A secure crypto payment window has opened — complete your purchase there to continue.'
+					: 'A secure crypto payment window will open when you click Place Order.' }
+			</p>
+			{ iframePanel }
 		</div>
 	);
 };

@@ -23,8 +23,8 @@ This document explains how to finish step 2.
 | React entry | `src/blocks/index.js` (`registerPaymentMethod`) | ✅ done |
 | Label component | `src/blocks/label.js` | ✅ done |
 | Editor preview | `src/blocks/edit.js` | ✅ done |
-| Content / payment flow | `src/blocks/content.js` (`onPaymentSetup`) | 🟡 skeleton — **needs work** |
-| Enabling flag | `COINSUB_BLOCKS_CHECKOUT_ENABLED` constant in `stablecoin-pay.php` | 🟡 set to `false` until ready |
+| Content / payment flow | `src/blocks/content.js` (`onPaymentSetup`) | ✅ done — inline iframe + redirect detection |
+| Enabling flag | `COINSUB_BLOCKS_CHECKOUT_ENABLED` constant in `stablecoin-pay.php` | ✅ set to `true` |
 
 ---
 
@@ -52,55 +52,68 @@ which keeps the block integration silently disabled.
 
 ---
 
-## What's left to implement in `src/blocks/content.js`
+## Payment flow in `src/blocks/content.js`
 
-The skeleton is correct: it registers an `onPaymentSetup` callback,
-returns a Promise, and hits `admin-ajax.php?action=coinsub_process_payment`
-to get a hosted-checkout URL.
+The block-checkout flow mirrors the classic-checkout flow from
+`includes/sp-checkout-modal.php` — inline iframe on the checkout page, no
+top-level redirect to a separate payment page. Specifically:
 
-Three things to finish, marked `TODO (n/3)` in the file:
+1. `onPaymentSetup` POSTs the customer's billing/shipping address to
+   `admin-ajax.php?action=coinsub_process_payment` (same endpoint the
+   classic flow uses), which creates the WooCommerce order, opens a
+   Coinsub purchase session, and returns the hosted-checkout URL.
 
-1. **Send the customer's billing/shipping address** in the AJAX body. The
-   classic flow's payload shape is in `includes/sp-checkout-modal.php`
-   around line 340. Pull values from `billingRef.current.billingAddress`
-   and `shippingRef.current.shippingAddress`.
+2. The component mounts that URL in an inline `<iframe>` styled the
+   same as the classic flow's `#coinsub-checkout-container`. The
+   `onPaymentSetup` Promise deliberately **never resolves** — block
+   checkout's "Processing…" state on the Place Order button is the
+   correct in-flight indicator while the iframe is open.
 
-2. **Open the hosted-checkout iframe and wait for completion.** The classic
-   flow's `setupCoinSubIframeRedirectDetection()` watches the iframe for a
-   navigation to `/checkout/order-received/`. Port that to React — likely a
-   `postMessage` listener or a polling check against the WooCommerce REST
-   API for the order status.
+3. A `postMessage` listener and a polling fallback watch for the
+   hosted checkout to signal completion (same logic as
+   `setupCoinSubIframeRedirectDetection()` in the classic flow). When
+   the customer finishes paying, the top-level browser is navigated
+   to `/checkout/order-received/<id>/?key=…`, which unmounts the
+   block-checkout React tree entirely. The server-side webhook is
+   what actually marks the order `processing` — that's identical
+   between the two flows.
 
-3. **Resolve the Promise** with `{ type: SUCCESS, meta: { paymentMethodData } }`
-   once payment is confirmed (or `ERROR` with a customer-visible message
-   otherwise).
+### Why the Promise never resolves
+
+Resolving `onPaymentSetup` with `SUCCESS` would let block checkout
+submit to its own `/wp-json/wc/store/v1/checkout` endpoint, which
+would create a **second** WooCommerce order on top of the one our
+AJAX already created. Keeping the Promise pending and doing the
+top-level navigation ourselves avoids the duplicate-order problem
+and keeps the order lifecycle byte-for-byte identical to classic
+checkout.
 
 ---
 
-## Turning the block integration ON
+## Testing checklist
 
-Once `content.js` is finished and tested:
-
-1. Run `npm run build` (writes `build/index.js`).
-2. In `stablecoin-pay.php`, set:
-
-   ```php
-   if (!defined('COINSUB_BLOCKS_CHECKOUT_ENABLED')) {
-       define('COINSUB_BLOCKS_CHECKOUT_ENABLED', true);
-   }
-   ```
-
-3. Test on a fresh WooCommerce install whose Checkout page contains
-   `<!-- wp:woocommerce/checkout -->`. The "Pay with Crypto" option should
-   appear in the payment methods list alongside Stripe / PayPal / etc.
-
-4. Verify the admin notice in
+1. Run `npm run build` (writes `build/index.js` + `build/index.asset.php`).
+2. Build the plugin zip: `./create-plugin-package.sh` — it runs the
+   JS build internally so the production zip ships with `build/`.
+3. Upload to a test WordPress site whose Checkout page contains
+   `<!-- wp:woocommerce/checkout -->` (the native block checkout, not the
+   classic `[woocommerce_checkout]` shortcode).
+4. Confirm "Pay with Crypto" appears in the payment methods list
+   alongside any other gateways.
+5. Click Place Order and verify:
+   - The iframe mounts inline on the same /checkout/ page.
+   - The Place Order button shows the "Processing…" spinner.
+   - Completing payment inside the iframe navigates the top-level
+     browser to /checkout/order-received/<id>/?key=… without an
+     intermediate redirect to a separate page.
+6. Confirm the admin notice in
    `includes/class-sp-checkout-page-checker.php` stops warning about
    block-based checkout pages (it self-silences when the constant is `true`).
-
-5. Run a full purchase end-to-end and confirm the webhook still marks the
-   order `processing` (the server-side `process_payment` and webhook flow
-   are unchanged — only the front-end UX is new).
+7. Confirm the server-side flow is unchanged:
+   - The WooCommerce order moves from `pending` → `on-hold` (set in
+     `process_payment`) → `processing` (set by the webhook).
+   - The Coinsub webhook fires and marks the order `processing` exactly
+     once.
 
 ---
 

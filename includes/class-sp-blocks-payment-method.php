@@ -148,7 +148,7 @@ class SP_Blocks_Payment_Method extends \Automattic\WooCommerce\Blocks\Payments\I
      * the method (e.g. it's hidden for subscription carts if 'subscriptions'
      * isn't here).
      */
-    protected function get_supported_features() {
+    public function get_supported_features() {
         // Mirror the classic gateway's declared features.
         $gateway = class_exists('WC_Gateway_CoinSub') ? new WC_Gateway_CoinSub() : null;
         return $gateway && !empty($gateway->supports)
