@@ -129,6 +129,40 @@ jQuery(document).ready(function($) {
         ensurePlaceOrderButtonVisibility();
     }, 100);
 
+    // Mirror billing <-> shipping inputs before any validation/submission.
+    //
+    // Why: some merchant checkout layouts label the visible section "Shipping"
+    // but the underlying input names are `billing_*` (or vice versa), and some
+    // sites force `ship_to_different_address=1` while only exposing one
+    // section. In those cases the hidden side's inputs stay empty, which trips
+    // HTML5 `required` validation, WooCommerce's `.woocommerce-invalid` check,
+    // and the server-side WC checkout validator.
+    //
+    // We copy whichever side the user actually filled into the empty mirror so
+    // the form passes validation regardless of which section was exposed.
+    function mirrorBillingShippingInputs() {
+        var $form = $('form.checkout');
+        if ($form.length === 0) { return; }
+        var keys = [
+            'first_name', 'last_name', 'company', 'country',
+            'address_1', 'address_2', 'city', 'state', 'postcode'
+        ];
+        keys.forEach(function(key) {
+            var $b = $form.find('[name="billing_' + key + '"]').first();
+            var $s = $form.find('[name="shipping_' + key + '"]').first();
+            if ($b.length === 0 && $s.length === 0) { return; }
+
+            var bVal = $b.length ? String($b.val() || '').trim() : '';
+            var sVal = $s.length ? String($s.val() || '').trim() : '';
+
+            if (bVal && !sVal && $s.length) {
+                $s.val(bVal).trigger('change');
+            } else if (sVal && !bVal && $b.length) {
+                $b.val(sVal).trigger('change');
+            }
+        });
+    }
+
     function validateCoinsubCheckoutForm() {
         var $form = $('form.checkout');
         if ($form.length === 0) {
@@ -139,20 +173,16 @@ jQuery(document).ready(function($) {
         $form.find('.coinsub-inline-error').remove();
         $('#coinsub-checkout-error-box').remove();
 
-        // Run native browser validation first (required/email/etc.).
-        var formEl = $form.get(0);
-        if (formEl && typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) {
-            if (typeof formEl.reportValidity === 'function') {
-                formEl.reportValidity();
-            }
-            return false;
-        }
+        // First, copy billing<->shipping values across so a partially-filled
+        // form (only billing OR only shipping) doesn't fail validation.
+        mirrorBillingShippingInputs();
 
-        // Ask WooCommerce to run its field validation classes.
-        $form.find('input.input-text, select, input:checkbox').trigger('validate');
-        if ($form.find('.woocommerce-invalid').length > 0) {
-            return false;
-        }
+        // Note: we used to also run HTML5 `checkValidity()` and look for
+        // `.woocommerce-invalid` here, but both are mirror-unaware and caused
+        // false positives on shipping-only / billing-only checkouts. The
+        // `checkout_place_order_<gateway>` event already only fires AFTER
+        // WooCommerce's own pre-submit validation passes, so the row-level
+        // check below is sufficient as a soft sanity check.
 
         // Hard guard: validate Woo required field wrappers directly.
         //
@@ -289,12 +319,24 @@ jQuery(document).ready(function($) {
         }
     }
     
+    // Mirror billing<->shipping BEFORE WooCommerce runs its own pre-submit
+    // validation (which happens earlier in the same submit cycle). Using the
+    // raw `submit` event with a very high priority ensures we run before
+    // WooCommerce's checkout.js submit handler reads the inputs.
+    $(document).on('submit', 'form.checkout', function() {
+        try { mirrorBillingShippingInputs(); } catch (_) {}
+    });
+
     // Use WooCommerce's native validated checkout flow.
     // This fires only AFTER WooCommerce validates required fields and terms.
     $('form.checkout').on('checkout_place_order_coinsub', function() {
         if (window.coinsubSubmitting) {
             return false;
         }
+
+        // Belt-and-suspenders: also mirror here, in case the submit handler
+        // above didn't get a chance to run (some themes intercept submit).
+        try { mirrorBillingShippingInputs(); } catch (_) {}
 
         // Extra guard for edge cases.
         if (!validateCoinsubCheckoutForm()) {

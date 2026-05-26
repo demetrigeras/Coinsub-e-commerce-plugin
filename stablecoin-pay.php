@@ -78,6 +78,8 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-subscriptions.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-payments.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-review-page.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-checkout-page-checker.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-blocks-payment-method.php';
     
     // Register custom order status
     
@@ -872,34 +874,58 @@ function coinsub_plugin_activate_secret() {
 register_activation_hook(__FILE__, 'coinsub_plugin_activate_secret');
 
 
-// Only disable block-based checkout if CoinSub gateway is enabled
-// This prevents conflicts with other payment plugins
-add_filter('woocommerce_feature_enabled', function($enabled, $feature) {
-    if ($feature === 'checkout_block') {
-        // Check if CoinSub gateway is enabled
-        $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-        $coinsub_enabled = isset($gateway_settings['enabled']) && $gateway_settings['enabled'] === 'yes';
-        
-        // Only disable blocks if CoinSub is enabled
-        if ($coinsub_enabled) {
-            return false;
-        }
-    }
-    return $enabled;
-}, 10, 2);
+/**
+ * Block checkout integration toggle.
+ *
+ * Flip this to `true` once:
+ *   1. `assets/js/blocks/` is fully implemented (registerPaymentMethod call
+ *      with a working content component that handles onPaymentSetup), and
+ *   2. `npm install && npm run build` has been run so `build/index.js` exists.
+ *
+ * Until then, the SP_Blocks_Payment_Method class returns is_active()=false,
+ * so the gateway only shows on the classic shortcode checkout and merchants
+ * on block checkout see the admin notice prompting them to switch.
+ */
+if (!defined('COINSUB_BLOCKS_CHECKOUT_ENABLED')) {
+    define('COINSUB_BLOCKS_CHECKOUT_ENABLED', false);
+}
 
-// Force classic checkout template only when CoinSub is enabled
-add_filter('woocommerce_is_checkout_block', function($is_block) {
-    $gateway_settings = get_option('woocommerce_coinsub_settings', array());
-    $coinsub_enabled = isset($gateway_settings['enabled']) && $gateway_settings['enabled'] === 'yes';
-    
-    // Only force classic checkout if CoinSub is enabled
-    if ($coinsub_enabled) {
-        return false;
+/**
+ * Register the gateway with the WooCommerce Blocks payment-method registry.
+ *
+ * Fires only when WooCommerce Blocks has loaded. Safe on stores that don't
+ * have block checkout — the action simply never fires there.
+ */
+add_action('woocommerce_blocks_loaded', function () {
+    if (!class_exists('Automattic\\WooCommerce\\Blocks\\Payments\\PaymentMethodRegistry')) {
+        return;
     }
-    
-    return $is_block;
+    if (!class_exists('SP_Blocks_Payment_Method')) {
+        return;
+    }
+    add_action(
+        'woocommerce_blocks_payment_method_type_registration',
+        function ($payment_method_registry) {
+            $payment_method_registry->register(new SP_Blocks_Payment_Method());
+        }
+    );
 });
+
+// NOTE: We intentionally do NOT force classic checkout store-wide anymore.
+// Previously this plugin filtered `woocommerce_feature_enabled` (for the
+// `checkout_block` feature) and `woocommerce_is_checkout_block` to flip
+// every store onto the classic shortcode checkout whenever CoinSub was
+// active. That worked around the fact that our gateway's JS (form.checkout
+// + checkout_place_order_<gateway>) only binds to the classic checkout —
+// but it also stripped block-checkout features away from every OTHER
+// payment method the merchant had installed (Stripe, PayPal, Apple Pay,
+// Square, etc.), which is invasive and surprising.
+//
+// Instead, `SP_Checkout_Page_Checker` (includes/class-sp-checkout-page-checker.php)
+// now detects merchants on block checkout and surfaces an admin notice with
+// a one-click "Switch to classic checkout" fix. Once the gateway gains a
+// proper WooCommerce Blocks integration (AbstractPaymentMethodType), this
+// notice's `block` branch can also be removed.
 
 // Force gateway availability for debugging (lower priority to avoid conflicts)
 // Only log on checkout page to reduce log noise

@@ -12,6 +12,13 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $srcFull = (Resolve-Path -LiteralPath $SourceDir).Path.TrimEnd('\')
+# Use the source folder's name as the top-level entry inside the zip so the
+# archive looks like "<folder>/<...files>" — WordPress's plugin installer
+# requires this top-level folder to update/replace cleanly. Without it, WP
+# falls back to inventing a folder from the zip filename and appends "-2",
+# "-3", ... on each re-upload.
+$folderName = Split-Path -Leaf $srcFull
+
 if (Test-Path -LiteralPath $DestinationZip) {
     Remove-Item -LiteralPath $DestinationZip -Force
 }
@@ -24,10 +31,11 @@ try {
         if ($rel -match '(^|/)\.git(/|$)' -or $rel -like '*.DS_Store' -or $rel -like '*/.DS_Store') {
             return
         }
+        $entryPath = "$folderName/$rel"
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
             $zip,
             $full,
-            $rel,
+            $entryPath,
             [System.IO.Compression.CompressionLevel]::Optimal
         ) | Out-Null
     }

@@ -20,17 +20,42 @@ if [ -f "sp-whitelabel-config.php" ]; then
     [ -n "$EXTRACTED" ] && ZIP_NAME="$EXTRACTED"
 fi
 
-# Clean previous build so we always ship latest (avoids stale/cached zip)
-PACKAGE_DIR="stablecoin-pay-plugin"
+# Derive the staging folder name from the zip name so the folder INSIDE the
+# zip matches what WordPress expects when extracting. Without this, the zip
+# is flat and WP fabricates a folder from the zip filename and appends
+# "-2", "-3", ... on each upload (creating duplicate installs instead of
+# updating the existing one).
+PACKAGE_DIR="${ZIP_NAME%.zip}"
+[ -z "$PACKAGE_DIR" ] && PACKAGE_DIR="stablecoin-pay-plugin"
 rm -rf "$PACKAGE_DIR"
 rm -f "$ZIP_NAME"
 echo "🧹 Cleaned previous build (fresh package)"
+echo "📦 Plugin folder name inside zip: $PACKAGE_DIR/"
 
 mkdir -p "$PACKAGE_DIR"
 
 # Copy main plugin file
 echo "📦 Copying main plugin file..."
 cp stablecoin-pay.php "$PACKAGE_DIR/"
+
+# Auto-bump version on every build so WordPress recognizes uploaded zips as
+# a newer build than what's already installed. This stamps the BUILT file
+# only — the source `Version: 1.0.0` in the repo stays untouched.
+#
+# Build version format: <base>.<UTCYYYYMMDDHHMM>   e.g. 1.0.0.202605211342
+SOURCE_VERSION=$(grep -E "^[[:space:]]*\*[[:space:]]*Version:" stablecoin-pay.php | head -n 1 | sed -E "s/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*(.*)[[:space:]]*$/\1/" | tr -d '\r')
+[ -z "$SOURCE_VERSION" ] && SOURCE_VERSION="1.0.0"
+BUILD_STAMP=$(date -u +"%Y%m%d%H%M")
+BUILT_VERSION="${SOURCE_VERSION}.${BUILD_STAMP}"
+
+if [[ "$(uname)" = "Darwin" ]]; then
+    sed -i '' "s#^ \* Version: .*# * Version: ${BUILT_VERSION}#" "$PACKAGE_DIR/stablecoin-pay.php"
+    sed -i '' "s#define('COINSUB_VERSION',[^)]*)#define('COINSUB_VERSION', '${BUILT_VERSION}')#" "$PACKAGE_DIR/stablecoin-pay.php"
+else
+    sed -i "s#^ \* Version: .*# * Version: ${BUILT_VERSION}#" "$PACKAGE_DIR/stablecoin-pay.php"
+    sed -i "s#define('COINSUB_VERSION',[^)]*)#define('COINSUB_VERSION', '${BUILT_VERSION}')#" "$PACKAGE_DIR/stablecoin-pay.php"
+fi
+echo "📦 Built version: ${BUILT_VERSION} (source kept at ${SOURCE_VERSION})"
 
 # Whitelabel build: config file is the single source (zip name, plugin name in header, etc.)
 WHITELABEL_BUILD=0
@@ -53,6 +78,37 @@ if [ -f "sp-whitelabel-config.php" ]; then
     fi
 else
     echo "📦 No whitelabel config - package will run as Stablecoin Pay (default)"
+fi
+
+# Build the WooCommerce Blocks JS bundle before packaging.
+#
+# The block-checkout integration ships a pre-built `build/index.js` so the
+# plugin works out-of-the-box on the merchant's server (no Node required
+# there). We only need Node + npm during packaging.
+#
+# This step is optional: if Node isn't installed locally, we still ship the
+# zip — the block integration just stays disabled until someone builds it.
+if [ -f "package.json" ] && [ -d "src/blocks" ]; then
+    if command -v npm >/dev/null 2>&1; then
+        echo "📦 Building WooCommerce Blocks JS bundle (npm run build)..."
+        if [ ! -d "node_modules" ]; then
+            echo "📦   First-time setup: running npm install (this is a one-time ~30s)..."
+            npm install --no-audit --no-fund --loglevel=error || {
+                echo "⚠️  npm install failed — block-checkout bundle will NOT be in this zip." >&2
+            }
+        fi
+        npm run build --silent || {
+            echo "⚠️  npm run build failed — block-checkout bundle will NOT be in this zip." >&2
+        }
+    else
+        echo "⚠️  npm not found on PATH — skipping block-checkout JS build."
+        echo "    Install Node 18+ if you want the block integration shipped in the zip."
+    fi
+fi
+
+if [ -d "build" ]; then
+    echo "📦 Copying built block-checkout JS bundle..."
+    cp -r build "$PACKAGE_DIR/"
 fi
 
 # Copy includes directory
@@ -153,7 +209,10 @@ create_plugin_zip() {
     root_dir="$(pwd)"
 
     if command -v zip >/dev/null 2>&1; then
-        (cd "$pkg_dir" && zip -r "../$zip_name" . -x "*.DS_Store" "*.git*") || return 1
+        # Zip the folder ITSELF (not just its contents) so the archive has a
+        # proper top-level "<pkg_dir>/" entry — WordPress requires this to
+        # install/replace cleanly without creating "-2" duplicate folders.
+        zip -r "$zip_name" "$pkg_dir" -x "*.DS_Store" "*.git*" >/dev/null || return 1
         [ -f "$zip_name" ] || return 1
         return 0
     fi
@@ -207,7 +266,12 @@ fi
 
 echo ""
 echo "🚀 Ready for deployment!"
-echo "1. Upload the zip to WordPress (Plugins → Add New → Upload)"
-echo "2. Activate the plugin"
-echo "3. Configure settings in WooCommerce"
-echo "4. Set up webhook in your dashboard"
+echo "If installing for the first time:"
+echo "  1. WordPress → Plugins → Add New → Upload Plugin → choose the zip"
+echo "  2. Activate, then configure under WooCommerce → Settings → Payments"
+echo ""
+echo "If updating an already-installed copy (KEEPS settings, no need to delete):"
+echo "  1. WordPress → Plugins → Add New → Upload Plugin → choose the zip"
+echo "  2. WordPress will say 'Plugin already installed' — click"
+echo "     'Replace current with uploaded'. That's it."
+echo "  (Version bumped to ${BUILT_VERSION} so WP shows it as a newer build.)"
