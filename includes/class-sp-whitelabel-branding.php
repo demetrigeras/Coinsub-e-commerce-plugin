@@ -836,5 +836,56 @@ class CoinSub_Whitelabel_Branding {
         $branding = $this->get_branding();
         return $branding['powered_by'];
     }
+
+    /**
+     * Rewrite this plugin's metadata (Name, Author, Description) shown on
+     * the WordPress Plugins admin screen so it carries the whitelabel
+     * partner name instead of "Stablecoin Pay".
+     *
+     * Build-time rewriting in `create-plugin-package.sh` handles fresh
+     * installs of the whitelabel zip. This runtime filter handles the
+     * case where a partner build is dropped on top of an existing
+     * install whose cached header WordPress already parsed.
+     *
+     * Hooked into the `all_plugins` filter — see registration at the
+     * bottom of this file.
+     */
+    public static function rebrand_plugin_metadata($plugins) {
+        if (!is_array($plugins)) {
+            return $plugins;
+        }
+
+        $brand_name = self::get_whitelabel_plugin_name_from_config();
+        if (!$brand_name) {
+            return $plugins;
+        }
+
+        if (!defined('COINSUB_PLUGIN_FILE')) {
+            return $plugins;
+        }
+
+        $our_basename = plugin_basename(COINSUB_PLUGIN_FILE);
+        if (!isset($plugins[$our_basename])) {
+            return $plugins;
+        }
+
+        $description = sprintf(
+            /* translators: %s: whitelabel payment provider name */
+            __('Accept cryptocurrency payments with %s. Simple crypto payments for WooCommerce.', 'coinsub'),
+            $brand_name
+        );
+
+        $plugins[$our_basename]['Name']        = $brand_name;
+        $plugins[$our_basename]['Title']       = $brand_name;
+        $plugins[$our_basename]['Author']      = $brand_name;
+        $plugins[$our_basename]['AuthorName']  = $brand_name;
+        $plugins[$our_basename]['Description'] = $description;
+
+        return $plugins;
+    }
 }
+
+// Rebrand the plugin's Name / Author / Description on the WP Plugins page
+// when a whitelabel config is active.
+add_filter('all_plugins', array('CoinSub_Whitelabel_Branding', 'rebrand_plugin_metadata'));
 

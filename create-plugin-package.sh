@@ -68,13 +68,22 @@ if [ -f "sp-whitelabel-config.php" ]; then
     # Rewrite Plugin Name in main file header so it shows whitelabel name when plugin is inactive/deactivated
     PLUGIN_NAME=$(grep -E "'plugin_name'|\"plugin_name\"" sp-whitelabel-config.php | sed -n "s/.*=> *['\"]\\([^'\"]*\\)['\"].*/\1/p" | sed 's/^ *//;s/ *$//')
     if [ -n "$PLUGIN_NAME" ]; then
-        # Use # delimiter so plugin names containing / are safe
+        # Use # delimiter so plugin names containing / are safe.
+        # Rewrite Plugin Name + Author + Description so the WP Plugins
+        # admin screen shows the partner brand end-to-end, including when
+        # the plugin is deactivated (WP reads these headers without
+        # executing PHP, so any runtime branding filter doesn't help here).
+        WL_DESCRIPTION="Accept cryptocurrency payments with $PLUGIN_NAME. Simple crypto payments for WooCommerce."
         if [[ "$(uname)" = "Darwin" ]]; then
             sed -i '' "s#^ \* Plugin Name: .*# * Plugin Name: $PLUGIN_NAME#" "$PACKAGE_DIR/stablecoin-pay.php"
+            sed -i '' "s#^ \* Author: .*# * Author: $PLUGIN_NAME#" "$PACKAGE_DIR/stablecoin-pay.php"
+            sed -i '' "s#^ \* Description: .*# * Description: $WL_DESCRIPTION#" "$PACKAGE_DIR/stablecoin-pay.php"
         else
             sed -i "s#^ \* Plugin Name: .*# * Plugin Name: $PLUGIN_NAME#" "$PACKAGE_DIR/stablecoin-pay.php"
+            sed -i "s#^ \* Author: .*# * Author: $PLUGIN_NAME#" "$PACKAGE_DIR/stablecoin-pay.php"
+            sed -i "s#^ \* Description: .*# * Description: $WL_DESCRIPTION#" "$PACKAGE_DIR/stablecoin-pay.php"
         fi
-        echo "📦 Plugin header set to: $PLUGIN_NAME (shows correctly when deactivated)"
+        echo "📦 Plugin header rebranded: Name/Author/Description → $PLUGIN_NAME"
     fi
 else
     echo "📦 No whitelabel config - package will run as Stablecoin Pay (default)"
