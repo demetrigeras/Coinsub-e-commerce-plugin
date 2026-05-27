@@ -16,12 +16,17 @@ class CoinSub_Order_Manager {
      */
     public function __construct() {
         add_action('woocommerce_order_status_changed', array($this, 'handle_order_status_change'), 10, 3);
-        add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_coinsub_info'));
         // Email handling left to WooCommerce - no custom email content from plugin
         add_action('woocommerce_order_item_add_action_buttons', array($this, 'add_cancel_subscription_button'));
         add_action('wp_ajax_coinsub_admin_cancel_subscription', array($this, 'ajax_admin_cancel_subscription'));
-        
+
         add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_subscription_status'));
+        // NOTE: The "Payment / Transaction: 0x…🔗" panel that previously
+        // appeared after the billing address has been removed. The
+        // transaction hash is still stored in order meta
+        // (`_coinsub_transaction_hash`) so it's available to other
+        // tooling / reporting / refund flows, but it no longer clutters
+        // the admin order details view.
     }
     
     /**

@@ -1119,16 +1119,46 @@ function coinsub_ajax_process_payment() {
         $order->add_product($product, $cart_item['quantity']);
     }
     
+    // Helper: read a POST field with sanitization, falling back to a
+    // sibling field when the primary is empty. Used so an empty
+    // shipping_* field automatically mirrors the matching billing_*
+    // field (the common "ship to same address" case), keeping the
+    // server in sync with the client-side mirror logic in
+    // sp-checkout-modal.php / src/blocks/content.js.
+    $post_field = function ($key, $fallback_key = null) {
+        $val = isset($_POST[$key]) ? trim((string) $_POST[$key]) : '';
+        if ($val === '' && $fallback_key !== null) {
+            $val = isset($_POST[$fallback_key]) ? trim((string) $_POST[$fallback_key]) : '';
+        }
+        return $val;
+    };
+
     // Set billing address from form data
-    $order->set_billing_first_name(sanitize_text_field($_POST['billing_first_name']));
-    $order->set_billing_last_name(sanitize_text_field($_POST['billing_last_name']));
-    $order->set_billing_email(sanitize_email($_POST['billing_email']));
-    $order->set_billing_phone(sanitize_text_field($_POST['billing_phone']));
-    $order->set_billing_address_1(sanitize_text_field($_POST['billing_address_1']));
-    $order->set_billing_city(sanitize_text_field($_POST['billing_city']));
-    $order->set_billing_state(sanitize_text_field($_POST['billing_state']));
-    $order->set_billing_postcode(sanitize_text_field($_POST['billing_postcode']));
-    $order->set_billing_country(sanitize_text_field($_POST['billing_country']));
+    $order->set_billing_first_name(sanitize_text_field($post_field('billing_first_name')));
+    $order->set_billing_last_name(sanitize_text_field($post_field('billing_last_name')));
+    $order->set_billing_company(sanitize_text_field($post_field('billing_company')));
+    $order->set_billing_email(sanitize_email($post_field('billing_email')));
+    $order->set_billing_phone(sanitize_text_field($post_field('billing_phone')));
+    $order->set_billing_address_1(sanitize_text_field($post_field('billing_address_1')));
+    $order->set_billing_address_2(sanitize_text_field($post_field('billing_address_2')));
+    $order->set_billing_city(sanitize_text_field($post_field('billing_city')));
+    $order->set_billing_state(sanitize_text_field($post_field('billing_state')));
+    $order->set_billing_postcode(sanitize_text_field($post_field('billing_postcode')));
+    $order->set_billing_country(sanitize_text_field($post_field('billing_country')));
+
+    // Set shipping address. Each shipping field falls back to the matching
+    // billing field when empty (ship-to-same-address case). This makes the
+    // saved order's shipping panel populated correctly in the admin even
+    // when the customer didn't tick "ship to different address".
+    $order->set_shipping_first_name(sanitize_text_field($post_field('shipping_first_name', 'billing_first_name')));
+    $order->set_shipping_last_name(sanitize_text_field($post_field('shipping_last_name', 'billing_last_name')));
+    $order->set_shipping_company(sanitize_text_field($post_field('shipping_company', 'billing_company')));
+    $order->set_shipping_address_1(sanitize_text_field($post_field('shipping_address_1', 'billing_address_1')));
+    $order->set_shipping_address_2(sanitize_text_field($post_field('shipping_address_2', 'billing_address_2')));
+    $order->set_shipping_city(sanitize_text_field($post_field('shipping_city', 'billing_city')));
+    $order->set_shipping_state(sanitize_text_field($post_field('shipping_state', 'billing_state')));
+    $order->set_shipping_postcode(sanitize_text_field($post_field('shipping_postcode', 'billing_postcode')));
+    $order->set_shipping_country(sanitize_text_field($post_field('shipping_country', 'billing_country')));
     
     // Set payment method (whitelabel name for display)
     $order->set_payment_method('coinsub');
