@@ -412,39 +412,66 @@ class CoinSub_Subscriptions {
         $duration_raw   = $this->get_subscription_duration_raw($order);
         $start_date     = $order->get_date_created() ? $order->get_date_created()->date_i18n(wc_date_format()) : '—';
 
+        // Next payment — exact same resolution logic as the merchant
+        // Subscriptions admin screen (`class-sp-admin-subscriptions.php`):
+        //   1. Try cached `_coinsub_next_payment` order meta
+        //   2. If we still don't have a date AND we have an agreement_id,
+        //      fetch fresh from the API, persist the raw value back to
+        //      order meta, and use it.
         $next_payment = '';
-        if ($status === 'cancelled') {
-            $next_payment = '—';
-        } else {
-            $next_payment = $order->get_meta('_coinsub_next_payment');
-            if ($agreement_id && empty($next_payment)) {
-                // Same source as merchant: fetch from agreement API and cache on order meta.
+        if ($status !== 'cancelled' && !empty($agreement_id)) {
+            $cached_raw = $order->get_meta('_coinsub_next_payment');
+            if (!empty($cached_raw)) {
+                $next_payment = $this->format_date($cached_raw);
+            }
+
+            if (empty($next_payment)) {
                 $api_client = $this->get_api_client();
                 if ($api_client) {
                     $agreement_response = $api_client->retrieve_agreement($agreement_id);
                     if (!is_wp_error($agreement_response)) {
-                        $agreement_data       = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
-                        $next_payment_raw     = $this->get_next_payment_from_agreement_data($agreement_data);
+                        $agreement_data   = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
+                        $next_payment_raw = $this->get_next_payment_from_agreement_data($agreement_data);
                         if (!empty($next_payment_raw)) {
                             $order->update_meta_data('_coinsub_next_payment', $next_payment_raw);
                             $order->save();
-                            $next_payment = $next_payment_raw;
+                            $next_payment = $this->format_date($next_payment_raw);
                         }
                     }
                 }
             }
-            if ($next_payment !== '' && $next_payment !== '—') {
-                $next_payment = $this->format_date($next_payment);
-            }
-            if (empty($next_payment)) {
-                $next_payment = $agreement_id ? '—' : '—';
-            }
+        }
+        if (empty($next_payment)) {
+            $next_payment = '—';
         }
 
         if (empty($duration_raw) || $duration_raw === '0') {
             $regularity_text = $frequency_text;
         } else {
             $regularity_text = $frequency_text . ' ' . sprintf(__('for %s', 'coinsub'), $duration_text);
+        }
+
+        // Collected payments stats — walks the parent subscription chain so
+        // the same numbers appear on the original order AND on each renewal.
+        $payments_stats = $this->collect_subscription_payment_stats($order);
+        $payments_count  = $payments_stats['count'];
+        $payments_total  = $payments_stats['total'];
+        $payments_currency = $payments_stats['currency'];
+        $duration_int    = (int) $duration_raw;
+        if ($payments_count > 0) {
+            if ($duration_int > 0) {
+                /* translators: 1: paid count, 2: scheduled total */
+                $count_label = sprintf(__('%1$d of %2$d', 'coinsub'), $payments_count, $duration_int);
+            } else {
+                /* translators: %d: paid count (open-ended subscription) */
+                $count_label = sprintf(_n('%d payment', '%d payments', $payments_count, 'coinsub'), $payments_count);
+            }
+            $total_label = function_exists('wc_price')
+                ? wp_strip_all_tags(wc_price($payments_total, array('currency' => $payments_currency)))
+                : ($payments_currency . ' ' . number_format($payments_total, 2));
+        } else {
+            $count_label = '—';
+            $total_label = '';
         }
 
         // Status label (admin sees explicit badges; optional line for customer cancelled).
@@ -507,14 +534,15 @@ class CoinSub_Subscriptions {
                     <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 0.25em;"><?php esc_html_e('Regularity', 'coinsub'); ?></div>
                     <div><?php echo esc_html($regularity_text); ?></div>
                 </div>
-
-                <?php if ($context === 'admin') : ?>
-                <div style="flex:1 1 100%; max-width:none;">
-                    <?php if (!empty($agreement_id)) : ?>
-                        <p style="margin:0; font-size:12px; color:#646970;"><strong><?php esc_html_e('Agreement ID:', 'coinsub'); ?></strong> <code><?php echo esc_html($agreement_id); ?></code></p>
-                    <?php endif; ?>
+                <div>
+                    <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 0.25em;"><?php esc_html_e('Payments collected', 'coinsub'); ?></div>
+                    <div>
+                        <?php echo esc_html($count_label); ?>
+                        <?php if (!empty($total_label)) : ?>
+                            <span style="color:#6c757d; font-size: 0.9em;">(<?php echo esc_html($total_label); ?>)</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php endif; ?>
 
                 <?php if ($can_cancel_customer && $context === 'customer') : ?>
                     <div style="align-self: flex-end; margin-left: auto;">
@@ -530,6 +558,65 @@ class CoinSub_Subscriptions {
             </div>
         </section>
         <?php
+    }
+
+    /**
+     * Count payments collected for a subscription, plus the running total.
+     *
+     * Walks from any order in the chain (parent or renewal) to the original
+     * subscription order, then counts that order plus every renewal listed
+     * in `_coinsub_renewal_orders` whose status is `processing` / `completed`
+     * / `refunded` (refunded still counts as money that was once collected).
+     *
+     * @param WC_Order $order
+     * @return array{count:int,total:float,currency:string,parent_id:int}
+     */
+    private function collect_subscription_payment_stats($order) {
+        $result = array(
+            'count'     => 0,
+            'total'     => 0.0,
+            'currency'  => $order->get_currency() ?: get_woocommerce_currency(),
+            'parent_id' => $order->get_id(),
+        );
+
+        $parent = $order;
+        if ($order->get_meta('_coinsub_is_renewal_order') === 'yes') {
+            $parent_id = (int) $order->get_meta('_coinsub_parent_subscription_order');
+            if ($parent_id > 0) {
+                $maybe_parent = wc_get_order($parent_id);
+                if ($maybe_parent) {
+                    $parent = $maybe_parent;
+                }
+            }
+        }
+        $result['parent_id'] = $parent->get_id();
+        $result['currency']  = $parent->get_currency() ?: $result['currency'];
+
+        $paid_statuses = array('processing', 'completed', 'refunded');
+
+        // Original payment.
+        if (in_array($parent->get_status(), $paid_statuses, true)) {
+            $result['count'] += 1;
+            $result['total'] += (float) $parent->get_total();
+        }
+
+        // Renewal payments.
+        $renewal_ids = $parent->get_meta('_coinsub_renewal_orders');
+        if (is_array($renewal_ids)) {
+            foreach ($renewal_ids as $rid) {
+                $renewal_order = wc_get_order((int) $rid);
+                if (!$renewal_order) {
+                    continue;
+                }
+                if (!in_array($renewal_order->get_status(), $paid_statuses, true)) {
+                    continue;
+                }
+                $result['count'] += 1;
+                $result['total'] += (float) $renewal_order->get_total();
+            }
+        }
+
+        return $result;
     }
 
     /**

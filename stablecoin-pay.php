@@ -93,6 +93,27 @@ function coinsub_commerce_init() {
     if (!is_admin()) {
         new WC_CoinSub_Cart_Sync();
     }
+
+    // Force the Phone field to be required at checkout. The plugin sends
+    // billing_phone to the payment provider and uses it for support /
+    // refunds, so the field should never advertise itself as "(optional)"
+    // when the gateway is active.
+    //
+    // Block checkout reads requirement from the
+    // `woocommerce_checkout_phone_field` option ('required' | 'optional' |
+    // 'hidden'). Override it at read time so we don't permanently rewrite
+    // the merchant's saved setting.
+    add_filter('pre_option_woocommerce_checkout_phone_field', function ($value) {
+        return 'required';
+    });
+
+    // Classic checkout reads requirement from the per-field array.
+    add_filter('woocommerce_billing_fields', function ($fields) {
+        if (isset($fields['billing_phone'])) {
+            $fields['billing_phone']['required'] = true;
+        }
+        return $fields;
+    });
     
     // Plugin list: show whitelabel name, description and author from config
     add_filter('all_plugins', function ($plugins) {
@@ -1022,9 +1043,42 @@ function coinsub_ajax_process_payment() {
         wp_send_json_error('Cart is empty');
     }
 
-    // Server-side guard: enforce required checkout fields for CoinSub custom AJAX flow.
+    // Server-side guard: enforce required checkout fields for CoinSub
+    // custom AJAX flow.
     $checkout = WC_Checkout::instance();
     $posted_data = wp_unslash($_POST);
+
+    // Before validating, mirror common contact fields across billing &
+    // shipping so a customer who only typed into one fieldset (e.g.
+    // entered the phone into the shipping form with "use same address
+    // for billing" on) still passes validation. The client-side payload
+    // already does this in the happy path; this is a defensive backstop
+    // in case any WC Blocks variant skipped one of the fields.
+    $mirror_pairs = array(
+        array('billing_phone',      'shipping_phone'),
+        array('billing_email',      'shipping_email'),
+        array('billing_first_name', 'shipping_first_name'),
+        array('billing_last_name',  'shipping_last_name'),
+        array('billing_address_1',  'shipping_address_1'),
+        array('billing_city',       'shipping_city'),
+        array('billing_state',      'shipping_state'),
+        array('billing_postcode',   'shipping_postcode'),
+        array('billing_country',    'shipping_country'),
+    );
+    foreach ($mirror_pairs as $pair) {
+        list($a, $b) = $pair;
+        $aval = isset($posted_data[$a]) ? trim((string) $posted_data[$a]) : '';
+        $bval = isset($posted_data[$b]) ? trim((string) $posted_data[$b]) : '';
+        if ($aval === '' && $bval !== '') {
+            $posted_data[$a] = $bval;
+            $_POST[$a]       = $bval;
+        }
+        if ($bval === '' && $aval !== '') {
+            $posted_data[$b] = $aval;
+            $_POST[$b]       = $aval;
+        }
+    }
+
     $required_field_labels = array();
     $all_fields = $checkout->get_checkout_fields();
     foreach ($all_fields as $fieldset_key => $fieldset_fields) {
@@ -1046,6 +1100,10 @@ function coinsub_ajax_process_payment() {
         }
     }
     if (!empty($required_field_labels)) {
+        error_log('PP AJAX: Validation failed. Missing: ' . implode(', ', $required_field_labels)
+            . '. Received billing_phone="' . (isset($_POST['billing_phone']) ? $_POST['billing_phone'] : '(unset)') . '"'
+            . ', shipping_phone="' . (isset($_POST['shipping_phone']) ? $_POST['shipping_phone'] : '(unset)') . '"'
+            . ', billing_email="' . (isset($_POST['billing_email']) ? $_POST['billing_email'] : '(unset)') . '"');
         wp_send_json_error('Please fill in required fields: ' . implode(', ', $required_field_labels));
     }
     
@@ -1113,10 +1171,23 @@ function coinsub_ajax_process_payment() {
     // Store order id in session to prevent duplicates on repeated clicks
     WC()->session->set('coinsub_order_id', $order_id);
     
-    // Add cart items to order
+    // Add cart items to order. We pass the cart line's actual prices so
+    // discounts/coupons applied at the cart level (which only affect the
+    // line total — `$product->get_price()` doesn't know about them) carry
+    // over to the order line items.
     foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
         $product = $cart_item['data'];
-        $order->add_product($product, $cart_item['quantity']);
+        $order->add_product(
+            $product,
+            $cart_item['quantity'],
+            array(
+                'subtotal'     => isset($cart_item['line_subtotal']) ? $cart_item['line_subtotal'] : null,
+                'total'        => isset($cart_item['line_total']) ? $cart_item['line_total'] : null,
+                'subtotal_tax' => isset($cart_item['line_subtotal_tax']) ? $cart_item['line_subtotal_tax'] : 0,
+                'total_tax'    => isset($cart_item['line_tax']) ? $cart_item['line_tax'] : 0,
+                'taxes'        => isset($cart_item['line_tax_data']) ? $cart_item['line_tax_data'] : array(),
+            )
+        );
     }
     
     // Helper: read a POST field with sanitization, falling back to a
@@ -1182,9 +1253,157 @@ function coinsub_ajax_process_payment() {
         $order->set_billing_email($billing_email);
     }
     
-    // Calculate totals and save
+    // Mirror the customer's shipping/billing address onto WC()->customer
+    // so cart shipping rates are recalculated against the address the
+    // customer just entered. Without this, WC()->cart->get_shipping_total()
+    // can be 0 in block-checkout flows where the Store API didn't have a
+    // chance to re-quote shipping against this exact order's address.
+    if (WC()->customer) {
+        WC()->customer->set_billing_first_name($order->get_billing_first_name());
+        WC()->customer->set_billing_last_name($order->get_billing_last_name());
+        WC()->customer->set_billing_address_1($order->get_billing_address_1());
+        WC()->customer->set_billing_address_2($order->get_billing_address_2());
+        WC()->customer->set_billing_city($order->get_billing_city());
+        WC()->customer->set_billing_state($order->get_billing_state());
+        WC()->customer->set_billing_postcode($order->get_billing_postcode());
+        WC()->customer->set_billing_country($order->get_billing_country());
+        WC()->customer->set_shipping_first_name($order->get_shipping_first_name());
+        WC()->customer->set_shipping_last_name($order->get_shipping_last_name());
+        WC()->customer->set_shipping_address_1($order->get_shipping_address_1());
+        WC()->customer->set_shipping_address_2($order->get_shipping_address_2());
+        WC()->customer->set_shipping_city($order->get_shipping_city());
+        WC()->customer->set_shipping_state($order->get_shipping_state());
+        WC()->customer->set_shipping_postcode($order->get_shipping_postcode());
+        WC()->customer->set_shipping_country($order->get_shipping_country());
+        WC()->customer->save();
+    }
+
+    // Tell WooCommerce which payment method is being used *before* we
+    // recompute totals. Lots of "extra fee" / "payment surcharge" plugins
+    // (WooCommerce Extra Fees, Payment Gateway Based Fees and Discounts,
+    // etc.) hook `woocommerce_cart_calculate_fees` and only add their
+    // surcharge when `WC()->session->get('chosen_payment_method')`
+    // matches their configured gateway. In our custom AJAX flow nothing
+    // ever sets that, so the fee silently disappears from the cart total
+    // we forward to the provider. Setting it here makes the hook fire
+    // exactly the same way it would on a normal Woo checkout submit.
+    $posted_pm = isset($_POST['payment_method']) ? sanitize_text_field(wp_unslash($_POST['payment_method'])) : 'coinsub';
+    if (WC()->session) {
+        WC()->session->set('chosen_payment_method', $posted_pm ?: 'coinsub');
+    }
+
+    // Recalculate shipping packages against the customer's address, then
+    // recompute cart totals so shipping/tax/fees are up to date before we
+    // copy them onto the order. `calculate_totals()` is what fires
+    // `woocommerce_cart_calculate_fees`, so any conditional surcharges
+    // (now that `chosen_payment_method` is set) attach to the cart in
+    // this call.
+    WC()->cart->calculate_shipping();
+    WC()->cart->calculate_fees();
+    WC()->cart->calculate_totals();
+
+    // Transfer the chosen shipping method(s) from the cart to the order
+    // as shipping line items. Without this, `wc_create_order()` would
+    // produce an order whose total is just the product subtotal — which
+    // is the root cause of the "purchase session amount = $0.12 for a
+    // $64.83 product" bug we hit during block-checkout testing.
+    $packages = WC()->shipping() ? WC()->shipping()->get_packages() : array();
+    if (!empty($packages)) {
+        $chosen_methods = WC()->session ? (array) WC()->session->get('chosen_shipping_methods', array()) : array();
+        foreach ($packages as $package_key => $package) {
+            $chosen_id = isset($chosen_methods[$package_key]) ? $chosen_methods[$package_key] : '';
+            if (!$chosen_id || !isset($package['rates'][$chosen_id])) {
+                continue;
+            }
+            $rate = $package['rates'][$chosen_id];
+
+            $item = new WC_Order_Item_Shipping();
+            $item->set_props(array(
+                'method_title' => $rate->label,
+                'method_id'    => $rate->method_id,
+                'instance_id'  => $rate->instance_id,
+                'total'        => wc_format_decimal($rate->cost),
+                'taxes'        => array('total' => $rate->taxes),
+            ));
+            foreach ($rate->get_meta_data() as $meta_key => $meta_value) {
+                $item->add_meta_data($meta_key, $meta_value, true);
+            }
+            $order->add_item($item);
+        }
+    }
+
+    // Transfer cart fees (handling fees, payment surcharges, etc.).
+    // Mirror WC_Checkout::create_order_fee_lines() exactly — including
+    // the legacy_fee* props that some extensions read — so percent/
+    // taxable fees behave identically to a native Woo checkout.
+    foreach (WC()->cart->get_fees() as $fee_key => $fee) {
+        $item = new WC_Order_Item_Fee();
+        $item->legacy_fee     = $fee;
+        $item->legacy_fee_key = $fee_key;
+        $item->set_props(array(
+            'name'      => $fee->name,
+            'tax_class' => (!empty($fee->taxable) && isset($fee->tax_class)) ? $fee->tax_class : 0,
+            'amount'    => isset($fee->amount) ? $fee->amount : 0,
+            'total'     => isset($fee->total) ? $fee->total : (isset($fee->amount) ? $fee->amount : 0),
+            'total_tax' => isset($fee->tax) ? $fee->tax : 0,
+            'taxes'     => array(
+                'total' => isset($fee->tax_data) ? $fee->tax_data : array(),
+            ),
+        ));
+        $order->add_item($item);
+        error_log('PP AJAX: Added fee line "' . $fee->name . '" $' . (isset($fee->total) ? $fee->total : $fee->amount));
+    }
+
+    // Transfer cart tax lines so the order tax breakdown matches the cart.
+    foreach (array_keys(WC()->cart->get_cart_contents_taxes() + WC()->cart->get_shipping_taxes() + WC()->cart->get_fee_taxes()) as $tax_rate_id) {
+        if ($tax_rate_id && apply_filters('woocommerce_cart_remove_taxes_zero_rate_id', 'zero-rated') !== $tax_rate_id) {
+            $item = new WC_Order_Item_Tax();
+            $item->set_rate($tax_rate_id);
+            $item->set_tax_total(WC()->cart->get_tax_amount($tax_rate_id));
+            $item->set_shipping_tax_total(WC()->cart->get_shipping_tax_amount($tax_rate_id));
+            $order->add_item($item);
+        }
+    }
+
+    // Apply the same coupons that were on the cart so the order line
+    // items + totals reflect them after `calculate_totals()`.
+    foreach (WC()->cart->get_applied_coupons() as $coupon_code) {
+        $order->apply_coupon($coupon_code);
+    }
+
+    // Calculate totals and save (now includes shipping + fees + tax).
     $order->calculate_totals();
     $order->save();
+
+    // If the front end (block checkout) shipped the displayed totals
+    // along with the request, treat the GRAND TOTAL (`cart_total_minor`,
+    // which mirrors WC Store API `totals.total_price`) as the source of
+    // truth — that's the "Total" line the customer just agreed to on
+    // screen (e.g. $450.80). We deliberately ignore `cart_total_items_minor`
+    // which is the SUBTOTAL ($402.50) — only useful as metadata. The
+    // displayed total is persisted on the order so `process_payment` and
+    // `prepare_purchase_session_from_cart` find it without re-reading POST.
+    if (isset($_POST['cart_total_minor']) && $_POST['cart_total_minor'] !== '') {
+        $minor_unit = isset($_POST['cart_currency_minor_unit']) ? (int) $_POST['cart_currency_minor_unit'] : 2;
+        $minor_unit = ($minor_unit >= 0 && $minor_unit <= 6) ? $minor_unit : 2;
+        $divisor = pow(10, $minor_unit);
+
+        $displayed_total    = ((float) $_POST['cart_total_minor']) / $divisor;
+        $displayed_subtotal = isset($_POST['cart_total_items_minor']) && $_POST['cart_total_items_minor'] !== ''
+            ? ((float) $_POST['cart_total_items_minor']) / $divisor
+            : null;
+
+        if ($displayed_total > 0) {
+            $order->update_meta_data('_coinsub_displayed_total', $displayed_total);
+            $order->update_meta_data('_coinsub_displayed_currency', isset($_POST['cart_currency_code']) ? sanitize_text_field(wp_unslash($_POST['cart_currency_code'])) : '');
+            $order->save();
+            error_log('PP AJAX: Front-end reported GRAND TOTAL: $' . number_format($displayed_total, 2)
+                . ' (' . ($order->get_meta('_coinsub_displayed_currency') ?: 'currency unset') . ')'
+                . ($displayed_subtotal !== null ? ' [subtotal for reference: $' . number_format($displayed_subtotal, 2) . ']' : ''));
+        }
+    }
+
+    error_log('PP AJAX: Order #' . $order_id . ' built. Subtotal $' . $order->get_subtotal() . ' + shipping $' . $order->get_shipping_total() . ' + tax $' . $order->get_total_tax() . ' = total $' . $order->get_total());
     
     // If this order already has a checkout URL (rare race), reuse it
     $existing_checkout = $order->get_meta('_coinsub_checkout_url');

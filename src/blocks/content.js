@@ -36,6 +36,7 @@ import {
 	useRef,
 	useState,
 } from '@wordpress/element';
+import { useSelect } from '@wordpress/data';
 
 const IFRAME_DOM_ID = 'coinsub-blocks-iframe';
 const REDIRECT_CHECK_INTERVAL_MS = 1000;
@@ -45,6 +46,24 @@ const Content = ( { settings, ...props } ) => {
 	const { eventRegistration, emitResponse, billing, shippingData } = props;
 	const { onPaymentSetup } = eventRegistration || {};
 
+	// Read the live cart totals straight from the block-checkout data
+	// store. These are the same numbers the customer sees rendered on
+	// the page (subtotal + shipping + tax + fees - discounts), expressed
+	// as minor units (e.g. cents) alongside the currency's minor-unit
+	// exponent. Passing the displayed total into our AJAX endpoint is the
+	// only reliable way to guarantee the purchase session is created with
+	// the exact amount the customer agreed to pay — the server-side cart
+	// can drift in block-checkout because the Store API doesn't fire the
+	// same hooks classic checkout does.
+	const cartTotals = useSelect( ( select ) => {
+		const store = select( 'wc/store/cart' );
+		if ( ! store ) {
+			return null;
+		}
+		const data = store.getCartData ? store.getCartData() : null;
+		return data?.totals || null;
+	}, [] );
+
 	const [ checkoutUrl, setCheckoutUrl ] = useState( null );
 
 	// Holds the resolver of the in-flight onPaymentSetup Promise so the
@@ -53,15 +72,17 @@ const Content = ( { settings, ...props } ) => {
 	// lets the customer try again (creating a fresh order each time).
 	const pendingResolveRef = useRef( null );
 
-	// Keep latest billing/shipping in refs so the onPaymentSetup callback
-	// (registered once) can read fresh values when the customer eventually
-	// clicks Place Order.
+	// Keep latest billing/shipping/totals in refs so the onPaymentSetup
+	// callback (registered once) can read fresh values when the customer
+	// eventually clicks Place Order.
 	const billingRef = useRef( billing );
 	const shippingRef = useRef( shippingData );
+	const totalsRef = useRef( cartTotals );
 	useEffect( () => {
 		billingRef.current = billing;
 		shippingRef.current = shippingData;
-	}, [ billing, shippingData ] );
+		totalsRef.current = cartTotals;
+	}, [ billing, shippingData, cartTotals ] );
 
 	// Top-level navigation to the order-received page. Same effect as
 	// `window.location.href = ...` in the classic flow.
@@ -182,6 +203,46 @@ const Content = ( { settings, ...props } ) => {
 				const shippingAddr =
 					shippingRef.current?.shippingAddress || {};
 
+				// Resolve email/phone across every spot WC has put them
+				// over the years. Different WC Blocks versions surface
+				// these in different places:
+				//   - `billing.billingAddress.email|phone` (modern)
+				//   - `billing.email|phone` (older API)
+				//   - `shipping.shippingAddress.email|phone` (when "use
+				//      same address for billing" is on and the customer
+				//      only typed into the shipping fieldset)
+				//   - the live cart store's `customerData` (always fresh)
+				//
+				// Without this fallback the server bounces the request
+				// with "Please fill in required fields: Phone" even though
+				// the customer can see the phone right there on screen.
+				const liveBillingFromStore =
+					cartTotals && billingRef.current
+						? billingRef.current
+						: null;
+				const pickFirst = ( ...vals ) => {
+					for ( const v of vals ) {
+						if ( typeof v === 'string' && v.trim() !== '' ) {
+							return v.trim();
+						}
+					}
+					return '';
+				};
+				const resolvedEmail = pickFirst(
+					billingAddr.email,
+					shippingAddr.email,
+					billingRef.current?.email,
+					shippingRef.current?.email,
+					liveBillingFromStore?.email
+				);
+				const resolvedPhone = pickFirst(
+					billingAddr.phone,
+					shippingAddr.phone,
+					billingRef.current?.phone,
+					shippingRef.current?.phone,
+					liveBillingFromStore?.phone
+				);
+
 				const addressFields = [
 					'first_name',
 					'last_name',
@@ -198,25 +259,100 @@ const Content = ( { settings, ...props } ) => {
 					action: settings.processAction,
 					security: settings.nonce,
 					payment_method: 'coinsub',
-					billing_email:
-						billingAddr.email ||
-						billingRef.current?.email ||
-						'',
-					billing_phone:
-						billingAddr.phone ||
-						billingRef.current?.phone ||
-						'',
+					billing_email: resolvedEmail,
+					billing_phone: resolvedPhone,
+					// Also send the customer-level email/phone fields so
+					// that *any* version of the WC AJAX validator finds
+					// them — block checkout's contact-info block writes
+					// here on some installs.
+					shipping_phone: resolvedPhone,
+					shipping_email: resolvedEmail,
 				};
 
 				addressFields.forEach( ( key ) => {
-					payload[ `billing_${ key }` ] =
-						billingAddr[ key ] || '';
-					// If shipping is empty (e.g. ship-to-same-address on),
-					// mirror the billing value so server-side validation
-					// passes regardless of which set of fields was visible.
-					payload[ `shipping_${ key }` ] =
+					// Mirror in both directions so that whichever fieldset
+					// the customer typed into, the other one is populated
+					// too (ship-to-same-address case).
+					const billingVal =
+						billingAddr[ key ] || shippingAddr[ key ] || '';
+					const shippingVal =
 						shippingAddr[ key ] || billingAddr[ key ] || '';
+					payload[ `billing_${ key }` ] = billingVal;
+					payload[ `shipping_${ key }` ] = shippingVal;
 				} );
+
+				// eslint-disable-next-line no-console
+				console.log( '[Coinsub] Submitting checkout payload', {
+					billing_email: resolvedEmail,
+					billing_phone: resolvedPhone,
+					billing_first_name: payload.billing_first_name,
+					billing_last_name: payload.billing_last_name,
+					billing_address_1: payload.billing_address_1,
+					billing_city: payload.billing_city,
+					billing_country: payload.billing_country,
+				} );
+
+				// Forward the displayed totals as minor units (e.g. cents)
+				// so the server can build the purchase session with the
+				// exact figure the customer just agreed to. Server-side
+				// recalculation is unreliable in block checkout because
+				// the Store API path doesn't fire the same cart-sync
+				// hooks classic checkout does.
+				//
+				// IMPORTANT: `totals.total_price` is the GRAND TOTAL — the
+				// "Total" line at the bottom of the cart summary (e.g.
+				// $450.80). It already includes items + shipping + tax +
+				// fees − discounts.
+				//
+				// `totals.total_items` is the SUBTOTAL — sum of line items
+				// only (e.g. $402.50). We deliberately do NOT send this as
+				// the amount; we only ship it for analytics/metadata.
+				const totalsNow = totalsRef.current;
+				if ( totalsNow ) {
+					payload.cart_total_minor =
+						totalsNow.total_price ?? ''; // ← grand total
+					payload.cart_total_tax_minor =
+						totalsNow.total_tax ?? '';
+					payload.cart_total_shipping_minor =
+						totalsNow.total_shipping ?? '';
+					payload.cart_total_items_minor =
+						totalsNow.total_items ?? ''; // ← subtotal (metadata only)
+					payload.cart_total_fees_minor =
+						totalsNow.total_fees ?? '';
+					payload.cart_total_discount_minor =
+						totalsNow.total_discount ?? '';
+					payload.cart_currency_code =
+						totalsNow.currency_code || '';
+					payload.cart_currency_minor_unit =
+						totalsNow.currency_minor_unit ?? '2';
+
+					// Visible-in-DevTools confirmation that we're shipping
+					// the grand total, not the subtotal.
+					const minorUnit = parseInt(
+						totalsNow.currency_minor_unit ?? '2',
+						10
+					);
+					const divisor = Math.pow(
+						10,
+						Number.isFinite( minorUnit ) ? minorUnit : 2
+					);
+					const grandTotal = totalsNow.total_price
+						? parseInt( totalsNow.total_price, 10 ) / divisor
+						: null;
+					const subtotal = totalsNow.total_items
+						? parseInt( totalsNow.total_items, 10 ) / divisor
+						: null;
+					// eslint-disable-next-line no-console
+					console.log(
+						'[Coinsub] Sending grand total to gateway:',
+						{
+							grand_total: grandTotal,
+							subtotal,
+							currency:
+								totalsNow.currency_code || 'unknown',
+						}
+					);
+				}
 
 				const response = await fetch( settings.ajaxUrl, {
 					method: 'POST',

@@ -786,15 +786,86 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         error_log('PP Gateway: Order found. Starting payment process...');
         
         try {
-            // Get cart data from session (calculated by cart sync)
-            $cart_data = WC()->session->get('coinsub_cart_data');
-            
-            if (!$cart_data) {
-                error_log('PP Gateway: No cart data from session, calculating now...');
-                $cart_data = $this->calculate_cart_totals();
+            // Always recompute cart totals at process-time. The session
+            // cache (`coinsub_cart_data`) is populated by
+            // `WC_CoinSub_Cart_Sync` which hooks `woocommerce_add_to_cart`
+            // and `woocommerce_checkout_update_order_review`. The first
+            // captures totals *before* shipping is chosen; the second only
+            // fires on classic checkout. Block checkout updates the cart
+            // via the Store API which doesn't trigger our sync hooks, so
+            // the cached value can be wildly stale (we've seen $0.12 sent
+            // to the provider for a $64+ order because of this).
+            //
+            // The live WC()->cart at this point has been fully calculated
+            // by the time the AJAX handler reaches us (products + shipping
+            // + tax + fees + coupons), so it is the source of truth.
+            $cart_data = $this->calculate_cart_totals();
+
+            // Persist the fresh values so anything reading the cache later
+            // (refund flows, debug tools, etc.) sees consistent numbers.
+            if (function_exists('WC') && WC()->session) {
+                WC()->session->set('coinsub_cart_data', $cart_data);
             }
-            
-            error_log('PP Gateway: Using cart data from session: Total $' . $cart_data['total'] . ' ' . $cart_data['currency'] . ', Subscription: ' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
+
+            // Resolve the authoritative total in this priority order:
+            //
+            //   1. `_coinsub_displayed_total` — the exact figure the
+            //      block-checkout React component rendered to the customer
+            //      and posted along with the order. Whatever was on screen
+            //      MUST be what we charge.
+            //   2. `$order->get_total()` — the WC order's saved total.
+            //      We've already attached shipping/fees/coupons to the
+            //      order in `coinsub_ajax_process_payment`, so this is
+            //      usually correct for the classic flow too.
+            //   3. The freshly-recomputed cart total.
+            //
+            // The order of preference matters: if the React side reports
+            // a different number than the server-side cart, the React
+            // number wins because that's what the customer saw and agreed
+            // to. Anything else is a recipe for under/over-charging.
+            $displayed_total = (float) $order->get_meta('_coinsub_displayed_total');
+            $order_total     = (float) $order->get_total();
+            $cart_total      = (float) $cart_data['total'];
+            $authoritative   = $cart_total;
+            $source          = 'cart';
+
+            if ($displayed_total > 0) {
+                $authoritative = $displayed_total;
+                $source        = 'frontend';
+            } elseif ($order_total > $cart_total && $order_total > 0) {
+                $authoritative = $order_total;
+                $source        = 'order';
+            }
+
+            error_log('PP Gateway: Resolved GRAND TOTAL = $' . number_format($authoritative, 2)
+                . ' (source: ' . $source . ')'
+                . ' [frontend=$' . number_format($displayed_total, 2)
+                . ', order=$' . number_format($order_total, 2)
+                . ', cart=$' . number_format($cart_total, 2) . ']');
+
+            if (abs($authoritative - $cart_total) > 0.005) {
+                $cart_data['total']    = $authoritative;
+                $cart_data['subtotal'] = (float) $order->get_subtotal();
+                $cart_data['shipping'] = (float) $order->get_shipping_total();
+                $cart_data['tax']      = (float) $order->get_total_tax();
+                $cart_data['discount'] = (float) $order->get_discount_total();
+                $order_fee_total   = 0.0;
+                $order_fee_details = array();
+                foreach ($order->get_fees() as $fee_item) {
+                    $fee_amount = (float) $fee_item->get_total();
+                    $order_fee_total += $fee_amount;
+                    $order_fee_details[] = array(
+                        'name'      => $fee_item->get_name(),
+                        'amount'    => $fee_amount,
+                        'taxable'   => $fee_item->get_tax_class() !== '0' && $fee_item->get_tax_class() !== 0,
+                        'tax_class' => $fee_item->get_tax_class(),
+                    );
+                }
+                $cart_data['fees']        = $order_fee_total;
+                $cart_data['fee_details'] = $order_fee_details;
+            }
+
+            error_log('PP Gateway: Live cart totals → subtotal $' . $cart_data['subtotal'] . ' + shipping $' . $cart_data['shipping'] . ' + tax $' . $cart_data['tax'] . ' = total $' . $cart_data['total'] . ' ' . $cart_data['currency'] . ', subscription=' . ($cart_data['has_subscription'] ? 'YES' : 'NO'));
             
             // Ensure API client is using production settings
             $api_base_url = $this->get_api_base_url();
@@ -1693,9 +1764,25 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             $dashboard_link = '<a href="' . esc_url($dashboard_url) . '" target="_blank" rel="noopener">' . esc_html($host ?: $dashboard_url) . '</a>';
         }
         $login_phrase = $dashboard_link ? sprintf(__('Log in to your account at %s', 'coinsub'), $dashboard_link) : __('Log in to your account', 'coinsub');
-        // Dashboard URL shown only once (in login line); no need to repeat in next steps
-        $nav_dashboard_phrase = __('Navigate to <strong>Settings</strong> in your dashboard', 'coinsub');
-        $go_back_phrase = __('Go back to your dashboard <strong>Settings</strong>', 'coinsub');
+        // Repeat the dashboard URL in Steps 1 + 2 so the merchant doesn't have
+        // to scroll back up to find where to go after switching tabs.
+        // Step 1 (credentials) lives under Settings → API Keys.
+        // Step 2 (webhook URL) lives under Settings → Account.
+        if ($dashboard_link) {
+            $nav_dashboard_phrase = sprintf(
+                /* translators: %s: linked dashboard hostname (e.g. app.paymentservers.com) */
+                __('Navigate to <strong>Settings &rarr; API Keys</strong> in your dashboard at %s', 'coinsub'),
+                $dashboard_link
+            );
+            $go_back_phrase = sprintf(
+                /* translators: %s: linked dashboard hostname (e.g. app.paymentservers.com) */
+                __('Go back to your dashboard <strong>Settings &rarr; Account</strong> at %s', 'coinsub'),
+                $dashboard_link
+            );
+        } else {
+            $nav_dashboard_phrase = __('Navigate to <strong>Settings &rarr; API Keys</strong> in your dashboard', 'coinsub');
+            $go_back_phrase = __('Go back to your dashboard <strong>Settings &rarr; Account</strong>', 'coinsub');
+        }
 
         $step3_title = $plugin_name ? sprintf(__('Step 3: Enable %s', 'coinsub'), esc_html($plugin_name)) : __('Step 3: Enable payment provider', 'coinsub');
         $important_phrase = $plugin_name
