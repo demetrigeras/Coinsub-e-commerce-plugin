@@ -881,8 +881,8 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
                 error_log('PP Gateway: Checkout URL stored in order meta');
             }
             
-            // Update order status - awaiting payment confirmation
-            $order->update_status('on-hold', __('Awaiting crypto payment. Customer redirected to payment provider checkout.', 'coinsub'));
+          
+            $order->add_order_note(__('Awaiting crypto payment. Customer is completing payment in the hosted checkout.', 'coinsub'));
             
             // Store order ID in session (used for tracking, not cart restoration)
             // Note: We intentionally DON'T restore cart on return - fresh checkout each time

@@ -72,18 +72,23 @@ const Content = ( { settings, ...props } ) => {
 	}, [] );
 
 	// Close the modal AND cancel the in-flight onPaymentSetup Promise so
-	// block checkout unlocks the Place Order button. The on-hold order
-	// created server-side is intentionally left in WC admin — the next
-	// Place Order click starts a brand-new order (we don't try to resume
-	// abandoned sessions; merchants can clean up on-hold orders manually
-	// or via a future automated cleanup task).
+	// block checkout unlocks the Place Order button. We deliberately omit
+	// a user-visible message: if the customer actually completed payment
+	// and closed the modal before the redirect signal arrived, a
+	// "canceled" error would be misleading — the webhook will still mark
+	// the order as paid. The unlocked button is enough feedback that the
+	// modal closed; the customer can click Place Order again (which
+	// starts a fresh session) if they truly did cancel.
+	//
+	// The on-hold order created server-side is intentionally left in WC
+	// admin — merchants can clean up abandoned on-hold orders manually
+	// or via a future automated cleanup task.
 	const handleClose = useCallback( () => {
 		setCheckoutUrl( null );
 		if ( typeof pendingResolveRef.current === 'function' ) {
 			pendingResolveRef.current( {
 				type: emitResponse.responseTypes.ERROR,
-				message:
-					'Crypto payment canceled. Click Place Order to try again.',
+				message: '',
 			} );
 			pendingResolveRef.current = null;
 		}
