@@ -10,10 +10,29 @@ if (!defined('ABSPATH')) {
 }
 
 class CoinSub_Subscriptions {
-    
+
+    /**
+     * @var self|null
+     */
+    private static $instance = null;
+
     private $api_client;
-    
-    public function __construct() {
+
+    /**
+     * Single instance — needed so WooCommerce admin (order edit) can render
+     * the same subscription summary as My Account without re-instantiating
+     * and double-registering hooks.
+     *
+     * @return self
+     */
+    public static function instance() {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    private function __construct() {
         // Cart validation
         add_filter('woocommerce_add_to_cart_validation', array($this, 'validate_cart_items'), 10, 3);
         // Enforce subscription quantity limits during cart checks/updates
@@ -362,53 +381,120 @@ class CoinSub_Subscriptions {
      * @param WC_Order $order
      */
     public function view_order_subscription_section($order) {
+        $this->render_subscription_order_panel($order, 'customer');
+    }
+
+    /**
+     * Subscription summary shown on My Account view-order (`customer`)
+     * and WooCommerce admin order edit (`admin`): start date, next payment,
+     * regularity, status, and Cancel (when active).
+     *
+     * @param WC_Order|int|null $order
+     * @param string              $context 'customer' or 'admin'.
+     */
+    public function render_subscription_order_panel($order, $context = 'customer') {
         if (is_numeric($order)) {
             $order = wc_get_order($order);
         }
         if (!$order || !$order instanceof WC_Order || $order->get_payment_method() !== 'coinsub') {
             return;
         }
-        $is_subscription = $order->get_meta('_coinsub_is_subscription');
-        $agreement_id = $order->get_meta('_coinsub_agreement_id');
-        if ($is_subscription !== 'yes' || empty($agreement_id)) {
+        if ($order->get_meta('_coinsub_is_subscription') !== 'yes') {
             return;
         }
-        $status = $order->get_meta('_coinsub_subscription_status');
+
+        $agreement_id      = $order->get_meta('_coinsub_agreement_id');
+        $status            = $order->get_meta('_coinsub_subscription_status');
+        $cancelled_at_sql  = $order->get_meta('_coinsub_cancelled_at');
+
         $frequency_text = $this->get_subscription_frequency_text($order);
-        $duration_text = $this->get_subscription_duration_text($order);
-        $duration_raw = $this->get_subscription_duration_raw($order);
-        $start_date = $order->get_date_created() ? $order->get_date_created()->date_i18n(wc_date_format()) : '—';
-        $next_payment = $order->get_meta('_coinsub_next_payment');
-        if (empty($next_payment)) {
-            // Same source as merchant: fetch from agreement API (retrieve_agreement) and save to order meta
-            $api_client = $this->get_api_client();
-            if ($api_client) {
-                $agreement_response = $api_client->retrieve_agreement($agreement_id);
-                if (!is_wp_error($agreement_response)) {
-                    $agreement_data = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
-                    $next_payment_raw = $this->get_next_payment_from_agreement_data($agreement_data);
-                    if (!empty($next_payment_raw)) {
-                        $order->update_meta_data('_coinsub_next_payment', $next_payment_raw);
-                        $order->save();
-                        $next_payment = $this->format_date($next_payment_raw);
+        $duration_text  = $this->get_subscription_duration_text($order);
+        $duration_raw   = $this->get_subscription_duration_raw($order);
+        $start_date     = $order->get_date_created() ? $order->get_date_created()->date_i18n(wc_date_format()) : '—';
+
+        $next_payment = '';
+        if ($status === 'cancelled') {
+            $next_payment = '—';
+        } else {
+            $next_payment = $order->get_meta('_coinsub_next_payment');
+            if ($agreement_id && empty($next_payment)) {
+                // Same source as merchant: fetch from agreement API and cache on order meta.
+                $api_client = $this->get_api_client();
+                if ($api_client) {
+                    $agreement_response = $api_client->retrieve_agreement($agreement_id);
+                    if (!is_wp_error($agreement_response)) {
+                        $agreement_data       = isset($agreement_response['data']) ? $agreement_response['data'] : $agreement_response;
+                        $next_payment_raw     = $this->get_next_payment_from_agreement_data($agreement_data);
+                        if (!empty($next_payment_raw)) {
+                            $order->update_meta_data('_coinsub_next_payment', $next_payment_raw);
+                            $order->save();
+                            $next_payment = $next_payment_raw;
+                        }
                     }
                 }
             }
-            if (empty($next_payment)) {
-                $next_payment = '—';
+            if ($next_payment !== '' && $next_payment !== '—') {
+                $next_payment = $this->format_date($next_payment);
             }
-        } else {
-            $next_payment = $this->format_date($next_payment);
+            if (empty($next_payment)) {
+                $next_payment = $agreement_id ? '—' : '—';
+            }
         }
+
         if (empty($duration_raw) || $duration_raw === '0') {
             $regularity_text = $frequency_text;
         } else {
             $regularity_text = $frequency_text . ' ' . sprintf(__('for %s', 'coinsub'), $duration_text);
         }
+
+        // Status label (admin sees explicit badges; optional line for customer cancelled).
+        if ($status === 'cancelled') {
+            $status_label = __('Cancelled', 'coinsub');
+            $status_color = '#856404';
+            $status_bg = '#fff3cd';
+        } elseif (empty($agreement_id)) {
+            $status_label = __('Pending activation', 'coinsub');
+            $status_color = '#0c5460';
+            $status_bg = '#d1ecf1';
+        } else {
+            $status_label = __('Active', 'coinsub');
+            $status_color = '#155724';
+            $status_bg = '#d4edda';
+        }
+
+        $can_cancel_customer = ($status !== 'cancelled' && !empty($agreement_id));
+
+        $section_mt = ('admin' === $context) ? '0' : '1.5em';
+        $section_mb = ('admin' === $context) ? '14px' : '1.5em';
         ?>
-        <section class="coinsub-subscription-details" style="margin: 1.5em 0; padding: 1em 1.25em; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px;">
+        <section class="coinsub-subscription-details coinsub-subscription-details--<?php echo esc_attr($context); ?>" style="margin-top: <?php echo esc_attr($section_mt); ?>; margin-bottom: <?php echo esc_attr($section_mb); ?>; padding: 1em 1.25em; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px;">
             <h3 style="margin: 0 0 1em; font-size: 1em;"><?php esc_html_e('Subscription', 'coinsub'); ?></h3>
-            <div class="coinsub-subscription-fields" style="display: flex; flex-wrap: wrap; gap: 1.5em 2em;">
+
+            <?php if ($context === 'admin') : ?>
+            <div style="margin:-4px 0 12px; display:inline-block;">
+                <span style="display:inline-block; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:600; color: <?php echo esc_attr($status_color); ?>; background: <?php echo esc_attr($status_bg); ?>; border:1px solid rgba(0,0,0,.06);"><?php echo esc_html($status_label); ?></span>
+                <?php if ($status === 'cancelled' && !empty($cancelled_at_sql)) : ?>
+                    <span style="margin-left:8px; font-size:12px; color:#646970;">
+                        <?php
+                        printf(
+                            /* translators: %s: localized cancellation datetime */
+                            esc_html__('Cancelled on %s', 'coinsub'),
+                            esc_html(
+                                function_exists('wc_string_to_datetime')
+                                    ? wc_format_datetime(wc_string_to_datetime($cancelled_at_sql))
+                                    : date_i18n(
+                                        get_option('date_format') . ' ' . get_option('time_format'),
+                                        strtotime($cancelled_at_sql)
+                                    )
+                            )
+                        );
+                        ?>
+                    </span>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+
+            <div class="coinsub-subscription-fields" style="display: flex; flex-wrap: wrap; gap: 1.5em 2em; align-items: flex-end;">
                 <div>
                     <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 0.25em;"><?php esc_html_e('Start date', 'coinsub'); ?></div>
                     <div><?php echo esc_html($start_date); ?></div>
@@ -421,11 +507,24 @@ class CoinSub_Subscriptions {
                     <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 0.25em;"><?php esc_html_e('Regularity', 'coinsub'); ?></div>
                     <div><?php echo esc_html($regularity_text); ?></div>
                 </div>
-                <?php if ($status !== 'cancelled') : ?>
+
+                <?php if ($context === 'admin') : ?>
+                <div style="flex:1 1 100%; max-width:none;">
+                    <?php if (!empty($agreement_id)) : ?>
+                        <p style="margin:0; font-size:12px; color:#646970;"><strong><?php esc_html_e('Agreement ID:', 'coinsub'); ?></strong> <code><?php echo esc_html($agreement_id); ?></code></p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($can_cancel_customer && $context === 'customer') : ?>
                     <div style="align-self: flex-end; margin-left: auto;">
                         <button type="button" class="button coinsub-cancel-subscription" data-agreement-id="<?php echo esc_attr($agreement_id); ?>" data-order-id="<?php echo esc_attr($order->get_id()); ?>"><?php esc_html_e('Cancel subscription', 'coinsub'); ?></button>
                     </div>
-                <?php else : ?>
+                <?php elseif ($can_cancel_customer && $context === 'admin') : ?>
+                    <div style="align-self: flex-end; margin-left: auto;">
+                        <button type="button" class="button button-secondary coinsub-admin-cancel-subscription" data-agreement-id="<?php echo esc_attr($agreement_id); ?>" data-order-id="<?php echo esc_attr($order->get_id()); ?>"><?php esc_html_e('Cancel subscription', 'coinsub'); ?></button>
+                    </div>
+                <?php elseif ($context === 'customer' && $status === 'cancelled') : ?>
                     <div style="align-self: flex-end; margin-left: auto; color: #6c757d;"><em><?php esc_html_e('Cancelled', 'coinsub'); ?></em></div>
                 <?php endif; ?>
             </div>
@@ -676,6 +775,6 @@ class CoinSub_Subscriptions {
     }
 }
 
-// Initialize
-new CoinSub_Subscriptions();
+// Bootstrap (singleton — use CoinSub_Subscriptions::instance() from other classes).
+CoinSub_Subscriptions::instance();
 

@@ -71,10 +71,10 @@ function coinsub_commerce_init() {
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-whitelabel-branding.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-payment-gateway.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-webhook-handler.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-order-manager.php';
-    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-logs.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-cart-sync.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-subscriptions.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-order-manager.php';
+    require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-logs.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-subscriptions.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-admin-payments.php';
     require_once COINSUB_PLUGIN_DIR . 'includes/class-sp-review-page.php';

@@ -10,17 +10,32 @@ if (!defined('ABSPATH')) {
 }
 
 class CoinSub_Order_Manager {
-    
+
+    /**
+     * Dedupe rendering when both Woo billing + shipping admin hooks fire.
+     *
+     * @var array<int, bool>
+     */
+    private static $admin_subscription_summary_done = array();
+
+    /**
+     * Dedupe renewal / payments blocks for the same order.
+     *
+     * @var array<int, bool>
+     */
+    private static $admin_subscription_extras_done = array();
+
     /**
      * Constructor
      */
     public function __construct() {
         add_action('woocommerce_order_status_changed', array($this, 'handle_order_status_change'), 10, 3);
-        // Email handling left to WooCommerce - no custom email content from plugin
-        add_action('woocommerce_order_item_add_action_buttons', array($this, 'add_cancel_subscription_button'));
         add_action('wp_ajax_coinsub_admin_cancel_subscription', array($this, 'ajax_admin_cancel_subscription'));
 
         add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_subscription_status'));
+        add_action('woocommerce_admin_order_data_after_shipping_address', array($this, 'display_subscription_status'));
+
+        add_action('admin_footer', array($this, 'print_admin_subscription_cancel_script'), 99);
         // NOTE: The "Payment / Transaction: 0x…🔗" panel that previously
         // appeared after the billing address has been removed. The
         // transaction hash is still stored in order meta
@@ -125,66 +140,87 @@ class CoinSub_Order_Manager {
     }
     
     /**
-     * Add cancel subscription button to order admin page
+     * Renders Subscription summary once per order edit screen (billing or shipping hook).
+     *
+     * @param WC_Order $order
      */
-    public function add_cancel_subscription_button($order) {
-        $agreement_id = $order->get_meta('_coinsub_agreement_id');
-        $subscription_status = $order->get_meta('_coinsub_subscription_status');
-        $is_subscription = $order->get_meta('_coinsub_is_subscription') === 'yes';
-        
-        // Only show if this is an active recurring subscription
-        if (empty($agreement_id) || $subscription_status === 'cancelled' || !$is_subscription) {
+    private function maybe_render_admin_subscription_summary($order) {
+        $id = $order->get_id();
+        if (!empty(self::$admin_subscription_summary_done[$id])) {
             return;
         }
-        
+        if ($order->get_meta('_coinsub_is_subscription') !== 'yes') {
+            return;
+        }
+        if (!class_exists('CoinSub_Subscriptions')) {
+            return;
+        }
+        self::$admin_subscription_summary_done[$id] = true;
+        CoinSub_Subscriptions::instance()->render_subscription_order_panel($order, 'admin');
+    }
+
+    /**
+     * One admin footer handler for merchants cancelling subscriptions from the edit-order screen.
+     */
+    public function print_admin_subscription_cancel_script() {
+        if (!current_user_can('edit_shop_orders')) {
+            return;
+        }
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen) {
+            return;
+        }
+        $allowed = (
+            ($screen->id === 'shop_order')
+            || ($screen->id === 'woocommerce_page_wc-orders')
+        );
+        if (!$allowed) {
+            return;
+        }
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $done = true;
         ?>
-        <button type="button" class="button coinsub-admin-cancel-subscription" data-order-id="<?php echo esc_attr($order->get_id()); ?>" data-agreement-id="<?php echo esc_attr($agreement_id); ?>">
-            Cancel Subscription
-        </button>
         <script>
-        jQuery(document).ready(function($) {
-            $('.coinsub-admin-cancel-subscription').on('click', function(e) {
+        jQuery(function($) {
+            $(document.body).on('click', '.coinsub-admin-cancel-subscription', function(e) {
                 e.preventDefault();
-                
-                if (!confirm('Are you sure you want to cancel this subscription?')) {
+                if (!confirm('<?php echo esc_js(__('Are you sure you want to cancel this subscription?', 'coinsub')); ?>')) {
                     return;
                 }
-                
                 var button = $(this);
-                var orderId = button.data('order-id');
-                var agreementId = button.data('agreement-id');
-                
-                button.prop('disabled', true).text('Cancelling...');
-                
+                button.prop('disabled', true).text('<?php echo esc_js(__('Cancelling…', 'coinsub')); ?>');
                 $.ajax({
-                    url: ajaxurl,
+                    url: typeof ajaxurl !== 'undefined' ? ajaxurl : '<?php echo esc_js(admin_url('admin-ajax.php')); ?>',
                     type: 'POST',
+                    dataType: 'json',
                     data: {
                         action: 'coinsub_admin_cancel_subscription',
-                        order_id: orderId,
-                        agreement_id: agreementId,
-                        nonce: '<?php echo wp_create_nonce('coinsub_admin_cancel'); ?>'
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            alert('Subscription cancelled successfully');
-                            location.reload();
-                        } else {
-                            alert(response.data.message);
-                            button.prop('disabled', false).text('Cancel Subscription');
-                        }
-                    },
-                    error: function() {
-                        alert('Error cancelling subscription');
-                        button.prop('disabled', false).text('Cancel Subscription');
+                        order_id: button.data('order-id'),
+                        agreement_id: button.data('agreement-id'),
+                        nonce: '<?php echo esc_js(wp_create_nonce('coinsub_admin_cancel')); ?>'
                     }
+                }).done(function(response) {
+                    if (response && response.success) {
+                        alert('<?php echo esc_js(__('Subscription cancelled successfully', 'coinsub')); ?>');
+                        location.reload();
+                    } else {
+                        var msg = (response && response.data && response.data.message) ? response.data.message : '';
+                        alert(msg || '<?php echo esc_js(__('Could not cancel subscription', 'coinsub')); ?>');
+                        button.prop('disabled', false).text('<?php echo esc_js(__('Cancel subscription', 'coinsub')); ?>');
+                    }
+                }).fail(function() {
+                    alert('<?php echo esc_js(__('Error cancelling subscription', 'coinsub')); ?>');
+                    button.prop('disabled', false).text('<?php echo esc_js(__('Cancel subscription', 'coinsub')); ?>');
                 });
             });
         });
         </script>
         <?php
     }
-    
+
     /**
      * AJAX handler for admin subscription cancellation
      */
@@ -217,6 +253,7 @@ class CoinSub_Order_Manager {
         
         // Update order meta
         $order->update_meta_data('_coinsub_subscription_status', 'cancelled');
+        $order->update_meta_data('_coinsub_cancelled_at', current_time('mysql'));
         $order->add_order_note(__('Subscription cancelled by merchant', 'coinsub'));
         $order->save();
         
@@ -319,25 +356,42 @@ class CoinSub_Order_Manager {
      * Display subscription status and payments in order details
      */
     public function display_subscription_status($order) {
-        if ($order->get_payment_method() !== 'coinsub') {
+        if (!$order instanceof WC_Order || $order->get_payment_method() !== 'coinsub') {
             return;
         }
-        
+
+        // Strictly subscription-only: regular one-off CoinSub orders should
+        // NOT see any subscription UI (summary, cancel button, renewal links,
+        // payments table, or cancelled-state banner). Renewal/child orders
+        // also carry `_coinsub_is_subscription === 'yes'` so they keep the
+        // panel and the link back to the parent.
+        if ($order->get_meta('_coinsub_is_subscription') !== 'yes') {
+            return;
+        }
+
+        // Subscription snapshot + Cancel button (shown once whether billing/shipping fires).
+        $this->maybe_render_admin_subscription_summary($order);
+
+        $id = $order->get_id();
+        if (!empty(self::$admin_subscription_extras_done[$id])) {
+            return;
+        }
+        self::$admin_subscription_extras_done[$id] = true;
+
         // Display parent/child relationship if applicable
         $this->display_renewal_order_relationship($order);
-        
+
         // Display cancelled message if exists
         $cancelled_message = $order->get_meta('_coinsub_cancelled_message');
         if (!empty($cancelled_message)) {
             echo $cancelled_message;
         }
-        
+
         // Display payments if exists
         $payments_display = $order->get_meta('_coinsub_payments_display');
         if (!empty($payments_display)) {
             echo $payments_display;
         } else {
-            // For active subscriptions, try to fetch and display payments
             $this->maybe_display_subscription_payments($order);
         }
     }
