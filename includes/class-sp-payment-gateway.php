@@ -1697,7 +1697,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
         $nav_dashboard_phrase = __('Navigate to <strong>Settings</strong> in your dashboard', 'coinsub');
         $go_back_phrase = __('Go back to your dashboard <strong>Settings</strong>', 'coinsub');
 
-        $step4_title = $plugin_name ? sprintf(__('Step 4: Enable %s', 'coinsub'), esc_html($plugin_name)) : __('Step 4: Enable payment provider', 'coinsub');
+        $step3_title = $plugin_name ? sprintf(__('Step 3: Enable %s', 'coinsub'), esc_html($plugin_name)) : __('Step 3: Enable payment provider', 'coinsub');
         $important_phrase = $plugin_name
             ? sprintf(__('<strong>⚠️ Important:</strong> %s works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!', 'coinsub'), esc_html($plugin_name))
             : __('<strong>⚠️ Important:</strong> The payment provider works alongside other payment methods. Make sure to complete ALL steps above, especially the webhook configuration!', 'coinsub');
@@ -1725,15 +1725,7 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
             <li><?php echo __('<strong>Paste your webhook URL</strong> into that field and save', 'coinsub'); ?></li>
             <li><em><?php esc_html_e('This is essential', 'coinsub'); ?></em> — <?php esc_html_e('without this, orders won\'t update when payments complete!', 'coinsub'); ?></li>
         </ol>
-        <h4 style="margin:1.5em 0 .5em"><?php esc_html_e('Step 3: Fix WordPress Checkout Page (If Needed)', 'coinsub'); ?></h4>
-        <ol style="line-height:1.6;margin-top:0">
-            <li><?php echo __('Go to <strong>Pages</strong> → Find your <strong>Checkout</strong> page → Click <strong>Edit</strong>', 'coinsub'); ?></li>
-            <li><?php echo __('In the page editor, click the <strong style="font-size:1.2em;line-height:1">⋮</strong> (three vertical dots) in the top right', 'coinsub'); ?></li>
-            <li><?php echo __('Select <strong>Code Editor</strong>', 'coinsub'); ?></li>
-            <li><?php echo __('Replace any block content with: <code style="background:#f0f0f1;padding:1px 3px">[woocommerce_checkout]</code>', 'coinsub'); ?></li>
-            <li><?php echo __('Click <strong>Update</strong> to save', 'coinsub'); ?></li>
-        </ol>
-        <h4 style="margin:1.5em 0 .5em"><?php echo $step4_title; ?></h4>
+        <h4 style="margin:1.5em 0 .5em"><?php echo $step3_title; ?></h4>
         <ol style="line-height:1.6;margin-top:0">
             <li><?php echo sprintf(__('Check the <strong>%s</strong> box below', 'coinsub'), esc_html($this->get_enable_label())); ?></li>
             <li><?php echo __('Click <strong>Save changes</strong>', 'coinsub'); ?></li>

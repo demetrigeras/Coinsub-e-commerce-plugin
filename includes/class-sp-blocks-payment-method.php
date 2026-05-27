@@ -117,13 +117,28 @@ class SP_Blocks_Payment_Method extends \Automattic\WooCommerce\Blocks\Payments\I
      * checkout UI needs (branding, supported features, dashboard URL, etc.).
      */
     public function get_payment_method_data() {
-        $brand_name = !empty($this->settings['title'])
-            ? $this->settings['title']
-            : __('Pay with Crypto', 'coinsub');
+        // Mirror the classic gateway's title-resolution chain so the checkout
+        // label matches between classic and block flows:
+        //   1. Merchant-customized `title` setting, if present
+        //   2. "Pay with {whitelabel plugin name}" if the plugin was built as
+        //      a whitelabeled partner build (e.g. "Pay with Payment Servers")
+        //   3. Fallback generic label
+        $config_name = class_exists('CoinSub_Whitelabel_Branding')
+            ? CoinSub_Whitelabel_Branding::get_whitelabel_plugin_name_from_config()
+            : null;
+
+        if (!empty($this->settings['title'])) {
+            $brand_name = $this->settings['title'];
+        } elseif ($config_name) {
+            /* translators: %s: whitelabel payment provider name */
+            $brand_name = sprintf(__('Pay with %s', 'coinsub'), $config_name);
+        } else {
+            $brand_name = __('Pay with Stablecoin', 'coinsub');
+        }
 
         $description = !empty($this->settings['description'])
             ? $this->settings['description']
-            : __('Pay securely with cryptocurrency.', 'coinsub');
+            : __('Pay securely with stablecoin.', 'coinsub');
 
         // Whitelabel branding (logo, etc.) — same source as classic checkout.
         $branding = get_option('coinsub_whitelabel_branding', array());
@@ -132,7 +147,7 @@ class SP_Blocks_Payment_Method extends \Automattic\WooCommerce\Blocks\Payments\I
             'title'           => $brand_name,
             'description'     => $description,
             'logoUrl'         => !empty($branding['logo_url']) ? $branding['logo_url'] : COINSUB_PLUGIN_URL . 'images/paymentservers.square.dark.png',
-            'companyName'     => !empty($branding['company_name']) ? $branding['company_name'] : 'Stablecoin Pay',
+            'companyName'     => !empty($branding['company_name']) ? $branding['company_name'] : ($config_name ?: 'Stablecoin Pay'),
             'ajaxUrl'         => admin_url('admin-ajax.php'),
             'processAction'   => 'coinsub_process_payment',
             'nonce'           => wp_create_nonce('woocommerce-process_checkout'),

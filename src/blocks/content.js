@@ -282,9 +282,6 @@ const Content = ( { settings, ...props } ) => {
 
 	// --- Render -------------------------------------------------------
 
-	const description =
-		settings?.description || 'Pay securely with cryptocurrency.';
-
 	// While the iframe is open we render it via a portal to <body> as a
 	// centered modal so it escapes block-checkout's narrow payment-method
 	// slot. The iframe gets its intended ~600px width on any layout, and
@@ -377,19 +374,6 @@ const Content = ( { settings, ...props } ) => {
 
 	return (
 		<div className="coinsub-block-payment">
-			<p style={ { margin: 0 } }>{ description }</p>
-			<p
-				style={ {
-					marginTop: '6px',
-					marginBottom: 0,
-					fontSize: '12px',
-					color: '#555',
-				} }
-			>
-				{ checkoutUrl
-					? 'A secure crypto payment window has opened — complete your purchase there to continue.'
-					: 'A secure crypto payment window will open when you click Place Order.' }
-			</p>
 			{ iframePanel }
 		</div>
 	);
