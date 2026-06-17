@@ -9,8 +9,11 @@
  *   - No Checkout page is configured in WooCommerce → Settings → Advanced
  *   - The configured Checkout page exists but has no checkout form on it
  *
- * A one-click fix inserts the modern Checkout block (what a fresh WC install
- * ships with) so the merchant never has to hand-edit page content.
+ * A one-click fix inserts the classic `[woocommerce_checkout]` shortcode —
+ * the universally-compatible default — so the merchant never has to
+ * hand-edit page content. Merchants who specifically prefer the block
+ * experience can swap to it via Pages → Checkout in seconds; the gateway
+ * works equally well on either.
  */
 
 if (!defined('ABSPATH')) {
@@ -57,7 +60,7 @@ class SP_Checkout_Page_Checker {
                 break;
             case 'error':
                 echo '<div class="notice notice-error is-dismissible"><p>';
-                echo esc_html__('Could not update the Checkout page automatically. Please edit it manually and make sure the WooCommerce Checkout block is on the page.', 'coinsub');
+                echo esc_html__('Could not update the Checkout page automatically. Please edit it manually and make sure either the [woocommerce_checkout] shortcode or the WooCommerce Checkout block is on the page.', 'coinsub');
                 echo '</p></div>';
                 break;
             case 'no_page':
@@ -174,8 +177,8 @@ class SP_Checkout_Page_Checker {
                 __('%s: your Checkout page is missing the WooCommerce checkout form', 'coinsub'),
                 $brand
             );
-            $body = __('Your WooCommerce Checkout page does not contain a checkout form, so customers have nothing to fill out when they go to pay. Click below to add the standard WooCommerce Checkout block to the page automatically.', 'coinsub');
-            $button_label = __('Add the WooCommerce Checkout block for me', 'coinsub');
+            $body = __('Your WooCommerce Checkout page does not contain a checkout form, so customers have nothing to fill out when they go to pay. Click below to add the standard [woocommerce_checkout] shortcode to the page automatically — it works with every WooCommerce version and every payment plugin.', 'coinsub');
+            $button_label = __('Add the checkout form for me', 'coinsub');
         } else {
             $notice_class = 'notice-error';
             $headline = sprintf(
@@ -228,10 +231,13 @@ class SP_Checkout_Page_Checker {
 
         $page = $result['page'];
 
-        // Insert the modern WooCommerce Checkout block — same markup a
-        // fresh WC install ships with. Works with both classic and block
-        // checkout customer experiences.
-        $new_content = '<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout is-loading"></div><!-- /wp:woocommerce/checkout -->';
+        // Insert the classic `[woocommerce_checkout]` shortcode — the
+        // safest, most universally-compatible default. Works on every WC
+        // version and with every payment plugin (classic-only ones too,
+        // unlike the block, which silently hides any gateway that hasn't
+        // shipped block-checkout support). Merchants who specifically want
+        // the block experience can swap it in via Pages → Checkout.
+        $new_content = '[woocommerce_checkout]';
 
         $update = wp_update_post(array(
             'ID'           => $page->ID,

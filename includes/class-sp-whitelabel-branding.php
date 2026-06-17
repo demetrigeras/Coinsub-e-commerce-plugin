@@ -160,7 +160,7 @@ class CoinSub_Whitelabel_Branding {
         $merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';
         $api_key = isset($gateway_settings['api_key']) ? $gateway_settings['api_key'] : '';
         
-        $api_base_url = 'https://api.coinsub.io/v1';
+        $api_base_url = 'https://dev-api.coinsub.io/v1';
         
         if (!empty($merchant_id) && !empty($api_key)) {
             $this->api_client->update_settings($api_base_url, $merchant_id, $api_key);
@@ -241,7 +241,7 @@ class CoinSub_Whitelabel_Branding {
             return array(); // Return empty array, no default
         }
         
-        $api_base_url = 'https://api.coinsub.io/v1';
+        $api_base_url = 'https://dev-api.coinsub.io/v1';
         
         // Note: We don't need to set API key for merchant_info endpoint - it's headerless!
         $this->api_client->update_settings($api_base_url, $merchant_id, ''); // Empty API key is fine

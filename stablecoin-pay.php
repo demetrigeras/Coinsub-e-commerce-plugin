@@ -221,15 +221,20 @@ function coinsub_commerce_activate() {
 /**
  * Ensure the WooCommerce Checkout page has a checkout form on it.
  *
- * Both supported entry points work out of the box:
- *   - The `[woocommerce_checkout]` shortcode (classic / legacy themes)
- *   - The `wp:woocommerce/checkout` block (modern WC default)
+ * Both supported entry points work out of the box with this gateway:
+ *   - The `[woocommerce_checkout]` shortcode (classic checkout)
+ *   - The `wp:woocommerce/checkout` block (modern block checkout)
  *
  * If the page already has either one, we leave it alone — merchants who
- * deliberately chose classic should stay on classic. We only auto-insert
- * content if the Checkout page is empty (or has no checkout form at all),
- * in which case we drop in the modern Checkout block, matching what a
- * fresh WooCommerce install ships with.
+ * deliberately chose one style should keep it.
+ *
+ * If the page is completely empty (or has no checkout form at all), we
+ * insert the **`[woocommerce_checkout]` shortcode** rather than the block.
+ * The shortcode is the universally-compatible default: it works on every
+ * WooCommerce version since forever AND it works with every other payment
+ * plugin the merchant might have, including ones that haven't shipped
+ * block-checkout support yet. Merchants who specifically want the block
+ * experience can swap to it in 10 seconds via Pages → Checkout.
  *
  * Safe: never overwrites existing checkout content.
  */
@@ -262,18 +267,18 @@ function coinsub_ensure_checkout_form_present() {
         return true;
     }
 
-    // No checkout form found. Insert the modern Checkout block — it's what
-    // a fresh WC install ships with and works seamlessly with our block
-    // checkout integration.
-    $block_markup = '<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout is-loading"></div><!-- /wp:woocommerce/checkout -->';
+    // No checkout form found. Insert the classic shortcode — the safest
+    // default. Compatible with every WC version and every payment plugin,
+    // including ones that haven't added block-checkout support.
+    $shortcode_markup = '[woocommerce_checkout]';
 
     $trimmed_content = trim($page_content);
     if (empty($trimmed_content)) {
-        $new_content = $block_markup;
-        error_log('🔄 Stablecoin Pay: Checkout page is empty - inserting WooCommerce Checkout block');
+        $new_content = $shortcode_markup;
+        error_log('🔄 Stablecoin Pay: Checkout page is empty - inserting [woocommerce_checkout] shortcode');
     } else {
-        $new_content = $block_markup . "\n\n" . $page_content;
-        error_log('🔄 Stablecoin Pay: Checkout page has content but no checkout form - prepending WooCommerce Checkout block');
+        $new_content = $shortcode_markup . "\n\n" . $page_content;
+        error_log('🔄 Stablecoin Pay: Checkout page has content but no checkout form - prepending [woocommerce_checkout] shortcode');
     }
 
     $updated = wp_update_post(array(
@@ -282,7 +287,7 @@ function coinsub_ensure_checkout_form_present() {
     ));
 
     if ($updated && !is_wp_error($updated)) {
-        error_log('✅ Stablecoin Pay: Successfully added the WooCommerce Checkout block to the checkout page');
+        error_log('✅ Stablecoin Pay: Successfully added the [woocommerce_checkout] shortcode to the checkout page');
         return true;
     }
 
@@ -1375,35 +1380,154 @@ function coinsub_ajax_process_payment() {
     $order->calculate_totals();
     $order->save();
 
-    // If the front end (block checkout) shipped the displayed totals
-    // along with the request, treat the GRAND TOTAL (`cart_total_minor`,
-    // which mirrors WC Store API `totals.total_price`) as the source of
-    // truth — that's the "Total" line the customer just agreed to on
-    // screen (e.g. $450.80). We deliberately ignore `cart_total_items_minor`
-    // which is the SUBTOTAL ($402.50) — only useful as metadata. The
-    // displayed total is persisted on the order so `process_payment` and
-    // `prepare_purchase_session_from_cart` find it without re-reading POST.
+    // Reconcile the order's line items against what the customer actually
+    // saw in block checkout. The server-side cart recalculation above does
+    // NOT reliably reproduce block-checkout fees/shipping (the Store API
+    // adds those via a different path than the classic
+    // `woocommerce_cart_calculate_fees` hook). When that happens the order
+    // ends up with only product lines, so the customer-facing breakdown and
+    // WC's own totals show just the product subtotal — even though the
+    // customer was charged the full amount including the processing fee.
+    //
+    // The React component forwards the exact figures the customer saw:
+    //   - cart_total_minor          → grand total
+    //   - cart_total_shipping_minor → shipping
+    //   - cart_total_tax_minor      → tax
+    //   - cart_fees_json            → named fee lines [{name,total,total_tax}]
+    // We use those to rebuild any missing line items so the order itemizes
+    // exactly what the customer paid for.
     if (isset($_POST['cart_total_minor']) && $_POST['cart_total_minor'] !== '') {
         $minor_unit = isset($_POST['cart_currency_minor_unit']) ? (int) $_POST['cart_currency_minor_unit'] : 2;
         $minor_unit = ($minor_unit >= 0 && $minor_unit <= 6) ? $minor_unit : 2;
         $divisor = pow(10, $minor_unit);
 
-        $displayed_total    = ((float) $_POST['cart_total_minor']) / $divisor;
-        $displayed_subtotal = isset($_POST['cart_total_items_minor']) && $_POST['cart_total_items_minor'] !== ''
-            ? ((float) $_POST['cart_total_items_minor']) / $divisor
-            : null;
+        $to_amount = function ($key) use ($divisor) {
+            return (isset($_POST[$key]) && $_POST[$key] !== '')
+                ? ((float) $_POST[$key]) / $divisor
+                : 0.0;
+        };
 
+        $displayed_total    = $to_amount('cart_total_minor');
+        $displayed_subtotal = $to_amount('cart_total_items_minor');
+        $displayed_shipping = $to_amount('cart_total_shipping_minor');
+        $displayed_tax      = $to_amount('cart_total_tax_minor');
+
+        // --- Reconcile fees ------------------------------------------------
+        // Sum the fees already on the order from the cart transfer above.
+        $order_fee_total = 0.0;
+        foreach ($order->get_fees() as $existing_fee) {
+            $order_fee_total += (float) $existing_fee->get_total();
+        }
+
+        // Parse the named fees the customer saw.
+        $front_fees = array();
+        if (isset($_POST['cart_fees_json']) && $_POST['cart_fees_json'] !== '') {
+            $decoded = json_decode(wp_unslash($_POST['cart_fees_json']), true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $fee_row) {
+                    if (!is_array($fee_row)) {
+                        continue;
+                    }
+                    $front_fees[] = array(
+                        'name'      => isset($fee_row['name']) ? sanitize_text_field($fee_row['name']) : __('Fee', 'coinsub'),
+                        'total'     => isset($fee_row['total']) ? ((float) $fee_row['total']) / $divisor : 0.0,
+                        'total_tax' => isset($fee_row['total_tax']) ? ((float) $fee_row['total_tax']) / $divisor : 0.0,
+                    );
+                }
+            }
+        }
+        $front_fee_total = 0.0;
+        foreach ($front_fees as $ff) {
+            $front_fee_total += $ff['total'];
+        }
+
+        // If the order is missing the fees the customer saw, add them as
+        // real fee line items (named). We only add when the order's fee
+        // total is short, so we never double-charge a fee the cart already
+        // transferred.
+        if ($front_fee_total - $order_fee_total > 0.005) {
+            if (!empty($front_fees)) {
+                foreach ($front_fees as $ff) {
+                    if ($ff['total'] <= 0) {
+                        continue;
+                    }
+                    $fee_item = new WC_Order_Item_Fee();
+                    $fee_item->set_props(array(
+                        'name'      => $ff['name'],
+                        'amount'    => $ff['total'],
+                        'total'     => $ff['total'],
+                        'total_tax' => $ff['total_tax'],
+                        'tax_class' => 0,
+                        'tax_status' => 'none',
+                    ));
+                    $order->add_item($fee_item);
+                    error_log('PP AJAX: Reconciled missing fee from front end → "' . $ff['name'] . '" $' . number_format($ff['total'], 2));
+                }
+            } else {
+                // No names available — add a single catch-all so the total
+                // still reflects the fee the customer paid.
+                $gap = $front_fee_total - $order_fee_total;
+                $fee_item = new WC_Order_Item_Fee();
+                $fee_item->set_props(array(
+                    'name'       => __('Processing fee', 'coinsub'),
+                    'amount'     => $gap,
+                    'total'      => $gap,
+                    'tax_class'  => 0,
+                    'tax_status' => 'none',
+                ));
+                $order->add_item($fee_item);
+                error_log('PP AJAX: Reconciled unnamed fee gap → "Processing fee" $' . number_format($gap, 2));
+            }
+        }
+
+        // --- Reconcile shipping -------------------------------------------
+        // If the cart transfer produced no shipping line but the customer
+        // saw a shipping charge, add a shipping line for it.
+        if ($displayed_shipping > 0 && (float) $order->get_shipping_total() + 0.005 < $displayed_shipping) {
+            $ship_item = new WC_Order_Item_Shipping();
+            $ship_item->set_props(array(
+                'method_title' => __('Shipping', 'coinsub'),
+                'method_id'    => 'coinsub_reconciled',
+                'total'        => wc_format_decimal($displayed_shipping - (float) $order->get_shipping_total()),
+            ));
+            $order->add_item($ship_item);
+            error_log('PP AJAX: Reconciled missing shipping from front end → $' . number_format($displayed_shipping, 2));
+        }
+
+        $order->calculate_totals(false); // false = don't recalc taxes (front-end tax already baked into displayed values)
+        $order->save();
+
+        // --- Final guarantee ----------------------------------------------
+        // After itemizing everything we could name, if the order total is
+        // STILL short of what the customer saw (e.g. a tax line we couldn't
+        // rebuild without rate IDs), add a catch-all adjustment fee so the
+        // grand total the merchant sees and the customer paid always match.
         if ($displayed_total > 0) {
+            $gap = $displayed_total - (float) $order->get_total();
+            if ($gap > 0.005) {
+                $adj = new WC_Order_Item_Fee();
+                $adj->set_props(array(
+                    'name'       => $displayed_tax > 0 ? __('Tax & adjustments', 'coinsub') : __('Additional charges', 'coinsub'),
+                    'amount'     => $gap,
+                    'total'      => $gap,
+                    'tax_class'  => 0,
+                    'tax_status' => 'none',
+                ));
+                $order->add_item($adj);
+                $order->calculate_totals(false);
+                error_log('PP AJAX: Added catch-all adjustment $' . number_format($gap, 2) . ' to match displayed total');
+            }
+
             $order->update_meta_data('_coinsub_displayed_total', $displayed_total);
             $order->update_meta_data('_coinsub_displayed_currency', isset($_POST['cart_currency_code']) ? sanitize_text_field(wp_unslash($_POST['cart_currency_code'])) : '');
             $order->save();
             error_log('PP AJAX: Front-end reported GRAND TOTAL: $' . number_format($displayed_total, 2)
                 . ' (' . ($order->get_meta('_coinsub_displayed_currency') ?: 'currency unset') . ')'
-                . ($displayed_subtotal !== null ? ' [subtotal for reference: $' . number_format($displayed_subtotal, 2) . ']' : ''));
+                . ($displayed_subtotal > 0 ? ' [subtotal for reference: $' . number_format($displayed_subtotal, 2) . ']' : ''));
         }
     }
 
-    error_log('PP AJAX: Order #' . $order_id . ' built. Subtotal $' . $order->get_subtotal() . ' + shipping $' . $order->get_shipping_total() . ' + tax $' . $order->get_total_tax() . ' = total $' . $order->get_total());
+    error_log('PP AJAX: Order #' . $order_id . ' built. Subtotal $' . $order->get_subtotal() . ' + shipping $' . $order->get_shipping_total() . ' + fees $' . array_sum(array_map(function($f){ return (float)$f->get_total(); }, $order->get_fees())) . ' + tax $' . $order->get_total_tax() . ' = total $' . $order->get_total());
     
     // If this order already has a checkout URL (rare race), reuse it
     $existing_checkout = $order->get_meta('_coinsub_checkout_url');

@@ -42,6 +42,227 @@ class CoinSub_Order_Manager {
         // (`_coinsub_transaction_hash`) so it's available to other
         // tooling / reporting / refund flows, but it no longer clutters
         // the admin order details view.
+
+        // Render a clean, theme-safe price breakdown on the
+        // order-received ("thank you") page and on the customer's
+        // My Account → View Order page. The WC default template usually
+        // shows this in its order-details table, but lots of themes
+        // override that template and end up hiding line items like
+        // shipping or fees. This panel guarantees the customer always
+        // sees exactly what their total was made up of.
+        add_action('woocommerce_order_details_after_order_table', array($this, 'render_payment_breakdown'), 20, 1);
+
+        // Mirror the same breakdown on the WC admin order edit screen so
+        // the merchant sees exactly what the customer was charged for
+        // (and the prominent "Total paid" line at the bottom matches the
+        // amount sent to the payment provider). HPOS-compatible: we
+        // register the meta box against both the modern HPOS screen and
+        // the legacy `shop_order` post-type screen.
+        add_action('add_meta_boxes', array($this, 'register_admin_payment_breakdown_metabox'));
+    }
+
+    /**
+     * Register the "Payment Breakdown" meta box on the admin order edit
+     * screen. Works on both HPOS (Custom Orders Tables, the WC 8+ default)
+     * and the legacy `shop_order` post type.
+     */
+    public function register_admin_payment_breakdown_metabox() {
+        $screens = array('shop_order'); // legacy
+        if (class_exists('Automattic\\WooCommerce\\Internal\\DataStores\\Orders\\CustomOrdersTableController')) {
+            $screens[] = wc_get_page_screen_id('shop-order');
+        }
+        $screens = array_unique(array_filter($screens));
+
+        foreach ($screens as $screen) {
+            add_meta_box(
+                'coinsub_payment_breakdown',
+                __('Payment Breakdown', 'coinsub'),
+                array($this, 'render_admin_payment_breakdown_metabox'),
+                $screen,
+                'normal',
+                'high'
+            );
+        }
+    }
+
+    /**
+     * Meta box renderer. Resolves the order (HPOS-safe), then reuses the
+     * customer-facing breakdown so what the merchant sees is exactly what
+     * the customer saw on the order-received page.
+     */
+    public function render_admin_payment_breakdown_metabox($post_or_order) {
+        $order = ($post_or_order instanceof WP_Post)
+            ? wc_get_order($post_or_order->ID)
+            : $post_or_order;
+
+        if (!$order instanceof WC_Order) {
+            echo '<p>' . esc_html__('Order not available.', 'coinsub') . '</p>';
+            return;
+        }
+
+        if ($order->get_payment_method() !== 'coinsub') {
+            echo '<p style="color:#6b7280;margin:6px 0;">'
+                . esc_html__('This order was not paid via the crypto gateway, so there is no breakdown to show here.', 'coinsub')
+                . '</p>';
+            return;
+        }
+
+        $this->render_payment_breakdown($order);
+    }
+
+    /**
+     * Render a guaranteed-visible payment breakdown on the customer-
+     * facing order pages (order-received + My Account → View Order).
+     *
+     * Shows every component that adds up to the order total:
+     *   - Each product line (name × quantity → line total)
+     *   - Subtotal
+     *   - Shipping line(s)
+     *   - Fee line(s) (processing fees, payment surcharges, etc.)
+     *   - Tax
+     *   - Discounts / coupons
+     *   - Grand total
+     *
+     * Skipped silently for non-CoinSub orders so other gateways are
+     * untouched.
+     */
+    public function render_payment_breakdown($order) {
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+
+        if ($order->get_payment_method() !== 'coinsub') {
+            return;
+        }
+
+        $currency = $order->get_currency();
+        $rows     = array();
+
+        // Line items (products).
+        foreach ($order->get_items('line_item') as $item_id => $item) {
+            if (!$item instanceof WC_Order_Item_Product) {
+                continue;
+            }
+            $qty   = max(1, (int) $item->get_quantity());
+            $label = $item->get_name();
+            if ($qty > 1) {
+                $label .= '  × ' . $qty;
+            }
+            $rows[] = array(
+                'label' => $label,
+                'value' => wc_price($order->get_line_total($item, true, false), array('currency' => $currency)),
+                'kind'  => 'item',
+            );
+        }
+
+        // Subtotal (items only, pre-discounts/shipping/tax). Only show if
+        // the order has anything beyond pure line items so the breakdown
+        // isn't redundant for trivial single-item orders.
+        $subtotal = (float) $order->get_subtotal();
+        $shipping = (float) $order->get_shipping_total();
+        $fees_total = 0.0;
+        foreach ($order->get_fees() as $fee_item) {
+            $fees_total += (float) $fee_item->get_total();
+        }
+        $tax = (float) $order->get_total_tax();
+        $discount = (float) $order->get_discount_total();
+        $has_extras = ($shipping > 0 || $fees_total > 0 || $tax > 0 || $discount > 0);
+
+        if ($has_extras) {
+            $rows[] = array(
+                'label' => __('Subtotal', 'coinsub'),
+                'value' => wc_price($subtotal, array('currency' => $currency)),
+                'kind'  => 'subtotal',
+            );
+        }
+
+        if ($shipping > 0) {
+            $shipping_label = __('Shipping', 'coinsub');
+            $shipping_method_names = array();
+            foreach ($order->get_shipping_methods() as $shipping_item) {
+                $name = $shipping_item->get_method_title();
+                if ($name) {
+                    $shipping_method_names[] = $name;
+                }
+            }
+            if (!empty($shipping_method_names)) {
+                $shipping_label = sprintf(__('Shipping (%s)', 'coinsub'), implode(', ', $shipping_method_names));
+            }
+            $rows[] = array(
+                'label' => $shipping_label,
+                'value' => wc_price($shipping, array('currency' => $currency)),
+                'kind'  => 'modifier',
+            );
+        }
+
+        foreach ($order->get_fees() as $fee_item) {
+            $fee_amount = (float) $fee_item->get_total();
+            if ($fee_amount === 0.0) {
+                continue;
+            }
+            $rows[] = array(
+                'label' => $fee_item->get_name(),
+                'value' => wc_price($fee_amount, array('currency' => $currency)),
+                'kind'  => 'modifier',
+            );
+        }
+
+        if ($tax > 0) {
+            $rows[] = array(
+                'label' => __('Tax', 'coinsub'),
+                'value' => wc_price($tax, array('currency' => $currency)),
+                'kind'  => 'modifier',
+            );
+        }
+
+        if ($discount > 0) {
+            $coupon_codes = $order->get_coupon_codes();
+            $discount_label = __('Discount', 'coinsub');
+            if (!empty($coupon_codes)) {
+                $discount_label = sprintf(__('Discount (%s)', 'coinsub'), implode(', ', $coupon_codes));
+            }
+            $rows[] = array(
+                'label' => $discount_label,
+                'value' => '-' . wc_price($discount, array('currency' => $currency)),
+                'kind'  => 'discount',
+            );
+        }
+
+        $total_paid = (float) $order->get_total();
+
+        // Inline styles only — no external CSS dependency, no theme can
+        // hide it accidentally with `display: none` on a Woo class.
+        $table_style    = 'width:100%;max-width:520px;margin:24px 0;border-collapse:collapse;font-size:14px;';
+        $row_style      = 'border-bottom:1px solid #eef0f3;';
+        $label_style    = 'padding:10px 0;text-align:left;color:#4b5563;';
+        $value_style    = 'padding:10px 0;text-align:right;color:#111827;white-space:nowrap;';
+        $subtotal_label = 'padding:12px 0 8px;text-align:left;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;font-size:12px;';
+        $subtotal_value = 'padding:12px 0 8px;text-align:right;color:#111827;white-space:nowrap;font-weight:600;';
+        $total_label    = 'padding:14px 0 4px;text-align:left;color:#111827;font-weight:700;font-size:15px;';
+        $total_value    = 'padding:14px 0 4px;text-align:right;color:#111827;white-space:nowrap;font-weight:700;font-size:16px;';
+        $heading_style  = 'margin:24px 0 8px;font-size:16px;color:#111827;font-weight:600;';
+
+        echo '<section class="coinsub-payment-breakdown" aria-label="' . esc_attr__('Payment breakdown', 'coinsub') . '">';
+        echo '<h2 style="' . esc_attr($heading_style) . '">' . esc_html__('Payment breakdown', 'coinsub') . '</h2>';
+        echo '<table style="' . esc_attr($table_style) . '"><tbody>';
+
+        foreach ($rows as $row) {
+            $is_subtotal = ($row['kind'] === 'subtotal');
+            $row_label_style = $is_subtotal ? $subtotal_label : $label_style;
+            $row_value_style = $is_subtotal ? $subtotal_value : $value_style;
+            echo '<tr style="' . esc_attr($row_style) . '">';
+            echo '<td style="' . esc_attr($row_label_style) . '">' . wp_kses_post($row['label']) . '</td>';
+            echo '<td style="' . esc_attr($row_value_style) . '">' . wp_kses_post($row['value']) . '</td>';
+            echo '</tr>';
+        }
+
+        echo '<tr>';
+        echo '<td style="' . esc_attr($total_label) . '">' . esc_html__('Total paid', 'coinsub') . '</td>';
+        echo '<td style="' . esc_attr($total_value) . '">' . wp_kses_post(wc_price($total_paid, array('currency' => $currency))) . '</td>';
+        echo '</tr>';
+
+        echo '</tbody></table>';
+        echo '</section>';
     }
     
     /**

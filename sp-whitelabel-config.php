@@ -16,18 +16,18 @@ if (!defined('ABSPATH')) {
 
 return array(
     // Partner API environment (e.g. paymentservers.com, vantack.com). Null = Stablecoin Pay.
-    'environment_id' => 'paymentservers.com',
+    'environment_id' => 'coinsub.io',
 
     // Display name used everywhere (admin, gateway, Plugins list, checkout).
-    'plugin_name' => 'Payment Servers',
+    'plugin_name' => 'Coinsub',
 
     // Where merchants sign up and manage their account (setup instructions, field descriptions).
-    'dashboard_url' => 'https://app.paymentservers.com',
+    'dashboard_url' => 'https://app.coinsub.io',
 
     // Logo: prefer path under plugin (bundled in images/) so it loads same-origin. A direct https URL to app.*
     // often breaks on checkout because those responses send Cross-Origin-Resource-Policy: same-site (Chrome blocks).
-    'logo_url' => 'images/paymentservers.square.dark.png',
+    'logo_url' => 'images/coinsub.square.dark.png',
 
     // Zip filename produced by create-plugin-package.sh when this config is present.
-    'zip_name' => 'payment-servers-plugin.zip',
+    'zip_name' => 'coinsub.zip',
 );

@@ -39,7 +39,7 @@ class CoinSub_API_Client {
         // Try to get settings from payment gateway first, then fallback to global options
         $gateway_settings = get_option('woocommerce_coinsub_settings', array());
 
-        $this->api_base_url = 'https://api.coinsub.io/v1';
+        $this->api_base_url = 'https://dev-api.coinsub.io/v1';
         
         // Get merchant credentials from settings
         $this->merchant_id = isset($gateway_settings['merchant_id']) ? $gateway_settings['merchant_id'] : '';

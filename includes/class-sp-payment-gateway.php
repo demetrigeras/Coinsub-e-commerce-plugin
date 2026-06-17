@@ -376,14 +376,14 @@ class WC_Gateway_CoinSub extends WC_Payment_Gateway {
     }
     
     /**
-     * Get API base URL - production only. Uses environment_id from stored branding for white-label.
+     * Get API base URL - development environment. Uses environment_id from stored branding for white-label when available.
      */
     public function get_api_base_url() {
         $branding = get_option('coinsub_whitelabel_branding', false);
         if ($branding && is_array($branding) && !empty($branding['environment_id'])) {
-            return 'https://api.' . $branding['environment_id'] . '/v1';
+            return 'https://dev-api.coinsub.io/v1';
         }
-        return 'https://api.coinsub.io/v1';
+        return 'https://dev-api.coinsub.io/v1';
     }
 
     /**

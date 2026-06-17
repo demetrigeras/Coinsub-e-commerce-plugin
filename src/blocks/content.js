@@ -55,14 +55,19 @@ const Content = ( { settings, ...props } ) => {
 	// the exact amount the customer agreed to pay — the server-side cart
 	// can drift in block-checkout because the Store API doesn't fire the
 	// same hooks classic checkout does.
-	const cartTotals = useSelect( ( select ) => {
+	const cartData = useSelect( ( select ) => {
 		const store = select( 'wc/store/cart' );
 		if ( ! store ) {
 			return null;
 		}
-		const data = store.getCartData ? store.getCartData() : null;
-		return data?.totals || null;
+		return store.getCartData ? store.getCartData() : null;
 	}, [] );
+	const cartTotals = cartData?.totals || null;
+	// Named fee lines as the customer sees them (e.g. "Processing fee").
+	// The Store API exposes each fee's name + minor-unit totals; we forward
+	// these so the server can rebuild them as real order line items even
+	// when the server-side cart recalculation doesn't reproduce them.
+	const cartFees = Array.isArray( cartData?.fees ) ? cartData.fees : [];
 
 	const [ checkoutUrl, setCheckoutUrl ] = useState( null );
 
@@ -78,11 +83,13 @@ const Content = ( { settings, ...props } ) => {
 	const billingRef = useRef( billing );
 	const shippingRef = useRef( shippingData );
 	const totalsRef = useRef( cartTotals );
+	const feesRef = useRef( cartFees );
 	useEffect( () => {
 		billingRef.current = billing;
 		shippingRef.current = shippingData;
 		totalsRef.current = cartTotals;
-	}, [ billing, shippingData, cartTotals ] );
+		feesRef.current = cartFees;
+	}, [ billing, shippingData, cartTotals, cartFees ] );
 
 	// Top-level navigation to the order-received page. Same effect as
 	// `window.location.href = ...` in the classic flow.
@@ -325,6 +332,22 @@ const Content = ( { settings, ...props } ) => {
 						totalsNow.currency_code || '';
 					payload.cart_currency_minor_unit =
 						totalsNow.currency_minor_unit ?? '2';
+
+					// Named fee lines (e.g. "Processing fee") so the
+					// server can rebuild them as real order line items.
+					// Each entry: { name, total } in minor units.
+					const feesNow = Array.isArray( feesRef.current )
+						? feesRef.current
+						: [];
+					if ( feesNow.length ) {
+						payload.cart_fees_json = JSON.stringify(
+							feesNow.map( ( fee ) => ( {
+								name: fee?.name || 'Fee',
+								total: fee?.totals?.total ?? '0',
+								total_tax: fee?.totals?.total_tax ?? '0',
+							} ) )
+						);
+					}
 
 					// Visible-in-DevTools confirmation that we're shipping
 					// the grand total, not the subtotal.
